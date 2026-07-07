@@ -12,17 +12,18 @@ import json
 import os
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from PIL import Image
 
 
-def _clear_history(d):
+def _clear_history(d: str) -> None:
     os.makedirs(d, exist_ok=True)
     for f in os.listdir(d):
         os.remove(os.path.join(d, f))
 
 
-def _save_png(d, name, mtime=None):
+def _save_png(d: str, name: str, mtime: float | None = None) -> str:
     path = os.path.join(d, name)
     Image.new("RGB", (10, 10), "white").save(path)
     if mtime is not None:
@@ -35,7 +36,9 @@ def _save_png(d, name, mtime=None):
 # ---------------------------------------------------------------------------
 
 
-def test_history_groups_by_day_with_today_label(client, device_config_dev):
+def test_history_groups_by_day_with_today_label(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     _save_png(d, "display_v2_today.png")
@@ -49,7 +52,9 @@ def test_history_groups_by_day_with_today_label(client, device_config_dev):
     assert "1 render<" in body
 
 
-def test_history_groups_split_today_and_yesterday(client, device_config_dev):
+def test_history_groups_split_today_and_yesterday(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     now = time.time()
@@ -65,7 +70,7 @@ def test_history_groups_split_today_and_yesterday(client, device_config_dev):
     assert body.count("history-day-head") == 2
 
 
-def test_day_label_helper():
+def test_day_label_helper() -> None:
     from blueprints.history import _day_label
 
     now = datetime(2026, 7, 7, 12, 0, tzinfo=UTC)
@@ -74,7 +79,7 @@ def test_day_label_helper():
     assert _day_label(datetime(2026, 7, 1, 8, 0, tzinfo=UTC), now) == "Jul 1, 2026"
 
 
-def test_group_images_by_day_consecutive_buckets():
+def test_group_images_by_day_consecutive_buckets() -> None:
     from blueprints.history import _group_images_by_day
 
     images = [
@@ -93,7 +98,9 @@ def test_group_images_by_day_consecutive_buckets():
 # ---------------------------------------------------------------------------
 
 
-def test_history_filter_toolbar_renders_with_items(client, device_config_dev):
+def test_history_filter_toolbar_renders_with_items(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     _save_png(d, "display_v2_filter.png")
@@ -111,7 +118,9 @@ def test_history_filter_toolbar_renders_with_items(client, device_config_dev):
     assert "No renders match this filter." in body
 
 
-def test_history_filter_toolbar_absent_when_empty(client, device_config_dev):
+def test_history_filter_toolbar_absent_when_empty(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
 
@@ -122,7 +131,7 @@ def test_history_filter_toolbar_absent_when_empty(client, device_config_dev):
     assert "No history yet." in body
 
 
-def test_history_cards_carry_category_attr(client, device_config_dev):
+def test_history_cards_carry_category_attr(client: Any, device_config_dev: Any) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     _save_png(d, "display_v2_playlist.png")
@@ -146,7 +155,7 @@ def test_history_cards_carry_category_attr(client, device_config_dev):
 # ---------------------------------------------------------------------------
 
 
-def test_history_lightbox_modal_markup(client, device_config_dev):
+def test_history_lightbox_modal_markup(client: Any, device_config_dev: Any) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     _save_png(d, "display_v2_lightbox.png")
@@ -163,7 +172,9 @@ def test_history_lightbox_modal_markup(client, device_config_dev):
     assert "Render preview" in body
 
 
-def test_history_thumbs_carry_lightbox_data(client, device_config_dev):
+def test_history_thumbs_carry_lightbox_data(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     fname = "display_v2_thumbdata.png"
@@ -185,7 +196,7 @@ def test_history_thumbs_carry_lightbox_data(client, device_config_dev):
     assert "Playlist • weather • Daily" in body
 
 
-def test_history_page_no_longer_uses_generic_lightbox(client):
+def test_history_page_no_longer_uses_generic_lightbox(client: Any) -> None:
     resp = client.get("/history")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -197,7 +208,7 @@ def test_history_page_no_longer_uses_generic_lightbox(client):
 # ---------------------------------------------------------------------------
 
 
-def test_history_refresh_button_has_icon_and_label(client):
+def test_history_refresh_button_has_icon_and_label(client: Any) -> None:
     resp = client.get("/history")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -209,7 +220,9 @@ def test_history_refresh_button_has_icon_and_label(client):
     assert '<span class="button-text">Refresh</span>' in button_html
 
 
-def test_history_thumb_ratio_matches_panel_resolution(client, device_config_dev):
+def test_history_thumb_ratio_matches_panel_resolution(
+    client: Any, device_config_dev: Any
+) -> None:
     d = device_config_dev.history_image_dir
     _clear_history(d)
     _save_png(d, "display_v2_ratio.png")
@@ -226,7 +239,7 @@ def test_history_thumb_ratio_matches_panel_resolution(client, device_config_dev)
 # ---------------------------------------------------------------------------
 
 
-def test_history_page_js_defines_filter_and_lightbox(client):
+def test_history_page_js_defines_filter_and_lightbox(client: Any) -> None:
     resp = client.get("/static/scripts/history_page.js")
     assert resp.status_code == 200
     js = resp.get_data(as_text=True)
