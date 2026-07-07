@@ -93,6 +93,31 @@ def _format_size(num_bytes: int) -> str:
         return "-"
 
 
+def _now_in_device_tz() -> datetime:
+    """Return "now" in the device timezone, falling back to UTC.
+
+    Safe to call without an app context (falls back to UTC), which keeps
+    ``_list_history_images`` usable from unit tests that call it directly.
+    """
+    try:
+        device_config = current_app.config.get(_CONFIG_KEY)
+        if device_config:
+            return now_device_tz(device_config)
+        return datetime.now(tz=get_timezone("UTC"))
+    except Exception:
+        return datetime.now(tz=UTC)
+
+
+def _day_label(dt: datetime, now: datetime) -> str:
+    """Human day-group label: Today, Yesterday, or a formatted date."""
+    delta_days = (now.date() - dt.date()).days
+    if delta_days == 0:
+        return "Today"
+    if delta_days == 1:
+        return "Yesterday"
+    return dt.strftime("%b %d, %Y").replace(" 0", " ")
+
+
 def _list_history_images(
     history_dir: str, offset: int = 0, limit: int | None = None
 ) -> tuple[list[dict[str, Any]], int]:
@@ -130,6 +155,7 @@ def _list_history_images(
     page_files = files[offset : offset + limit] if limit is not None else files
 
     # Phase 2: expensive stat + sidecar load only for the page slice
+    now = _now_in_device_tz()
     result: list[dict[str, Any]] = []
     for f in page_files:
         full_path = os.path.join(history_dir, f)
@@ -152,12 +178,6 @@ def _list_history_images(
             meta = {}
         try:
             # Use device timezone for display
-            device_config = current_app.config.get(_CONFIG_KEY)
-            now = (
-                now_device_tz(device_config)
-                if device_config
-                else datetime.now(tz=get_timezone("UTC"))
-            )
             dt = datetime.fromtimestamp(mtime, tz=now.tzinfo)
         except Exception:
             dt = datetime.fromtimestamp(mtime, tz=UTC)
@@ -171,9 +191,35 @@ def _list_history_images(
                 "size": size,
                 "size_str": _format_size(size),
                 "meta": meta,
+                # Day-grouping + source-filter fields (History v2)
+                "date_key": dt.strftime("%Y-%m-%d"),
+                "day_label": _day_label(dt, now),
+                "category": (
+                    "playlist" if meta.get("refresh_type") == "Playlist" else "manual"
+                ),
             }
         )
     return result, total
+
+
+def _group_images_by_day(images: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group a newest-first image list into consecutive same-day buckets.
+
+    Images arrive sorted by mtime descending, so consecutive grouping keeps
+    that order while producing one section per calendar day.
+    """
+    groups: list[dict[str, Any]] = []
+    for img in images:
+        if not groups or groups[-1]["date_key"] != img["date_key"]:
+            groups.append(
+                {
+                    "date_key": img["date_key"],
+                    "label": img["day_label"],
+                    "entries": [],
+                }
+            )
+        groups[-1]["entries"].append(img)
+    return groups
 
 
 def _resolve_history_entry_path(history_dir: str, expected_name: str) -> str | None:
@@ -380,8 +426,24 @@ def history_page() -> Response | str:
         "used_gb": round(used_bytes / gb, 2) if used_bytes is not None else None,
     }
 
+    # Panel aspect ratio for exact-ratio thumbnails (the design's 5:3 default
+    # matches 800x480 panels; other resolutions get their own ratio).
+    thumb_ratio = None
+    try:
+        resolution = device_config.get_config("resolution")
+        if (
+            isinstance(resolution, (list, tuple))
+            and len(resolution) == 2
+            and all(isinstance(v, int) and v > 0 for v in resolution)
+        ):
+            thumb_ratio = f"{resolution[0]} / {resolution[1]}"
+    except Exception:
+        thumb_ratio = None
+
     template_ctx = {
         "images": images,
+        "groups": _group_images_by_day(images),
+        "thumb_ratio": thumb_ratio,
         "storage": storage_ctx,
         "metrics": metrics,
         "page": page,

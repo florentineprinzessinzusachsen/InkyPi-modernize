@@ -3,3 +3,14 @@
    - _form.css    (form inputs, labels, validation, file uploads, color pickers)
    - _toggle.css  (toggles, collapsibles, plugins-title)
    See _imports.css for the full manifest. */
+
+/* Section toolbar (handoff §21b): a filter/search row above a content
+   section — seg control on the left, live count on the right. */
+.section-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}

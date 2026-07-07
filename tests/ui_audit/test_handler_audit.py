@@ -69,6 +69,9 @@ _DELEGATED_MARKERS = frozenset(
         # of these is evidence of intentional wiring rather than orphanage.
         "data-playlist",
         "data-playlist-name",
+        # History source-filter seg buttons are wired via a document-level
+        # delegated click handler in history_page.js ([data-history-filter]).
+        "data-history-filter",
     }
 )
 

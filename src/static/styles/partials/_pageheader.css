@@ -213,6 +213,18 @@
   margin-left: 4px;
 }
 
+/* Compact variant (History latency band): fixed 4-up so the four stages
+   always align, collapsing to 2-up on narrow viewports. */
+.metric-strip.refined.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .metric-strip.refined.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Refined underline-tab pattern for in-page section switching */
 .tabline {
   display: flex;

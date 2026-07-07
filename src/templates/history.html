@@ -3,7 +3,6 @@
 {% block body_attrs %} data-page="history"{% endblock %}
 {% block head %}
     <meta name="status-badge-disabled" content="1">
-    <script src="{{ url_for('static', filename='scripts/lightbox.js') }}" defer></script>
     <script src="{{ url_for('static', filename='scripts/history_page.js') }}" defer></script>
 {% endblock %}
 {% block body %}
@@ -23,7 +22,10 @@
             chips=hist_chips
         ) %}
             <a href="{{ url_for('history.history_export_csv') }}" class="header-button is-secondary" download>Export CSV</a>
-            <button id="historyRefreshBtn" class="header-button" type="button" data-test-skip-click="true">Refresh</button>
+            <button id="historyRefreshBtn" class="header-button dashboard-header-button" type="button" data-test-skip-click="true">
+                {{ icon('arrows-clockwise', 'btn-leading-icon') | safe }}
+                <span class="button-text">Refresh</span>
+            </button>
         {% endcall %}
         <div id="storage-block" class="storage-card" {% if not storage or storage.pct_free is none %}hidden{% endif %}>
             <div class="storage-card-head">
@@ -89,6 +91,30 @@
             <button id="historyClearBtn" class="header-button is-danger" type="button" data-test-skip-click="true">Clear All</button>
         </section>
         {% endif %}
+    </div>
+
+    <!-- Render preview lightbox -->
+    <div id="lightboxModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="lightboxTitle" hidden>
+        <div class="modal-content lightbox-sheet">
+            <button type="button" id="closeLightboxModalBtn" class="close-button" aria-label="Close">{{ icon('x', 'close-icon') | safe }}</button>
+            <h2 id="lightboxTitle">Render preview</h2>
+            <div class="separator"></div>
+            <img id="lightboxImage" class="lightbox-img" src="" alt="" loading="lazy" decoding="async">
+            <div class="lightbox-meta">
+                <div id="lightboxName" class="history-name"></div>
+                <div id="lightboxSub" class="history-sub"></div>
+            </div>
+            <div class="history-sub history-source lightbox-source">
+                <span>Source:</span>
+                <span id="lightboxSource"></span>
+            </div>
+            <div class="buttons-container">
+                <button type="button" id="lightboxDisplayBtn" class="action-button">Display</button>
+                <a id="lightboxDownloadLink" class="action-button is-secondary" href="#" download>Download</a>
+                {# data-test-skip-click: opens the destructive delete confirm #}
+                <button type="button" id="lightboxDeleteBtn" class="action-button warn" data-test-skip-click="true">Delete</button>
+            </div>
+        </div>
     </div>
 
     <!-- Delete image modal -->

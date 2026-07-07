@@ -3,6 +3,7 @@
     return [
       document.getElementById("deleteHistoryModal"),
       document.getElementById("clearHistoryModal"),
+      document.getElementById("lightboxModal"),
     ].find((modal) => modal && !modal.hidden);
   }
 
@@ -74,7 +75,44 @@
   function createHistoryPage(config) {
     const state = {
       pendingDelete: "",
+      filter: "all",
+      lightboxFilename: "",
+      lightboxTrigger: null,
     };
+
+    // Client-side source filter (History v2). Operates on the cards of the
+    // current page; re-applied after HTMX pagination swaps so the active
+    // filter survives page changes.
+    function applyFilter(filter) {
+      state.filter = filter;
+      document.querySelectorAll("[data-history-filter]").forEach((btn) => {
+        const active = btn.dataset.historyFilter === filter;
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      let shown = 0;
+      let totalCards = 0;
+      document.querySelectorAll(".history-card").forEach((card) => {
+        totalCards += 1;
+        const match = filter === "all" || card.dataset.category === filter;
+        card.hidden = !match;
+        if (match) shown += 1;
+      });
+      document.querySelectorAll("[data-history-group]").forEach((group) => {
+        const visible = group.querySelectorAll(
+          ".history-card:not([hidden])"
+        ).length;
+        group.hidden = visible === 0;
+        const count = group.querySelector(".history-day-count");
+        if (count) {
+          count.textContent = `${visible} ${visible === 1 ? "render" : "renders"}`;
+        }
+      });
+      const countEl = document.getElementById("historyShownCount");
+      if (countEl) countEl.textContent = `${shown} of ${totalCards}`;
+      const emptyEl = document.getElementById("historyFilterEmpty");
+      if (emptyEl) emptyEl.hidden = totalCards === 0 || shown > 0;
+    }
 
     async function updateStorage() {
       try {
@@ -228,25 +266,81 @@
       });
     }
 
+    // Render-preview lightbox (History v2): shows the full-size image with
+    // filename, timestamp/size, source, and Display / Download / Delete.
+    function openLightbox(thumb) {
+      const modal = document.getElementById("lightboxModal");
+      if (!modal) return;
+      const filename = thumb.dataset.lightboxFilename || "";
+      state.lightboxFilename = filename;
+      state.lightboxTrigger = thumb;
+      const img = document.getElementById("lightboxImage");
+      if (img) {
+        img.src = thumb.href;
+        img.alt = thumb.getAttribute("aria-label") || "Render preview";
+      }
+      const name = document.getElementById("lightboxName");
+      if (name) {
+        name.textContent = filename;
+        name.title = filename;
+      }
+      const sub = document.getElementById("lightboxSub");
+      if (sub) sub.textContent = thumb.dataset.lightboxSub || "";
+      const source = document.getElementById("lightboxSource");
+      if (source) source.textContent = thumb.dataset.lightboxSource || "";
+      const download = document.getElementById("lightboxDownloadLink");
+      if (download) download.href = thumb.href;
+      setModalOpen(modal, true, thumb);
+    }
+
+    function closeLightbox() {
+      state.lightboxFilename = "";
+      setModalOpen(document.getElementById("lightboxModal"), false);
+    }
+
     function bindThumbLightbox() {
       document.addEventListener("click", (event) => {
         const thumb = event.target.closest("a.history-thumb");
         if (!thumb) return;
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        const img = thumb.querySelector("img");
-        const alt =
-          thumb.getAttribute("aria-label") || img?.alt || "Preview";
-        if (globalThis.Lightbox) {
-          globalThis.Lightbox.open(thumb.href, alt);
-        }
+        openLightbox(thumb);
       });
+    }
+
+    function bindLightboxActions() {
+      document
+        .getElementById("closeLightboxModalBtn")
+        ?.addEventListener("click", closeLightbox);
+      document
+        .getElementById("lightboxDisplayBtn")
+        ?.addEventListener("click", (event) => {
+          const filename = state.lightboxFilename;
+          if (!filename) return;
+          closeLightbox();
+          redisplay(filename, event.currentTarget);
+        });
+      document
+        .getElementById("lightboxDeleteBtn")
+        ?.addEventListener("click", () => {
+          const filename = state.lightboxFilename;
+          if (!filename) return;
+          const trigger = state.lightboxTrigger;
+          closeLightbox();
+          openDeleteModal(filename, trigger);
+        });
     }
 
     function bindActions() {
       document
         .getElementById("historyRefreshBtn")
-        ?.addEventListener("click", () => globalThis.location.reload());
+        ?.addEventListener("click", (event) => {
+          // Spin the leading icon until the reload lands.
+          const btn = event.currentTarget;
+          btn.classList.add("loading");
+          btn.setAttribute("aria-busy", "true");
+          globalThis.location.reload();
+        });
       document
         .getElementById("historyClearBtn")
         ?.addEventListener("click", (event) => openClearModal(event.currentTarget));
@@ -270,6 +364,12 @@
         ?.addEventListener("click", closeClearModal);
 
       document.addEventListener("click", (event) => {
+        const filterButton = event.target.closest("[data-history-filter]");
+        if (filterButton) {
+          applyFilter(filterButton.dataset.historyFilter || "all");
+          return;
+        }
+
         const actionButton = event.target.closest("[data-history-action]");
         if (actionButton) {
           const action = actionButton.dataset.historyAction;
@@ -288,6 +388,9 @@
         if (event.target === document.getElementById("clearHistoryModal")) {
           closeClearModal();
         }
+        if (event.target === document.getElementById("lightboxModal")) {
+          closeLightbox();
+        }
       });
 
       document.addEventListener("keydown", (event) => {
@@ -299,6 +402,8 @@
           closeDeleteModal();
         } else if (openModal.id === "clearHistoryModal") {
           closeClearModal();
+        } else if (openModal.id === "lightboxModal") {
+          closeLightbox();
         }
       });
     }
@@ -308,6 +413,7 @@
       updateStorage();
       bindImages();
       bindThumbLightbox();
+      bindLightboxActions();
       bindActions();
       globalThis.updateHistoryStorage = updateStorage;
 
@@ -316,6 +422,9 @@
       // ensuring the new images are available for binding.
       document.body.addEventListener("htmx:afterSettle", function () {
         bindImages();
+        // The swapped-in grid renders unfiltered with an "All"-state toolbar;
+        // re-apply the active filter so it survives pagination.
+        applyFilter(state.filter);
       });
     }
 

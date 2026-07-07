@@ -238,6 +238,18 @@ a.quick-row-link:hover {
   border-color: var(--accent-hover);
 }
 
+/* Loading state: spin the leading icon (e.g. History refresh) until the
+   action completes. @keyframes spin lives in _validation.css. */
+.dashboard-header-button.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.dashboard-header-button.loading .btn-leading-icon {
+  display: inline-flex;
+  animation: spin 0.9s linear infinite;
+}
+
 /* The compact empty-state variant is used where the overview banner sits
    inline with a live card rather than as its own card. */
 .dashboard-overview-empty.is-compact {

@@ -2149,6 +2149,18 @@ body[data-page="plugin"] .tweaks-panel {
   margin-left: 4px;
 }
 
+/* Compact variant (History latency band): fixed 4-up so the four stages
+   always align, collapsing to 2-up on narrow viewports. */
+.metric-strip.refined.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .metric-strip.refined.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Refined underline-tab pattern for in-page section switching */
 .tabline {
   display: flex;
@@ -3940,6 +3952,17 @@ input[type="checkbox"].toggle-checkbox {
    - _toggle.css  (toggles, collapsibles, plugins-title)
    See _imports.css for the full manifest. */
 
+/* Section toolbar (handoff §21b): a filter/search row above a content
+   section — seg control on the left, live count on the right. */
+.section-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
 .dashboard-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
@@ -4576,6 +4599,18 @@ a.quick-row-link:hover {
 .dashboard-header-button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+/* Loading state: spin the leading icon (e.g. History refresh) until the
+   action completes. @keyframes spin lives in _validation.css. */
+.dashboard-header-button.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.dashboard-header-button.loading .btn-leading-icon {
+  display: inline-flex;
+  animation: spin 0.9s linear infinite;
 }
 
 /* The compact empty-state variant is used where the overview banner sits
@@ -7678,15 +7713,19 @@ body[data-page="settings"] .settings-device-name {
   min-width: 0;
 }
 
+/* Handoff parity (History v2): thumbs use the panel's exact aspect ratio so
+   renders are never cropped — the 800x480 (5:3) default is overridden per
+   device via --history-thumb-ratio on #history-grid-container. The fixed
+   paper tint matches e-ink output in both light and dark themes. */
 .history-thumb,
 .hist-thumb {
   position: relative;
   display: block;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--surface);
+  background: #dedbd2;
   border: 1px solid var(--surface-border);
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--history-thumb-ratio, 5 / 3);
   cursor: zoom-in;
   transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -7705,6 +7744,77 @@ body[data-page="settings"] .settings-device-name {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Day grouping (History v2): one section per calendar day with a mono
+   uppercase label and a per-day render count. */
+.history-group {
+  margin-bottom: 20px;
+}
+
+.history-group:last-child {
+  margin-bottom: 0;
+}
+
+.history-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.history-day-label {
+  font-family: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3, var(--text-secondary));
+}
+
+.history-day-count {
+  font-size: 0.72rem;
+  color: var(--text-3, var(--text-secondary));
+}
+
+/* Render-preview lightbox sheet (History v2). */
+.modal-content.lightbox-sheet {
+  width: min(92vw, 720px);
+  max-width: 720px;
+  max-height: min(88vh, 900px);
+  overflow: auto;
+}
+
+.lightbox-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 56vh;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  background: #dedbd2;
+}
+
+.lightbox-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.lightbox-meta .history-name {
+  font-size: 0.88rem;
+}
+
+.lightbox-source {
+  margin-top: 2px;
+}
+
+.lightbox-sheet .buttons-container {
+  margin-top: 14px;
 }
 
 .history-meta,
