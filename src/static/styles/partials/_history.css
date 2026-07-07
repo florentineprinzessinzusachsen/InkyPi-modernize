@@ -42,7 +42,7 @@
   display: block;
   border-radius: 12px;
   overflow: hidden;
-  background: #dedbd2;
+  background: var(--eink-paper-bg, #dedbd2);
   border: 1px solid var(--surface-border);
   aspect-ratio: var(--history-thumb-ratio, 5 / 3);
   cursor: zoom-in;
@@ -112,7 +112,7 @@
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--surface-border);
-  background: #dedbd2;
+  background: var(--eink-paper-bg, #dedbd2);
 }
 
 .lightbox-meta {

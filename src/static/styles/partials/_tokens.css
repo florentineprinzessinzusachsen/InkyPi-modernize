@@ -26,6 +26,9 @@
     --panel-border: #ddd8d0;
     --subtext: #6b6560;
     --frame-lining: #9a9590;
+    /* E-ink paper tint behind render thumbnails/previews. Intentionally
+       theme-independent — the physical panel is this color in any theme. */
+    --eink-paper-bg: #dedbd2;
     --skeleton-base: rgba(28, 25, 23, 0.05);
     --skeleton-highlight: rgba(28, 25, 23, 0.09);
     --error: #c4453a;
