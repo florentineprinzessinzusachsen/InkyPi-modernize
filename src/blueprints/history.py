@@ -349,6 +349,75 @@ def _parse_filename_from_request() -> tuple[str | None, str | None]:
 _DEFAULT_PER_PAGE = 24
 
 
+def _latest_metrics(device_config: Any) -> dict[str, Any]:
+    """Per-stage latencies from the most recent refresh (None when absent)."""
+    try:
+        ri = device_config.get_refresh_info()
+        return {
+            "request_ms": getattr(ri, "request_ms", None),
+            "generate_ms": getattr(ri, "generate_ms", None),
+            "preprocess_ms": getattr(ri, "preprocess_ms", None),
+            "display_ms": getattr(ri, "display_ms", None),
+        }
+    except Exception:
+        return {
+            "request_ms": None,
+            "generate_ms": None,
+            "preprocess_ms": None,
+            "display_ms": None,
+        }
+
+
+def _storage_context(history_dir: str) -> dict[str, Any]:
+    """Storage usage for the filesystem containing *history_dir*."""
+    free_bytes = None
+    total_bytes = None
+    used_bytes = None
+    pct_free = None
+    try:
+        usage = shutil.disk_usage(history_dir)
+        total_bytes = int(usage.total)
+        free_bytes = int(usage.free)
+        used_bytes = int(usage.used)
+        pct_free = (
+            (free_bytes / total_bytes * 100.0)
+            if (total_bytes and total_bytes > 0)
+            else None
+        )
+    except Exception:
+        logger.exception("Failed to stat filesystem for history directory")
+
+    gb = 1024**3
+    return {
+        "free_bytes": free_bytes,
+        "total_bytes": total_bytes,
+        "used_bytes": used_bytes,
+        "pct_free": pct_free,
+        "free_gb": round(free_bytes / gb, 2) if free_bytes is not None else None,
+        "total_gb": round(total_bytes / gb, 2) if total_bytes is not None else None,
+        "used_gb": round(used_bytes / gb, 2) if used_bytes is not None else None,
+    }
+
+
+def _panel_thumb_ratio(device_config: Any) -> str | None:
+    """CSS aspect-ratio for exact-ratio thumbnails (History v2).
+
+    The design's 5:3 fallback matches 800x480 panels; other resolutions get
+    their own ratio via the --history-thumb-ratio custom property.
+    """
+    try:
+        resolution = device_config.get_config("resolution")
+        if (
+            isinstance(resolution, (list, tuple))
+            and len(resolution) == 2
+            and all(isinstance(v, int) and v > 0 for v in resolution)
+        ):
+            return f"{resolution[0]} / {resolution[1]}"
+    except Exception:
+        return None
+    return None
+
+
 @history_bp.route("/history", methods=["GET"])  # type: ignore
 def history_page() -> Response | str:
     device_config = current_app.config[_CONFIG_KEY]
@@ -381,71 +450,12 @@ def history_page() -> Response | str:
                 history_dir, offset=start, limit=per_page
             )
 
-    # Pull latest timing metrics if available
-    try:
-        ri = device_config.get_refresh_info()
-        metrics = {
-            "request_ms": getattr(ri, "request_ms", None),
-            "generate_ms": getattr(ri, "generate_ms", None),
-            "preprocess_ms": getattr(ri, "preprocess_ms", None),
-            "display_ms": getattr(ri, "display_ms", None),
-        }
-    except Exception:
-        metrics = {
-            "request_ms": None,
-            "generate_ms": None,
-            "preprocess_ms": None,
-            "display_ms": None,
-        }
-    # Compute storage usage for the history directory's filesystem
-    free_bytes = None
-    total_bytes = None
-    used_bytes = None
-    pct_free = None
-    try:
-        usage = shutil.disk_usage(history_dir)
-        total_bytes = int(usage.total)
-        free_bytes = int(usage.free)
-        used_bytes = int(usage.used)
-        pct_free = (
-            (free_bytes / total_bytes * 100.0)
-            if (total_bytes and total_bytes > 0)
-            else None
-        )
-    except Exception:
-        logger.exception("Failed to stat filesystem for history directory")
-
-    gb = 1024**3
-    storage_ctx = {
-        "free_bytes": free_bytes,
-        "total_bytes": total_bytes,
-        "used_bytes": used_bytes,
-        "pct_free": pct_free,
-        "free_gb": round(free_bytes / gb, 2) if free_bytes is not None else None,
-        "total_gb": round(total_bytes / gb, 2) if total_bytes is not None else None,
-        "used_gb": round(used_bytes / gb, 2) if used_bytes is not None else None,
-    }
-
-    # Panel aspect ratio for exact-ratio thumbnails (the design's 5:3 default
-    # matches 800x480 panels; other resolutions get their own ratio).
-    thumb_ratio = None
-    try:
-        resolution = device_config.get_config("resolution")
-        if (
-            isinstance(resolution, (list, tuple))
-            and len(resolution) == 2
-            and all(isinstance(v, int) and v > 0 for v in resolution)
-        ):
-            thumb_ratio = f"{resolution[0]} / {resolution[1]}"
-    except Exception:
-        thumb_ratio = None
-
     template_ctx = {
         "images": images,
         "groups": _group_images_by_day(images),
-        "thumb_ratio": thumb_ratio,
-        "storage": storage_ctx,
-        "metrics": metrics,
+        "thumb_ratio": _panel_thumb_ratio(device_config),
+        "storage": _storage_context(history_dir),
+        "metrics": _latest_metrics(device_config),
         "page": page,
         "total_pages": total_pages,
         "total": total,
