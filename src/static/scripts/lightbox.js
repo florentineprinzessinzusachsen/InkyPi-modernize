@@ -172,6 +172,26 @@
     if (ui && ui.syncModalOpenState) ui.syncModalOpenState();
   }
 
+  // Toggle `inert` on everything outside `target` up to (not including)
+  // <body>, without ever marking one of target's own ancestors inert.
+  // `Array.from(document.body.children)` alone breaks as soon as the modal
+  // isn't a direct child of <body> (e.g. this fork's sidebar/shell layout
+  // wraps the whole page in body > .shell > .shell-main > ...): marking a
+  // wrapper inert because it "isn't the modal" cascades inert down onto the
+  // modal too, since inert applies to the whole subtree regardless of the
+  // modal's own (unset) inert attribute - silently disabling every control
+  // inside it, including its own close button.
+  function setBackgroundInert(target, inert) {
+    let node = target;
+    while (node && node !== document.body && node.parentElement) {
+      const parent = node.parentElement;
+      Array.from(parent.children).forEach(function(sibling) {
+        if (sibling !== node && sibling.nodeType === 1) sibling.inert = inert;
+      });
+      node = parent;
+    }
+  }
+
   function openLightbox(url, alt){
     const modal = ensureModal();
     const img = document.getElementById(IMG_ID);
@@ -201,9 +221,7 @@
     syncModalOpen();
 
     // Make background inert for accessibility
-    Array.from(document.body.children).forEach(function(el) {
-      if (el !== modal && el.nodeType === 1) el.inert = true;
-    });
+    setBackgroundInert(modal, true);
 
     // If already cached, trigger load immediately
     if (img.complete && img.naturalWidth > 0) {
@@ -224,9 +242,7 @@
       modal.classList.remove('is-open');
     }
     // Remove inert from background
-    Array.from(document.body.children).forEach(function(el) {
-      if (el.nodeType === 1) el.inert = false;
-    });
+    setBackgroundInert(modal, false);
     syncModalOpen();
     // Restore focus to the element that opened the lightbox
     if (triggerElement && typeof triggerElement.focus === 'function') {
