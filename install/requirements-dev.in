@@ -60,6 +60,7 @@ feedparser>=6.0,<7
 waitress>=3.0,<4
 jsonschema>=4.0,<5
 astral>=3.0,<4
+prometheus-client>=0.21,<1
 
 # Security — safe XML parsing (replaces stdlib xml.etree.ElementTree)
 defusedxml>=0.7,<1
