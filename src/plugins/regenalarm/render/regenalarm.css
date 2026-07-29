@@ -1,0 +1,86 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.regenalarm-dashboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* 100dvh (viewport-relative), not 100% - nothing up the ancestor chain
+     (html/body) has a definite height, so a percentage here would resolve
+     to auto and collapse the whole flex-height cascade below it. */
+  height: 100dvh;
+  font-family: "Jost";
+  padding: 1.5dvh 1.5dvw;
+  gap: 1dvh;
+  /* Safety net: .header/.content are both given explicit inline-style
+     px heights (from regenalarm.py's _layout_px) that are meant to add
+     up exactly to 100dvh minus padding/gap, but if they're ever off by
+     a rounding pixel or two, center the group rather than let it pin to
+     the top. */
+  justify-content: center;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1dvw;
+  flex: 0 0 auto;
+}
+
+.summary {
+  font-size: min(5.5dvh, 5.5dvw);
+  font-weight: normal;
+  line-height: 1.1;
+}
+
+.last-refresh {
+  font-size: min(2dvh, 2dvw);
+  color: rgb(120, 120, 120);
+  white-space: nowrap;
+}
+
+.content {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+/* .map-panel/.chart-panel's own width+height come from an inline style
+   (literal px, computed in Python - see regenalarm.py's _layout_px and
+   its module docstring's "Panel sizing" note) rather than from CSS here.
+   Everything nested inside them (width/height: 100%) is a percentage of
+   that now-fixed-px box, which paints correctly. */
+.map-panel,
+.chart-panel {
+  flex: 0 0 auto;
+}
+
+/* Unlike the chart (which reserves its own internal margin for axis/
+   legend text - see chart_svg.py), the map SVG has nothing else drawn
+   in its box, so at 100% it fills all the way to the panel's edges -
+   touching the bottom (and top) of the box in a way the chart never
+   does, even though both panels are the same height and same position.
+   Inset it a bit so it reads as similarly "centered"/breathing-room'd
+   as the chart instead of edge-to-edge. */
+.map-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-svg {
+  width: 88%;
+  height: 88%;
+  display: block;
+}
+
+.chart-panel svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

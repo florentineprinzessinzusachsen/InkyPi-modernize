@@ -1,0 +1,7 @@
+{
+    "display_name": "Weather (Germany)",
+    "id": "weather_de",
+    "class": "WeatherDe",
+    "api_version": "1.0",
+    "version": "1.0.0"
+}

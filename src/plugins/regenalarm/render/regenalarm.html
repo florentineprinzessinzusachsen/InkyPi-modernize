@@ -1,0 +1,32 @@
+{% extends "plugin.html" %}
+
+{% block content %}
+<div class="regenalarm-dashboard">
+  <div class="header" style="height: {{ header_h }}px; padding-top: {{ header_top_gap }}px;">
+    <div class="summary">{{ summary_text }}</div>
+    <div class="last-refresh">Last refresh: {{ last_refresh_time }}</div>
+  </div>
+
+  <div class="content" style="height: {{ content_h }}px; gap: {{ gap }}px;">
+    {% if chart_svg %}
+    <div class="chart-panel" style="width: {{ chart_w }}px; height: {{ content_h }}px;">
+      {{ chart_svg | safe }}
+    </div>
+    {% endif %}
+
+    {% if map_bkg_svg %}
+    <div class="map-panel" style="width: {{ map_w }}px; height: {{ content_h }}px;">
+      <svg class="map-svg" viewBox="0 0 {{ map_viewbox_w }} {{ map_viewbox_h }}" preserveAspectRatio="xMidYMid meet"
+           xmlns="http://www.w3.org/2000/svg">
+        {{ map_bkg_svg | safe }}
+        {% if rain_image_data_uri %}
+        <image href="{{ rain_image_data_uri }}" x="0" y="0" width="{{ map_viewbox_w }}" height="{{ map_viewbox_h }}" opacity="0.85"/>
+        {% endif %}
+        {{ map_borders_svg | safe }}
+        {{ map_marker_svg | safe }}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "plugin.html" %}
+
+{% block content %}
+<div class="abfahrtzeiten-dashboard">
+  {% if plugin_settings.displayRefreshTime == "true" %}
+  <div class="last-refresh">Last refresh: {{ last_refresh_time }}</div>
+  {% endif %}
+
+  <div class="stops-container">
+    {% for row in stop_rows %}
+    <div class="stop-row" style="--row-units: {{ row.row_units }};">
+      {% for stop in row.stops %}
+      <div class="stop-section">
+        <div class="stop-header">
+          <span class="stop-name">{{ stop.name }}</span>
+          <span class="stop-provider">{{ stop.provider }}</span>
+        </div>
+        {% if stop.error %}
+          <div class="stop-error">{{ stop.error }}</div>
+        {% elif not stop.departures %}
+          <div class="stop-error">No upcoming departures</div>
+        {% else %}
+          <div class="departure-rows">
+            {% for dep in stop.departures %}
+            <div class="departure-row{% if dep.cancelled %} cancelled{% endif %}">
+              <span class="line-badge">{{ dep.line }}</span>
+              <span class="direction">{{ dep.direction }}</span>
+              <span class="time">{{ dep.planned_time }}</span>
+              {% if dep.cancelled %}
+                <span class="cancelled-flag">Cancelled</span>
+              {% elif dep.delay_minutes %}
+                <span class="delay">+{{ dep.delay_minutes }}</span>
+              {% endif %}
+              {% if dep.platform %}<span class="platform">Gl. {{ dep.platform }}</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

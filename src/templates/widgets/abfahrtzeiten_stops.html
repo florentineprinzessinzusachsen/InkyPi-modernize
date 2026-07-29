@@ -1,0 +1,86 @@
+{% from 'macros/icons.html' import icon %}
+
+<div id="abfahrtzeitenEntryList" class="dynamic-list" data-repeater-list></div>
+<button type="button" id="abfahrtzeitenAddStopBtn" class="action-button compact">Add Stop</button>
+
+<div id="abfahrtzeitenEntryModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="abfahrtzeitenWizardTitle" hidden>
+    <div class="modal-content">
+        <button type="button" class="close-button" aria-label="Close">&times;</button>
+        <h2 id="abfahrtzeitenWizardTitle">Add a Stop</h2>
+        <div class="separator"></div>
+
+        <div id="abfahrtzeitenWizardStep1">
+            <div class="form-group">
+                <input type="text" id="abfahrtzeitenAddressSearchInput" class="form-input" placeholder="Address or place, e.g. Alexanderplatz Berlin">
+                <button type="button" id="abfahrtzeitenSearchAddressBtn" class="action-button compact">Search</button>
+            </div>
+            <div id="abfahrtzeitenAddressResults" class="abfahrtzeiten-wizard-results"></div>
+        </div>
+
+        <div id="abfahrtzeitenWizardStep2" hidden>
+            <p>Nearby stops:</p>
+            <div id="abfahrtzeitenNearbyResults" class="abfahrtzeiten-wizard-results"></div>
+            <button type="button" class="action-button compact" data-wizard-back="1">&larr; Back</button>
+        </div>
+
+        <div id="abfahrtzeitenWizardStep3" hidden>
+            <p>Lines and directions at this stop:</p>
+            <div id="abfahrtzeitenLineResults" class="abfahrtzeiten-wizard-results"></div>
+            <button type="button" class="action-button compact" data-wizard-back="2">&larr; Back</button>
+        </div>
+
+        <div id="abfahrtzeitenWizardStatus" class="abfahrtzeiten-wizard-status"></div>
+    </div>
+</div>
+
+<style>
+    /* main.css only sets themed `color` on specific classes it owns
+       (.form-label, .form-input, small, .modal-content h2, ...) - there's
+       no page-wide default, so any plain text here needs its own
+       `color: var(--text-primary)` or it stays at the browser's default
+       black regardless of dark mode. */
+    #abfahrtzeitenWizardStep2 p,
+    #abfahrtzeitenWizardStep3 p {
+        color: var(--text-primary);
+    }
+    .abfahrtzeiten-wizard-results {
+        max-height: 260px;
+        overflow-y: auto;
+        margin: 10px 0;
+    }
+    .abfahrtzeiten-wizard-result-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color, #ccc);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        cursor: pointer;
+        color: var(--text-primary);
+    }
+    .abfahrtzeiten-wizard-result-item:hover {
+        background-color: var(--collapsible-bg, #edebeb);
+    }
+    .abfahrtzeiten-wizard-result-item .meta {
+        font-size: 0.85em;
+        opacity: 0.7;
+    }
+    .abfahrtzeiten-wizard-status {
+        min-height: 1.2em;
+        font-size: 0.9em;
+        opacity: 0.8;
+        color: var(--text-primary);
+    }
+    .abfahrtzeiten-stop-entry .summary {
+        display: flex;
+        flex-direction: column;
+    }
+    .abfahrtzeiten-stop-entry .summary .primary {
+        font-weight: 600;
+    }
+    .abfahrtzeiten-stop-entry .summary .secondary {
+        font-size: 0.85em;
+        opacity: 0.7;
+    }
+</style>

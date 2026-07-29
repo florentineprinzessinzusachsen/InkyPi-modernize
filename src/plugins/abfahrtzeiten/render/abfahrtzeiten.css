@@ -1,0 +1,169 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.abfahrtzeiten-dashboard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  font-family: "Jost";
+  padding: 1dvh 1dvw;
+}
+
+.last-refresh {
+  position: absolute;
+  top: 0.5dvh;
+  right: 0.5dvw;
+  font-size: min(2dvh, 2vw);
+  font-weight: bold;
+  padding: 0.3dvh 0.5dvw;
+}
+
+.stops-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5dvh;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* One row per group from _group_into_rows (up to 3 stops side by side,
+   wrapping to further rows for more - see abfahrtzeiten.py). Every row
+   gets an equal share of the available height, regardless of how many
+   stops it holds. */
+.stop-row {
+  display: flex;
+  flex-direction: row;
+  gap: 1.5dvw;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.stop-section {
+  /* Establishes a query container sized by the flex layout above (not
+     by its own content), so the font sizes below can scale with THIS
+     cell's actual size rather than the full viewport.
+
+     --unit is a "row height": the cell's own height divided by
+     --row-units (1 header + however many departure rows the plugin
+     decided to show - see abfahrtzeiten.py's row_units/max_departures).
+     Font sizes are fractions of --unit, NOT of raw cqh. This matters
+     because cell height varies with grid density (up to 8 departure
+     rows allowed for a single-row grid, down to 3 for a dense one) -
+     sizing straight off cqh made text huge whenever a cell was tall but
+     only needed to fit a couple of rows (e.g. 2 stops -> 1 wide row),
+     causing exactly the truncation this fixes. */
+  container-type: size;
+  --unit: calc(100cqh / var(--row-units, 6));
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0.15dvh solid #000;
+  border-radius: 1dvh;
+  overflow: hidden;
+}
+
+.stop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  background: #000;
+  color: #fff;
+  padding: calc(var(--unit) * 0.14) 4cqw;
+  gap: 2cqw;
+}
+
+.stop-name {
+  font-size: min(calc(var(--unit) * 0.42), 7cqw);
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop-provider {
+  font-size: min(calc(var(--unit) * 0.26), 4.5cqw);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.stop-error {
+  padding: calc(var(--unit) * 0.2) 4cqw;
+  font-size: min(calc(var(--unit) * 0.32), 6cqw);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.departure-rows {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.departure-row {
+  display: flex;
+  align-items: center;
+  gap: 3cqw;
+  padding: calc(var(--unit) * 0.12) 4cqw;
+  border-top: 0.08dvh solid #ccc;
+  font-size: min(calc(var(--unit) * 0.38), 6.5cqw);
+}
+
+.departure-row:first-child {
+  border-top: none;
+}
+
+.departure-row.cancelled {
+  opacity: 0.55;
+}
+
+.departure-row.cancelled .line-badge,
+.departure-row.cancelled .direction,
+.departure-row.cancelled .time {
+  text-decoration: line-through;
+}
+
+.line-badge {
+  font-weight: bold;
+  border: 0.12dvh solid #000;
+  border-radius: 0.6dvh;
+  padding: 0.3cqh 2cqw;
+  min-width: 11cqw;
+  text-align: center;
+}
+
+.direction {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.delay {
+  font-weight: bold;
+  color: #b00020;
+}
+
+.cancelled-flag {
+  font-weight: bold;
+  text-decoration: none !important;
+  color: #b00020;
+}
+
+.platform {
+  font-size: 0.85em;
+  opacity: 0.7;
+  white-space: nowrap;
+}

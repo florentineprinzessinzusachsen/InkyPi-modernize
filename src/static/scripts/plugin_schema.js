@@ -437,6 +437,154 @@
     });
   }
 
+  function updateCalendarAuthKeyHint(entry) {
+    const labelInput = entry.querySelector("[data-auth-label]");
+    const hint = entry.querySelector("[data-auth-key-hint]");
+    if (!labelInput || !hint) return;
+    const label = (labelInput.value || "").trim();
+    hint.textContent = label ? `Password key: CALENDAR_AUTH_PASSWORD_${label.toUpperCase()}` : "";
+  }
+
+  let _calendarAuthEntryCounter = 0;
+
+  function createCalendarAuthEntry(url, color, username, label) {
+    _calendarAuthEntryCounter++;
+    const entryIndex = _calendarAuthEntryCounter;
+    const entry = document.createElement("div");
+    entry.className = "dynamic-list-item compact-repeater compact-repeater-calendar-auth";
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "dynamic-list-toolbar compact-repeater-toolbar";
+    const urlLabel = document.createElement("label");
+    urlLabel.className = "sr-only";
+    urlLabel.setAttribute("for", "calendarAuthURL_dyn_" + entryIndex);
+    urlLabel.textContent = "Calendar URL " + entryIndex;
+    const urlInput = document.createElement("input");
+    urlInput.type = "url";
+    urlInput.id = "calendarAuthURL_dyn_" + entryIndex;
+    urlInput.name = "calendarAuthURLs[]";
+    urlInput.className = "form-input";
+    urlInput.placeholder = "https://calendar.google.com/…/basic.ics";
+    urlInput.required = true;
+    urlInput.setAttribute("aria-label", "Calendar URL " + entryIndex);
+    urlInput.pattern = "https?://.+";
+    urlInput.value = url || "";
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "remove-btn icon-button";
+    removeBtn.setAttribute("aria-label", "Remove calendar");
+    const removeIcon = document.createElement("i");
+    removeIcon.className = "ph ph-trash ph-thin action-icon";
+    removeIcon.setAttribute("aria-hidden", "true");
+    removeBtn.appendChild(removeIcon);
+    removeBtn.addEventListener("click", () => {
+      const list = entry.parentElement;
+      if (list) handleRemoveClick(removeBtn, list);
+    });
+    removeBtn.dataset.boundRemove = "true";
+    toolbar.appendChild(urlLabel);
+    toolbar.appendChild(urlInput);
+    toolbar.appendChild(removeBtn);
+
+    const authToolbar = document.createElement("div");
+    authToolbar.className = "dynamic-list-toolbar compact-repeater-toolbar";
+    const usernameInput = document.createElement("input");
+    usernameInput.type = "text";
+    usernameInput.name = "calendarAuthUsernames[]";
+    usernameInput.className = "form-input";
+    usernameInput.placeholder = "Username (leave blank if no login needed)";
+    usernameInput.autocomplete = "username";
+    usernameInput.value = username || "";
+    usernameInput.dataset.authUsername = "true";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.name = "calendarAuthLabels[]";
+    labelInput.className = "form-input";
+    labelInput.placeholder = "Credential label (e.g. HOME)";
+    labelInput.pattern = "[A-Za-z0-9_]*";
+    labelInput.value = label || "";
+    labelInput.dataset.authLabel = "true";
+    authToolbar.appendChild(usernameInput);
+    authToolbar.appendChild(labelInput);
+
+    const colorLabel = document.createElement("label");
+    colorLabel.className = "dynamic-list-color-group";
+    const colorSpan = document.createElement("span");
+    colorSpan.textContent = "Color";
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.name = "calendarAuthColors[]";
+    colorInput.className = "color-picker";
+    colorInput.value = color || "#007BFF";
+    colorLabel.appendChild(colorSpan);
+    colorLabel.appendChild(colorInput);
+
+    const keyHint = document.createElement("small");
+    keyHint.className = "field-note";
+    keyHint.dataset.authKeyHint = "true";
+
+    entry.appendChild(toolbar);
+    entry.appendChild(authToolbar);
+    entry.appendChild(colorLabel);
+    entry.appendChild(keyHint);
+
+    labelInput.addEventListener("input", () => updateCalendarAuthKeyHint(entry));
+    updateCalendarAuthKeyHint(entry);
+
+    return entry;
+  }
+
+  function initCalendarAuthRepeater(widget, config) {
+    const list = widget.querySelector("[data-repeater-list]");
+    const addButton = widget.querySelector("[data-repeater-add]");
+    if (!list || !addButton) return;
+    bindRemoveButtons(list);
+    if (!list.children.length) {
+      const urls = config["calendarAuthURLs[]"] || [""];
+      const colors = config["calendarAuthColors[]"] || ["#007BFF"];
+      const usernames = config["calendarAuthUsernames[]"] || [""];
+      const labels = config["calendarAuthLabels[]"] || [""];
+      urls.forEach((url, index) =>
+        list.appendChild(
+          createCalendarAuthEntry(url, colors[index] || "#007BFF", usernames[index] || "", labels[index] || "")
+        )
+      );
+      if (!urls.length) list.appendChild(createCalendarAuthEntry("", "#007BFF", "", ""));
+    } else {
+      list.querySelectorAll(".dynamic-list-item").forEach((entry) => updateCalendarAuthKeyHint(entry));
+      list.querySelectorAll("[data-auth-label]").forEach((labelInput) => {
+        labelInput.addEventListener("input", () => updateCalendarAuthKeyHint(labelInput.closest(".dynamic-list-item")));
+      });
+    }
+    updateRepeaterEmptyState(list);
+    syncRemoveButtonStates(list);
+    addButton.addEventListener("click", () => {
+      const items = list.querySelectorAll(".dynamic-list-item");
+      if (items.length > 0) {
+        const lastItem = items[items.length - 1];
+        const lastInput = lastItem.querySelector('input[name="calendarAuthURLs[]"]');
+        if (lastInput) {
+          const value = (lastInput.value || "").trim();
+          if (!value || !lastInput.checkValidity()) {
+            lastInput.focus();
+            lastInput.reportValidity?.();
+            const message = value
+              ? "Fix the previous calendar URL before adding another."
+              : "Enter a calendar URL before adding another.";
+            if (typeof showError === "function") {
+              showError(message);
+            }
+            return;
+          }
+        }
+      }
+      list.appendChild(createCalendarAuthEntry("", "#007BFF", "", ""));
+      updateRepeaterEmptyState(list);
+      syncRemoveButtonStates(list);
+      bindRemoveButtons(list);
+    });
+  }
+
   function createTodoEntry(title, body) {
     const entry = document.createElement("div");
     entry.className = "dynamic-list-item compact-repeater compact-repeater-text";
@@ -562,6 +710,319 @@
     });
   }
 
+  // Calls the free, keyless community HAFAS-wrapper transit APIs directly
+  // from the browser (they send Access-Control-Allow-Origin: * - no backend
+  // proxy needed).
+  const ABFAHRTZEITEN_PROVIDER_BASES = {
+    vbb: "https://v6.vbb.transport.rest",
+    bvg: "https://v6.bvg.transport.rest",
+    db: "https://v6.db.transport.rest",
+  };
+  const ABFAHRTZEITEN_PROVIDER_LABELS = { vbb: "VBB", bvg: "BVG", db: "Deutsche Bahn" };
+  // Rough bounding box for the VBB service area (Berlin + Brandenburg) -
+  // inside it we only ever use VBB/BVG (their own HAFAS instance, best data
+  // quality), never silently falling back to the lower-quality/less
+  // reliable nationwide DB backend; outside it DB is the only option.
+  const ABFAHRTZEITEN_BB_LAT_RANGE = [51.3, 53.6];
+  const ABFAHRTZEITEN_BB_LON_RANGE = [11.2, 14.8];
+
+  function abfahrtzeitenInBerlinBrandenburg(lat, lon) {
+    return (
+      lat >= ABFAHRTZEITEN_BB_LAT_RANGE[0] &&
+      lat <= ABFAHRTZEITEN_BB_LAT_RANGE[1] &&
+      lon >= ABFAHRTZEITEN_BB_LON_RANGE[0] &&
+      lon <= ABFAHRTZEITEN_BB_LON_RANGE[1]
+    );
+  }
+
+  function abfahrtzeitenProvidersFor(lat, lon) {
+    if (lat != null && lon != null && !abfahrtzeitenInBerlinBrandenburg(lat, lon)) {
+      return ["db"];
+    }
+    return ["vbb", "bvg", "db"];
+  }
+
+  function abfahrtzeitenLocationLatLon(item) {
+    const loc = item.location || {};
+    const lat = loc.latitude !== undefined ? loc.latitude : item.latitude;
+    const lon = loc.longitude !== undefined ? loc.longitude : item.longitude;
+    return [lat, lon];
+  }
+
+  async function abfahrtzeitenSearchAddress(query) {
+    for (const provider of abfahrtzeitenProvidersFor()) {
+      try {
+        const url = `${ABFAHRTZEITEN_PROVIDER_BASES[provider]}/locations?query=${encodeURIComponent(query)}&results=8&poi=false&addresses=true&stops=true`;
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const results = [];
+        for (const item of data || []) {
+          const [lat, lon] = abfahrtzeitenLocationLatLon(item);
+          if (lat == null || lon == null) continue;
+          results.push({ id: item.id, name: item.name || item.address, lat, lon, provider, type: item.type });
+        }
+        if (results.length) return results;
+      } catch (e) {
+        console.warn(`transit search via ${provider} failed`, e);
+      }
+    }
+    return [];
+  }
+
+  async function abfahrtzeitenNearbyStops(lat, lon) {
+    for (const provider of abfahrtzeitenProvidersFor(lat, lon)) {
+      try {
+        const url = `${ABFAHRTZEITEN_PROVIDER_BASES[provider]}/locations/nearby?latitude=${lat}&longitude=${lon}&results=8&distance=1500`;
+        const resp = await fetch(url);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const results = (data || [])
+          .filter((item) => item.type === "stop")
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            distance: item.distance,
+            provider,
+            providerLabel: ABFAHRTZEITEN_PROVIDER_LABELS[provider] || provider,
+          }));
+        if (results.length) {
+          results.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+          return results;
+        }
+      } catch (e) {
+        console.warn(`nearby stops via ${provider} failed`, e);
+      }
+    }
+    return [];
+  }
+
+  async function abfahrtzeitenLinesForStop(stopId, provider) {
+    const url = `${ABFAHRTZEITEN_PROVIDER_BASES[provider]}/stops/${encodeURIComponent(stopId)}/departures?duration=180&results=100`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Unable to fetch departures for this stop.");
+    const data = await resp.json();
+    const seen = new Set();
+    const results = [];
+    for (const dep of data.departures || []) {
+      const line = dep.line && dep.line.name;
+      const direction = dep.direction;
+      if (!line || !direction) continue;
+      const key = `${line}|${direction}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({ lineName: line, direction });
+    }
+    results.sort((a, b) => (a.lineName + a.direction).localeCompare(b.lineName + b.direction));
+    return results;
+  }
+
+  function initAbfahrtzeitenStops(widget, config) {
+    const list = widget.querySelector("#abfahrtzeitenEntryList");
+    const addButton = widget.querySelector("#abfahrtzeitenAddStopBtn");
+    const modal = widget.querySelector("#abfahrtzeitenEntryModal");
+    const step1 = widget.querySelector("#abfahrtzeitenWizardStep1");
+    const step2 = widget.querySelector("#abfahrtzeitenWizardStep2");
+    const step3 = widget.querySelector("#abfahrtzeitenWizardStep3");
+    const addressInput = widget.querySelector("#abfahrtzeitenAddressSearchInput");
+    const searchBtn = widget.querySelector("#abfahrtzeitenSearchAddressBtn");
+    const addressResults = widget.querySelector("#abfahrtzeitenAddressResults");
+    const nearbyResults = widget.querySelector("#abfahrtzeitenNearbyResults");
+    const lineResults = widget.querySelector("#abfahrtzeitenLineResults");
+    const status = widget.querySelector("#abfahrtzeitenWizardStatus");
+    if (!list || !addButton || !modal || !step1 || !step2 || !step3 || !addressInput || !searchBtn || !addressResults || !nearbyResults || !lineResults || !status) {
+      return;
+    }
+
+    let selectedStop = null; // {provider, stopId, stopName}
+
+    function setStatus(text) {
+      status.textContent = text;
+    }
+
+    function showStep(step) {
+      step1.hidden = step !== 1;
+      step2.hidden = step !== 2;
+      step3.hidden = step !== 3;
+    }
+
+    function openWizard() {
+      selectedStop = null;
+      addressInput.value = "";
+      addressResults.replaceChildren();
+      nearbyResults.replaceChildren();
+      lineResults.replaceChildren();
+      setStatus("");
+      showStep(1);
+      modal.hidden = false;
+      modal.style.display = "block";
+      modal.classList.add("is-open");
+    }
+
+    function closeWizard() {
+      modal.hidden = true;
+      modal.style.display = "none";
+      modal.classList.remove("is-open");
+    }
+
+    function addEntryRow(entry) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "dynamic-list-item abfahrtzeiten-stop-entry";
+
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "entries[]";
+      hidden.value = JSON.stringify(entry);
+
+      const summary = document.createElement("div");
+      summary.className = "summary";
+      const primary = document.createElement("span");
+      primary.className = "primary";
+      primary.textContent = entry.stopName;
+      const secondary = document.createElement("span");
+      secondary.className = "secondary";
+      secondary.textContent = `${entry.lineName} → ${entry.direction}`;
+      summary.appendChild(primary);
+      summary.appendChild(secondary);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "remove-btn icon-button";
+      removeBtn.setAttribute("aria-label", "Remove stop");
+      const removeIcon = document.createElement("i");
+      removeIcon.className = "ph ph-trash ph-thin action-icon";
+      removeIcon.setAttribute("aria-hidden", "true");
+      removeBtn.appendChild(removeIcon);
+      removeBtn.addEventListener("click", () => wrapper.remove());
+
+      wrapper.appendChild(hidden);
+      wrapper.appendChild(summary);
+      wrapper.appendChild(removeBtn);
+      list.appendChild(wrapper);
+    }
+
+    async function runAddressSearch() {
+      const query = addressInput.value.trim();
+      if (!query) return;
+      setStatus("Searching...");
+      try {
+        const results = await abfahrtzeitenSearchAddress(query);
+        addressResults.replaceChildren();
+        if (results.length === 0) {
+          setStatus("No results found.");
+          return;
+        }
+        setStatus("");
+        results.forEach((r) => {
+          const item = document.createElement("div");
+          item.className = "abfahrtzeiten-wizard-result-item";
+          const name = document.createElement("span");
+          name.textContent = r.name;
+          item.appendChild(name);
+          item.addEventListener("click", () => selectAddress(r));
+          addressResults.appendChild(item);
+        });
+      } catch (e) {
+        setStatus(`Error: ${e.message}`);
+      }
+    }
+
+    async function selectAddress(addr) {
+      setStatus("Loading nearby stops...");
+      try {
+        const results = await abfahrtzeitenNearbyStops(addr.lat, addr.lon);
+        nearbyResults.replaceChildren();
+        if (results.length === 0) {
+          setStatus("No nearby stops found.");
+          return;
+        }
+        setStatus("");
+        results.forEach((r) => {
+          const item = document.createElement("div");
+          item.className = "abfahrtzeiten-wizard-result-item";
+          const name = document.createElement("span");
+          name.textContent = r.name;
+          const meta = document.createElement("span");
+          meta.className = "meta";
+          meta.textContent = `${r.providerLabel} · ${Math.round(r.distance || 0)}m`;
+          item.appendChild(name);
+          item.appendChild(meta);
+          item.addEventListener("click", () => selectStop(r));
+          nearbyResults.appendChild(item);
+        });
+        showStep(2);
+      } catch (e) {
+        setStatus(`Error: ${e.message}`);
+      }
+    }
+
+    async function selectStop(stop) {
+      selectedStop = { provider: stop.provider, stopId: stop.id, stopName: stop.name };
+      setStatus("Loading lines...");
+      try {
+        const results = await abfahrtzeitenLinesForStop(stop.id, stop.provider);
+        lineResults.replaceChildren();
+        if (results.length === 0) {
+          setStatus("No upcoming lines found at this stop right now.");
+          return;
+        }
+        setStatus("");
+        results.forEach((r) => {
+          const item = document.createElement("div");
+          item.className = "abfahrtzeiten-wizard-result-item";
+          const label = document.createElement("span");
+          const strong = document.createElement("strong");
+          strong.textContent = r.lineName;
+          label.appendChild(strong);
+          label.appendChild(document.createTextNode(` → ${r.direction}`));
+          item.appendChild(label);
+          item.addEventListener("click", () => selectLine(r));
+          lineResults.appendChild(item);
+        });
+        showStep(3);
+      } catch (e) {
+        setStatus(`Error: ${e.message}`);
+      }
+    }
+
+    function selectLine(line) {
+      addEntryRow({
+        provider: selectedStop.provider,
+        stopId: selectedStop.stopId,
+        stopName: selectedStop.stopName,
+        lineName: line.lineName,
+        direction: line.direction,
+      });
+      closeWizard();
+    }
+
+    addButton.addEventListener("click", openWizard);
+    modal.querySelector(".close-button")?.addEventListener("click", closeWizard);
+    searchBtn.addEventListener("click", runAddressSearch);
+    addressInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runAddressSearch();
+      }
+    });
+    step2.querySelector('[data-wizard-back="1"]')?.addEventListener("click", () => {
+      setStatus("");
+      showStep(1);
+    });
+    step3.querySelector('[data-wizard-back="2"]')?.addEventListener("click", () => {
+      setStatus("");
+      showStep(2);
+    });
+
+    (config["entries[]"] || []).forEach((raw) => {
+      try {
+        addEntryRow(JSON.parse(raw));
+      } catch (e) {
+        console.error("Failed to parse saved Abfahrtzeiten entry", raw, e);
+      }
+    });
+  }
+
   function initWeatherMap(widget, config) {
     const latInput = widget.querySelector("#latitude");
     const lonInput = widget.querySelector("#longitude");
@@ -618,10 +1079,12 @@
     "ai-image-prompt-tools": initAIImagePromptTools,
     "newspaper-search": initNewspaperSearch,
     "calendar-repeater": initCalendarRepeater,
+    "calendar-auth-repeater": initCalendarAuthRepeater,
     "todo-repeater": initTodoRepeater,
     "github-colors": initGitHubColors,
     "image-upload-list": initImageUpload,
     "weather-map": initWeatherMap,
+    "abfahrtzeiten-stops": initAbfahrtzeitenStops,
   };
 
   function initializeWidgets(root, config) {
