@@ -6,13 +6,27 @@
 }
 
 .weather-dashboard {
+  /* height:100% here would need every ancestor (.container/body/html) to
+     have a definite height too, and none of them do in this fork's
+     base_plugin/render/plugin.html - it resolves to auto (content-sized).
+     .header and .chart-container both have fixed dvh heights, but
+     .today-container/.forecast were sized by their own content instead of
+     sharing the space left over - so with height:auto AND
+     content-sized children, the whole dashboard just grew to fit
+     everything (measured ~611px for a 480px canvas when every optional
+     section - graph, rain, moon phase - was enabled at once), overflowing
+     well past the bottom of the display. dvh fixes the ancestor-height
+     problem the same way every other plugin's top-level element does;
+     giving today-container/forecast flex:1 (below) fixes the second half
+     by making them share whatever's actually left after the fixed
+     sections, instead of both claiming their full natural size. */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 1dvh;
   width: 100%;
-  height: 100%;
+  height: 100dvh;
   font-family: "Jost"
 }
 
@@ -62,6 +76,8 @@
   flex-direction: row;
   justify-content: center;
   width: 100%;
+  flex: 3 1 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -174,6 +190,8 @@
   justify-content: space-evenly;
   align-items: center;
   width: 100%;
+  flex: 2 1 0;
+  min-height: 0;
   gap: 1.5dvw;
   overflow: hidden;
 }
