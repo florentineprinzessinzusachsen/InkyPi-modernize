@@ -1,7 +1,12 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/install"
+  # Source of truth is pyproject.toml + uv.lock (JTN-616); install/requirements.txt
+  # is generated from them by `uv export`. Pointing Dependabot at /install made it
+  # edit that generated file, which fails the lockfile drift check by construction
+  # and duplicated every security bump across both paths. The uv ecosystem updates
+  # pyproject.toml and uv.lock together, keeping `uv lock --check` green.
+  - package-ecosystem: "uv"
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
