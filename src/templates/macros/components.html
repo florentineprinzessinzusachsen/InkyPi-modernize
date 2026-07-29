@@ -28,13 +28,13 @@
 </div>
 {%- endmacro %}
 
-{% macro modal(id, title) -%}
+{% macro modal(id, title, extra_class='', hide_title=False) -%}
 {% set title_id = id ~ 'Title' %}
-<div id="{{ id }}" class="modal" role="dialog" aria-modal="true" aria-labelledby="{{ title_id }}" hidden>
+<div id="{{ id }}" class="modal{% if extra_class %} {{ extra_class }}{% endif %}" role="dialog" aria-modal="true" aria-labelledby="{{ title_id }}" hidden>
     <div class="modal-content">
         <button class="close-button" type="button" data-close-modal="{{ id }}" aria-label="Close">&times;</button>
-        <h2 id="{{ title_id }}">{{ title }}</h2>
-        <div class="separator"></div>
+        <h2 id="{{ title_id }}"{% if hide_title %} class="sr-only"{% endif %}>{{ title }}</h2>
+        {% if not hide_title %}<div class="separator"></div>{% endif %}
         {{ caller() }}
     </div>
 </div>

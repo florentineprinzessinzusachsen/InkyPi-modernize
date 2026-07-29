@@ -463,7 +463,7 @@
     {% include 'response_modal.html' %}
 
     <!-- Image preview (lightbox) for plugin page -->
-    {% call modal('imagePreviewModal', 'Image preview') %}
+    {% call modal('imagePreviewModal', 'Image preview', extra_class='image-modal', hide_title=True) %}
         <img id="imagePreviewImg" alt="Large preview" class="lightbox-preview-image"/>
     {% endcall %}
 
