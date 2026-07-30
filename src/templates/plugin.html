@@ -81,6 +81,7 @@
             </div>
             {% set api_key_missing = api_key is defined and api_key and api_key.required and not api_key.present %}
             <div class="pageheader-actions">
+                {% if not is_named_instance %}
                 <button type="button"
                         id="savePluginSettingsBtn"
                         class="header-button is-secondary"
@@ -91,6 +92,7 @@
                         hx-target="#plugin-form-errors"
                         hx-swap="innerHTML"
                         hx-disabled-elt="this">Save settings</button>
+                {% endif %}
                 {% if plugin_instance %}
                 <button type="button" data-plugin-action="update_instance" data-test-skip-click="true" class="header-button is-secondary" aria-describedby="update-instance-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Update instance</button>
                 {% else %}

@@ -181,6 +181,14 @@ def plugin_page(plugin_id: str) -> Any:
 
         # If viewing an existing instance, pre-populate its settings
         plugin_instance_name = request.args.get("instance")
+        # Distinguishes an explicitly-opened, real playlist instance (?instance=X)
+        # from the fallback "<plugin_id>_saved_settings" draft used below when no
+        # instance is requested. Both set plugin_instance to a name, but "Save
+        # settings" always persists to the anonymous draft regardless of which
+        # instance's settings happen to be pre-populating the form - so it needs
+        # to stay hidden for the former (it would silently do nothing useful
+        # there) while remaining visible for the latter (its actual target).
+        template_params["is_named_instance"] = bool(plugin_instance_name)
         if plugin_instance_name:
             plugin_instance = playlist_manager.find_plugin(
                 plugin_id, plugin_instance_name
