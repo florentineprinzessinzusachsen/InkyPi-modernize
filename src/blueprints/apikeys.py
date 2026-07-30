@@ -5,7 +5,7 @@ import tempfile
 from typing import Any
 
 from dotenv import dotenv_values
-from flask import Blueprint, Response, render_template, request
+from flask import Blueprint, Response, request
 
 from utils.http_utils import json_error, json_internal_error, json_success
 from utils.request_models import parse_api_keys_save_request
@@ -159,39 +159,6 @@ def mask_value(value: str) -> str:
     if len(value) <= 4:
         return "●" * len(value)
     return "●" * 8 + value[-4:]
-
-
-@apikeys_bp.route("/api-keys", methods=["GET"])  # type: ignore
-def apikeys_page() -> Response | str:
-    """Render API keys management page."""
-    env_path = get_env_path()
-    entries = parse_env_file(env_path)
-
-    # Prepare entries for template: only key and masked value (no real values for security).
-    # Skip internal app secrets so they are never exposed in the UI (JTN-309).
-    template_entries = [
-        {"key": key, "masked": mask_value(value)}
-        for key, value in entries
-        if key not in _INTERNAL_KEYS
-    ]
-
-    api_key_plugins = {
-        "OPEN_AI_SECRET": ["AI Image", "AI Text"],
-        "GOOGLE_AI_SECRET": ["AI Image", "AI Text"],
-        "OPEN_WEATHER_MAP_SECRET": ["Weather"],
-        "NASA_SECRET": ["NASA APOD"],
-        "UNSPLASH_ACCESS_KEY": ["Unsplash Background"],
-        "GITHUB_SECRET": ["GitHub"],
-    }
-    return render_template(
-        "api_keys.html",
-        entries=template_entries,
-        env_exists=os.path.exists(env_path),
-        api_keys_mode="generic",
-        masked={},
-        api_key_plugins=api_key_plugins,
-        active_nav="api-keys",
-    )
 
 
 @apikeys_bp.route("/api-keys/save", methods=["POST"])  # type: ignore

@@ -1,11 +1,13 @@
 """Settings pages, save, import/export, API keys, isolation, and safe-reset route handlers."""
 
+import os
 import unicodedata
 from typing import Any
 from zoneinfo import available_timezones
 
 from flask import current_app, redirect, render_template, request
 
+import blueprints.apikeys as _apikeys_mod
 import blueprints.settings as _mod
 from app_setup.logging_setup import configure_log_timezone
 from utils.backend_errors import ClientInputError, route_error_boundary
@@ -322,10 +324,26 @@ def api_keys_page() -> Any:
         "GITHUB_SECRET": ["GitHub"],
         "GOOGLE_AI_SECRET": ["AI Image", "AI Text"],
     }
+
+    # Custom secrets: any .env entry that isn't one of the fixed providers
+    # above or an internal app secret. This is the free-form mechanism
+    # plugins like calendar_auth rely on for per-instance credentials
+    # (e.g. CALENDAR_AUTH_PASSWORD_<LABEL>) that can't be declared as a
+    # single static provider key. Reuses blueprints.apikeys' env-file
+    # helpers rather than duplicating them.
+    env_path = _apikeys_mod.get_env_path()
+    all_entries = _apikeys_mod.parse_env_file(env_path)
+    fixed_keys = set(keys)
+    custom_entries = [
+        {"key": key, "masked": _apikeys_mod.mask_value(value)}
+        for key, value in all_entries
+        if key not in fixed_keys and key not in _apikeys_mod._INTERNAL_KEYS
+    ]
+
     return render_template(
         "api_keys.html",
-        api_keys_mode="managed",
-        entries=[],
+        entries=custom_entries,
+        env_exists=os.path.exists(env_path),
         masked=masked,
         api_key_plugins=api_key_plugins,
         active_nav="api-keys",

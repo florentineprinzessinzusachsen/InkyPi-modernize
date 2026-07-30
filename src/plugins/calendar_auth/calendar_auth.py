@@ -15,10 +15,12 @@ none of that is especially sensitive on its own. The PASSWORD is
 deliberately kept out of that list entirely. It's read via
 `device_config.load_env_key(f"CALENDAR_AUTH_PASSWORD_{label}")` from the
 app's existing .env-backed secrets store (the same mechanism every other
-plugin uses for API keys, managed through the site's own /api-keys page)
-- one such key per calendar that has a username set, named after that
-calendar's chosen label. That page never echoes real values back to the
-browser (only a masked placeholder), and .env is gitignored.
+plugin uses for API keys, managed through the site's own API keys page
+at /settings/api-keys - the "Custom secrets" section there accepts any
+key name, not just the fixed providers) - one such key per calendar that
+has a username set, named after that calendar's chosen label. That page
+never echoes real values back to the browser (only a masked placeholder),
+and .env is gitignored.
 
 This split exists specifically because InkyPi's core settings-save/-load
 path (src/blueprints/plugin.py, not something a plugin can override)
@@ -72,9 +74,8 @@ class CalendarAuth(BasePlugin):
                     "Leave username blank for a calendar that doesn't need login. "
                     "When a username is set, give that calendar a short credential "
                     "label (letters/numbers/underscore only), then set its password "
-                    "under CALENDAR_AUTH_PASSWORD_<LABEL> on the Custom secrets page "
-                    "(linked from the API keys page, since this isn't one of the "
-                    "fixed provider keys listed there). The password itself is never "
+                    "under CALENDAR_AUTH_PASSWORD_<LABEL> in the Custom secrets "
+                    "section of the API keys page. The password itself is never "
                     "entered here and never stored in this plugin's settings.",
                 ),
             ),

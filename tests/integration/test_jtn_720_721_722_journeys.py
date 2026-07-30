@@ -263,7 +263,7 @@ def test_jtn_722_api_key_roundtrip_add_edit_delete(
     env_path.write_text("", encoding="utf-8")
 
     page = browser_page
-    navigate_and_wait(page, live_server, "/api-keys")
+    navigate_and_wait(page, live_server, "/settings/api-keys")
 
     page.locator("#addApiKeyBtn").click()
     new_row = page.locator(".apikey-row").last
@@ -272,7 +272,7 @@ def test_jtn_722_api_key_roundtrip_add_edit_delete(
     page.locator("#saveApiKeysBtn").click()
     page.wait_for_timeout(1600)
 
-    navigate_and_wait(page, live_server, "/api-keys")
+    navigate_and_wait(page, live_server, "/settings/api-keys")
     assert page.locator(".apikey-row .apikey-key").first.input_value() == "JOURNEY_KEY"
     assert "JOURNEY_KEY=first-secret" in env_path.read_text(encoding="utf-8")
 
@@ -280,7 +280,7 @@ def test_jtn_722_api_key_roundtrip_add_edit_delete(
     page.locator("#saveApiKeysBtn").click()
     page.wait_for_timeout(1600)
 
-    navigate_and_wait(page, live_server, "/api-keys")
+    navigate_and_wait(page, live_server, "/settings/api-keys")
     assert "JOURNEY_KEY=second-secret" in env_path.read_text(encoding="utf-8")
 
     page.once("dialog", lambda dialog: dialog.accept())
@@ -288,6 +288,6 @@ def test_jtn_722_api_key_roundtrip_add_edit_delete(
     page.locator("#saveApiKeysBtn").click()
     page.wait_for_timeout(1600)
 
-    navigate_and_wait(page, live_server, "/api-keys")
+    navigate_and_wait(page, live_server, "/settings/api-keys")
     assert page.locator(".apikey-row .apikey-key").count() == 0
     assert "JOURNEY_KEY" not in env_path.read_text(encoding="utf-8")

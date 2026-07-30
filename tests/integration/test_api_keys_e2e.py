@@ -15,7 +15,7 @@ from tests.integration.browser_helpers import navigate_and_wait  # noqa: E402
 
 def test_api_keys_page_loads(live_server, browser_page):
     page = browser_page
-    rc = navigate_and_wait(page, live_server, "/api-keys")
+    rc = navigate_and_wait(page, live_server, "/settings/api-keys")
 
     save_btn = page.locator("#saveApiKeysBtn")
     save_btn.wait_for(state="visible", timeout=5000)
@@ -26,14 +26,14 @@ def test_api_keys_page_loads(live_server, browser_page):
 
 def test_api_key_input_and_save(live_server, browser_page):
     page = browser_page
-    navigate_and_wait(page, live_server, "/api-keys")
+    navigate_and_wait(page, live_server, "/settings/api-keys")
 
     # Prevent page reload after save
     page.evaluate("window.location.reload = () => {};")
 
     page.locator("#addApiKeyBtn").click()
     new_row = page.locator(".apikey-row").last
-    new_row.locator(".apikey-key").fill("OPEN_AI_SECRET")
+    new_row.locator(".apikey-key").fill("JOURNEY_TEST_KEY")
     new_row.locator(".apikey-value").fill("test-api-key-12345")
 
     # Track save requests
@@ -54,7 +54,7 @@ def test_api_key_input_and_save(live_server, browser_page):
 
 def test_api_key_close_buttons_are_buttons(live_server, browser_page):
     page = browser_page
-    rc = navigate_and_wait(page, live_server, "/api-keys")
+    rc = navigate_and_wait(page, live_server, "/settings/api-keys")
 
     close_btns = page.locator("[aria-label='Close'], .close-button")
     count = close_btns.count()

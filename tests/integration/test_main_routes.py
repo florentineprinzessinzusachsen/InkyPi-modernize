@@ -206,7 +206,6 @@ def test_shell_marks_sidebar_active_on_management_pages(client):
         ("/history", "/history"),
         ("/settings", "/settings"),
         ("/settings/api-keys", "/settings/api-keys"),
-        ("/api-keys", "/settings/api-keys"),
     ]
 
     for path, active_href in cases:

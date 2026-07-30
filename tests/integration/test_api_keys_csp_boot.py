@@ -19,7 +19,7 @@ def test_no_inline_script_in_api_keys_page(client):
     CSP ``script-src 'self'`` blocks inline scripts, which silently
     prevented all button handlers from initialising (JTN-323/324/325).
     """
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -31,12 +31,11 @@ def test_no_inline_script_in_api_keys_page(client):
 
 def test_api_keys_frame_has_data_attributes(client):
     """The .api-keys-frame container must carry data-* boot config attributes."""
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
     assert "data-delete-managed-url=" in html
-    assert "data-mode=" in html
     assert "data-save-generic-url=" in html
     assert "data-save-managed-url=" in html
 
@@ -50,31 +49,6 @@ def test_js_self_initialises_from_data_attributes(client):
     assert "autoInit" in js, "JS must contain an autoInit function"
     assert ".api-keys-frame" in js, "JS must query the frame element for data-* attrs"
     assert "dataset" in js, "JS must read data-* attributes via dataset"
-
-
-# -- JTN-324: Suggested key chips must trigger row creation --------------------
-
-
-def test_preset_buttons_use_delegation(client):
-    """JTN-324: preset chip buttons must use data-api-action='add-preset'."""
-    resp = client.get("/api-keys")
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-
-    preset_count = html.count('data-api-action="add-preset"')
-    assert (
-        preset_count >= 6
-    ), f"Expected at least 6 preset chip buttons, found {preset_count}"
-
-
-def test_js_handles_add_preset_action(client):
-    """JTN-324: the delegated click handler must handle the 'add-preset' action."""
-    resp = client.get("/static/scripts/api_keys_page.js")
-    assert resp.status_code == 200
-    js = resp.get_data(as_text=True)
-
-    assert '"add-preset"' in js, "JS must include an 'add-preset' action case"
-    assert "addPreset" in js, "The 'add-preset' action must call addPreset"
 
 
 # -- JTN-325: Delete button must confirm and remove entries --------------------
@@ -92,7 +66,7 @@ def test_delete_button_uses_delegation(client):
 
 def test_external_js_loaded_with_defer(client):
     """The api_keys_page.js script tag must use defer (not inline) for CSP compat."""
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -100,14 +74,3 @@ def test_external_js_loaded_with_defer(client):
     assert pattern.search(
         html
     ), "api_keys_page.js must be loaded via a <script defer> tag"
-
-
-def test_data_mode_attribute_matches_generic(client):
-    """The generic API keys page must set data-mode='generic'."""
-    resp = client.get("/api-keys")
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-
-    assert (
-        'data-mode="generic"' in html
-    ), "data-mode attribute must reflect the actual api_keys_mode"

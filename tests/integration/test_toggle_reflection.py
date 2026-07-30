@@ -46,7 +46,7 @@ PAGES_TO_SWEEP: tuple[SweepPage, ...] = (
     SweepPage("history", "/history", "#storage-block"),
     SweepPage("playlist", "/playlist", "#newPlaylistBtn"),
     SweepPage("plugin_clock", "/plugin/clock", "#settingsForm"),
-    SweepPage("api_keys", "/api-keys", "#saveApiKeysBtn"),
+    SweepPage("api_keys", "/settings/api-keys", "#saveApiKeysBtn"),
 )
 
 # Wait after each click to let any reflection handler commit to the DOM.
@@ -210,7 +210,7 @@ def test_toggle_reflection(live_server, browser_page, sweep: SweepPage):
 
     descriptors = _enumerate(page)
 
-    # Some pages (e.g. /history, /api-keys) legitimately have no toggles —
+    # Some pages (e.g. /history, /settings/api-keys) legitimately have no toggles —
     # that's not a failure, just skip cleanly so the test still documents
     # the coverage intent.
     if not descriptors:
