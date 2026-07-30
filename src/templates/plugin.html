@@ -81,28 +81,16 @@
             </div>
             {% set api_key_missing = api_key is defined and api_key and api_key.required and not api_key.present %}
             <div class="pageheader-actions">
-                {% if not is_named_instance %}
-                <button type="button"
-                        id="savePluginSettingsBtn"
-                        class="header-button is-secondary"
-                        data-test-skip-click="true"
-                        aria-describedby="save-settings-help"
-                        hx-post="{{ url_for('plugin.save_plugin_settings') }}"
-                        hx-include="#settingsForm"
-                        hx-target="#plugin-form-errors"
-                        hx-swap="innerHTML"
-                        hx-disabled-elt="this">Save defaults</button>
-                {% endif %}
                 {% if plugin_instance %}
-                <button type="button" data-plugin-action="update_instance" data-test-skip-click="true" class="header-button is-secondary" aria-describedby="update-instance-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Save instance</button>
+                <button type="button" data-plugin-action="update_instance" data-test-skip-click="true" class="header-button primary" aria-describedby="update-instance-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Save instance</button>
                 {% else %}
-                <button type="button" data-plugin-subtab-target="schedule" data-plugin-draft="true" class="header-button is-secondary" aria-describedby="add-playlist-help" aria-controls="pluginSchedulePanel" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Add to playlist</button>
+                <button type="button" data-plugin-subtab-target="schedule" data-plugin-draft="true" class="header-button primary" aria-describedby="add-playlist-help" aria-controls="pluginSchedulePanel" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Add to playlist</button>
                 {% endif %}
                 {# data-test-skip-click: these buttons submit the settings form; clicking them
                    with an empty/default form triggers validation 400s that the click-sweep
                    (JTN-698) would report as console errors. Dedicated plugin-submission
                    tests cover the real submit path. #}
-                <button type="button" data-plugin-action="update_now" data-test-skip-click="true" class="header-button primary" aria-describedby="update-now-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Preview</button>
+                <button type="button" data-plugin-action="update_now" data-test-skip-click="true" class="header-button is-secondary" aria-describedby="update-now-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Preview</button>
                 <div id="loadingIndicator" class="loading-indicator"></div>
             </div>
         </header>
@@ -447,7 +435,6 @@
                 {# SR-only help text is referenced by aria-describedby on the
                    pageheader action buttons (moved up per the design refresh). #}
                 <div id="update-now-help" class="sr-only">Generate and display image immediately with current settings</div>
-                <div id="save-settings-help" class="sr-only">Save these settings as the plugin's defaults for future use without generating image</div>
                 {% if plugin_instance %}
                 <div id="update-instance-help" class="sr-only">Save this plugin instance's configuration and refresh the displayed image</div>
                 <p>Use <strong>Save instance</strong> in the header above to save and refresh the displayed image.</p>
