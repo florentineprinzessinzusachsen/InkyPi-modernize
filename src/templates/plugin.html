@@ -91,10 +91,10 @@
                         hx-include="#settingsForm"
                         hx-target="#plugin-form-errors"
                         hx-swap="innerHTML"
-                        hx-disabled-elt="this">Save settings</button>
+                        hx-disabled-elt="this">Save defaults</button>
                 {% endif %}
                 {% if plugin_instance %}
-                <button type="button" data-plugin-action="update_instance" data-test-skip-click="true" class="header-button is-secondary" aria-describedby="update-instance-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Update instance</button>
+                <button type="button" data-plugin-action="update_instance" data-test-skip-click="true" class="header-button is-secondary" aria-describedby="update-instance-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Save instance</button>
                 {% else %}
                 <button type="button" data-plugin-subtab-target="schedule" data-plugin-draft="true" class="header-button is-secondary" aria-describedby="add-playlist-help" aria-controls="pluginSchedulePanel" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Add to playlist</button>
                 {% endif %}
@@ -102,7 +102,7 @@
                    with an empty/default form triggers validation 400s that the click-sweep
                    (JTN-698) would report as console errors. Dedicated plugin-submission
                    tests cover the real submit path. #}
-                <button type="button" data-plugin-action="update_now" data-test-skip-click="true" class="header-button primary" aria-describedby="update-now-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Update preview</button>
+                <button type="button" data-plugin-action="update_now" data-test-skip-click="true" class="header-button primary" aria-describedby="update-now-help" {% if api_key_missing %}disabled title="Configure {{ api_key.service }} API key first"{% endif %}>Preview</button>
                 <div id="loadingIndicator" class="loading-indicator"></div>
             </div>
         </header>
@@ -402,7 +402,7 @@
                         <div class="status-placeholder-actions"><button type="button" id="displayInstanceBtn" class="action-button compact">Display Instance</button></div>
                         {% endif %}
                         {% else %}
-                        No images generated yet. Use "Update preview" to create one.
+                        No images generated yet. Use "Preview" to create one.
                         {% endif %}
                     </div>
                 </div>
@@ -447,10 +447,10 @@
                 {# SR-only help text is referenced by aria-describedby on the
                    pageheader action buttons (moved up per the design refresh). #}
                 <div id="update-now-help" class="sr-only">Generate and display image immediately with current settings</div>
-                <div id="save-settings-help" class="sr-only">Save settings for future use without generating image</div>
+                <div id="save-settings-help" class="sr-only">Save these settings as the plugin's defaults for future use without generating image</div>
                 {% if plugin_instance %}
-                <div id="update-instance-help" class="sr-only">Update and save this plugin instance configuration</div>
-                <p>Use <strong>Update instance</strong> in the header above to save and refresh the displayed image.</p>
+                <div id="update-instance-help" class="sr-only">Save this plugin instance's configuration and refresh the displayed image</div>
+                <p>Use <strong>Save instance</strong> in the header above to save and refresh the displayed image.</p>
                 {% else %}
                 <div id="add-playlist-help" class="sr-only">Add this plugin to an automated playlist. Current settings will be saved when you add it.</div>
                 <p>Saving does not schedule recurrence. Use <strong>Add to playlist</strong> in the header to jump to the Schedule tab, where the playlist entry is created from your current settings.</p>
