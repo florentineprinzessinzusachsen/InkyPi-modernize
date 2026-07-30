@@ -415,6 +415,16 @@ class WeatherDe(BasePlugin):
                         default="true",
                     ),
                     field(
+                        "displayDate",
+                        "checkbox",
+                        label="Day/Date",
+                        hint="Hide to free up vertical space for the other sections.",
+                        submit_unchecked=True,
+                        checked_value="true",
+                        unchecked_value="false",
+                        default="true",
+                    ),
+                    field(
                         "displayMetrics",
                         "checkbox",
                         label="Metrics",

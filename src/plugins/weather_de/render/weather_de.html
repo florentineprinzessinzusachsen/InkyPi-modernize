@@ -9,9 +9,11 @@
   <div class="last-refresh">{{ last_refresh_label }}: {{ last_refresh_time }}</div>
   {% endif %}
   <!-- Current Date -->
-  <div class="header">
+  <div class="header{% if plugin_settings.displayDate == "false" %} no-date{% endif %}">
     <div class="title">{{ title }}</div>
+    {% if plugin_settings.displayDate != "false" %}
     <div class="current-date">{{ current_date }}</div>
+    {% endif %}
   </div>
 
   <div class="today-container">

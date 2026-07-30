@@ -40,6 +40,14 @@
   container-type: size;
 }
 
+/* Hiding the date (displayDate setting) only removes that one line, so
+   shrink the header itself too - otherwise the freed line just becomes
+   dead space instead of actually going back to today-container/forecast
+   (which share whatever's left over via their flex weights). */
+.header.no-date {
+  height: 7dvh;
+}
+
 .last-refresh {
   position: absolute;
   top: 0.5dvh;
