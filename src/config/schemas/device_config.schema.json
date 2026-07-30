@@ -26,7 +26,7 @@
         "contrast": { "type": "number" }
       }
     },
-    "history_disabled": { "type": "boolean" },
+    "history_enabled": { "type": "boolean" },
     "history_cleanup": {
       "type": "object",
       "additionalProperties": true,

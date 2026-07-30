@@ -2383,8 +2383,8 @@ body[data-page="plugin"] .tweaks-panel {
 
 .seg-btn.active,
 .seg-btn[aria-pressed="true"] {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--on-accent);
   box-shadow: var(--shadow-xs);
 }
 
@@ -2413,8 +2413,8 @@ body[data-page="plugin"] .tweaks-panel {
 }
 
 .seg-btn:has(input[type="radio"]:checked) {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--on-accent);
   box-shadow: var(--shadow-xs);
 }
 

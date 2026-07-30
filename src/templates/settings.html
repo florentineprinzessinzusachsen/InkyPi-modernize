@@ -192,6 +192,51 @@
                     </div>
                     </div>
                 </div>
+
+                <!-- History -->
+                {% set history_cleanup_settings = device_settings.get('history_cleanup', {}) or {} %}
+                <div class="card card-dense" id="section-history">
+                    <div class="card-head"><h2 class="card-title">History</h2></div>
+                    <div class="card-body">
+                    <div class="settings-container">
+                        <div class="form-group nowrap toggle-row">
+                            <span class="toggle-item-text">
+                                <label class="form-label toggle-item-label" for="historyEnabled">Enable saving history</label>
+                                <span class="toggle-item-hint">Record a snapshot of every display refresh.</span>
+                            </span>
+                            <span class="toggle-container">
+                                <input type="checkbox" id="historyEnabled" name="historyEnabled" class="toggle-checkbox" {% if device_settings.get('history_enabled', True) %}checked{% endif %}>
+                                <span class="toggle-label"></span>
+                            </span>
+                        </div>
+
+                        <div class="form-group nowrap toggle-row">
+                            <span class="toggle-item-text">
+                                <label class="form-label toggle-item-label" for="historyCleanupEnabled">Automatically delete old history</label>
+                                <span class="toggle-item-hint">Remove history items older than the value below.</span>
+                            </span>
+                            <span class="toggle-container">
+                                <input type="checkbox" id="historyCleanupEnabled" name="historyCleanupEnabled" class="toggle-checkbox" {% if history_cleanup_settings.get('enabled') %}checked{% endif %}>
+                                <span class="toggle-label"></span>
+                            </span>
+                        </div>
+                        <div class="row-2">
+                            <div class="form-group">
+                                <label for="historyRetentionValue" class="form-label">Delete items older than</label>
+                                <input type="number" id="historyRetentionValue" name="historyRetentionValue" class="form-input" min="1" value="{{ history_cleanup_settings.get('retention_value', 30) }}" aria-describedby="historyRetentionValue-error">
+                                <span id="historyRetentionValue-error" class="validation-message" role="alert"></span>
+                            </div>
+                            <div class="form-group">
+                                <label for="historyRetentionUnit" class="form-label">Unit</label>
+                                <select id="historyRetentionUnit" name="historyRetentionUnit" class="form-input">
+                                    <option value="hours" {% if history_cleanup_settings.get('retention_unit', 'days') == 'hours' %}selected{% endif %}>Hours</option>
+                                    <option value="days" {% if history_cleanup_settings.get('retention_unit', 'days') == 'days' %}selected{% endif %}>Days</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
                 </section>
 
                 <!-- Plugin cycle & system -->
@@ -339,50 +384,6 @@
                             <input type="checkbox" id="includeKeys" class="toggle-checkbox">
                             <span class="toggle-label"></span>
                         </span>
-                    </div>
-                    </div>
-                </div>
-
-                {% set history_cleanup_settings = device_settings.get('history_cleanup', {}) or {} %}
-                <div class="card card-dense" id="section-history">
-                    <div class="card-head"><h2 class="card-title">History</h2></div>
-                    <div class="card-body">
-                    <div class="settings-container">
-                        <div class="form-group nowrap toggle-row">
-                            <span class="toggle-item-text">
-                                <label class="form-label toggle-item-label" for="historyDisabled">Disable saving history</label>
-                                <span class="toggle-item-hint">Stop recording a snapshot of every display refresh.</span>
-                            </span>
-                            <span class="toggle-container">
-                                <input type="checkbox" id="historyDisabled" name="historyDisabled" class="toggle-checkbox" {% if device_settings.history_disabled %}checked{% endif %}>
-                                <span class="toggle-label"></span>
-                            </span>
-                        </div>
-
-                        <div class="form-group nowrap toggle-row">
-                            <span class="toggle-item-text">
-                                <label class="form-label toggle-item-label" for="historyCleanupEnabled">Automatically delete old history</label>
-                                <span class="toggle-item-hint">Remove history items older than the value below.</span>
-                            </span>
-                            <span class="toggle-container">
-                                <input type="checkbox" id="historyCleanupEnabled" name="historyCleanupEnabled" class="toggle-checkbox" {% if history_cleanup_settings.get('enabled') %}checked{% endif %}>
-                                <span class="toggle-label"></span>
-                            </span>
-                        </div>
-                        <div class="row-2">
-                            <div class="form-group">
-                                <label for="historyRetentionValue" class="form-label">Delete items older than</label>
-                                <input type="number" id="historyRetentionValue" name="historyRetentionValue" class="form-input" min="1" value="{{ history_cleanup_settings.get('retention_value', 30) }}" aria-describedby="historyRetentionValue-error">
-                                <span id="historyRetentionValue-error" class="validation-message" role="alert"></span>
-                            </div>
-                            <div class="form-group">
-                                <label for="historyRetentionUnit" class="form-label">Unit</label>
-                                <select id="historyRetentionUnit" name="historyRetentionUnit" class="form-input">
-                                    <option value="hours" {% if history_cleanup_settings.get('retention_unit', 'days') == 'hours' %}selected{% endif %}>Hours</option>
-                                    <option value="days" {% if history_cleanup_settings.get('retention_unit', 'days') == 'days' %}selected{% endif %}>Days</option>
-                                </select>
-                            </div>
-                        </div>
                     </div>
                     </div>
                 </div>

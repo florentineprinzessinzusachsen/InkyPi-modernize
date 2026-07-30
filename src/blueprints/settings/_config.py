@@ -639,7 +639,7 @@ def _build_settings_dict(
         "plugin_cycle_interval_seconds": plugin_cycle_interval_seconds,
         "image_settings": image_settings,
         "preview_size_mode": form_data.get("previewSizeMode", "native"),
-        "history_disabled": form_data.get("historyDisabled") == "on",
+        "history_enabled": form_data.get("historyEnabled") == "on",
         "history_cleanup": history_cleanup,
     }
     if "inky_saturation" in form_data:
