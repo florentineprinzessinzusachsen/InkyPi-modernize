@@ -65,9 +65,23 @@ class RefreshHousekeeper:
             raw_cfg = self.device_config.get_config("history_cleanup") or {}
             cfg = raw_cfg if isinstance(raw_cfg, Mapping) else {}
             history_dir = self.device_config.history_image_dir
+
+            # Age-based eviction is opt-in (the settings-page toggle); count
+            # and free-space eviction stay on as safety nets regardless.
+            max_age_days: float = 0
+            if cfg.get("enabled"):
+                try:
+                    retention_value = float(cfg.get("retention_value", 0) or 0)
+                except (TypeError, ValueError):
+                    retention_value = 0
+                unit = cfg.get("retention_unit", "days")
+                max_age_days = (
+                    retention_value / 24.0 if unit == "hours" else retention_value
+                )
+
             cleanup_history(
                 history_dir,
-                max_age_days=int(cfg.get("max_age_days", 30)),
+                max_age_days=max_age_days,
                 max_count=int(cfg.get("max_count", 500)),
                 min_free_bytes=int(cfg.get("min_free_bytes", 500_000_000)),
             )

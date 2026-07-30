@@ -520,6 +520,35 @@ def _validate_image_settings(form_data: dict[str, str]) -> Any | None:
     return None
 
 
+def _validate_history_retention(form_data: dict[str, str]) -> Any | None:
+    """Validate the history auto-cleanup retention value/unit, when enabled."""
+    if form_data.get("historyCleanupEnabled") != "on":
+        return None
+
+    unit = form_data.get("historyRetentionUnit")
+    if unit not in ("hours", "days"):
+        return _field_error(
+            "History retention unit must be hours or days", "historyRetentionUnit"
+        )
+
+    raw_value = form_data.get("historyRetentionValue")
+    if not raw_value or not raw_value.strip():
+        return _field_error(
+            "History retention value is required", "historyRetentionValue"
+        )
+    try:
+        value = int(raw_value)
+    except (ValueError, TypeError):
+        return _field_error(
+            "History retention value must be a whole number", "historyRetentionValue"
+        )
+    if value < 1:
+        return _field_error(
+            "History retention value must be at least 1", "historyRetentionValue"
+        )
+    return None
+
+
 def _validate_settings_form(form_data: dict[str, str]) -> tuple[Any | None, str | None]:
     """Validate settings form data and return any error plus normalized fields."""
     normalized_device_name, err = _validate_device_name(form_data)
@@ -558,11 +587,17 @@ def _validate_settings_form(form_data: dict[str, str]) -> tuple[Any | None, str 
     if err:
         return err, None
 
+    err = _validate_history_retention(form_data)
+    if err:
+        return err, None
+
     return _validate_image_settings(form_data), normalized_device_name
 
 
 def _build_settings_dict(
-    form_data: dict[str, str], normalized_device_name: str
+    form_data: dict[str, str],
+    normalized_device_name: str,
+    device_config: Any,
 ) -> tuple[dict[str, Any], int]:
     """Build the persisted settings payload from validated form data."""
     unit = form_data.get("unit")
@@ -577,6 +612,23 @@ def _build_settings_dict(
         "sharpness": float(form_data.get("sharpness", "1.0")),
         "contrast": float(form_data.get("contrast", "1.0")),
     }
+    # Preserve any existing max_count/min_free_bytes overrides (not exposed
+    # in this form) rather than dropping them on every settings save.
+    existing_history_cleanup = device_config.get_config("history_cleanup")
+    history_cleanup: dict[str, Any] = (
+        dict(existing_history_cleanup)
+        if isinstance(existing_history_cleanup, dict)
+        else {}
+    )
+    history_cleanup["enabled"] = form_data.get("historyCleanupEnabled") == "on"
+    history_cleanup["retention_unit"] = form_data.get("historyRetentionUnit", "days")
+    try:
+        history_cleanup["retention_value"] = int(
+            form_data.get("historyRetentionValue", "30")
+        )
+    except (TypeError, ValueError):
+        history_cleanup["retention_value"] = 30
+
     settings: dict[str, Any] = {
         "name": normalized_device_name,
         "orientation": form_data.get("orientation"),
@@ -587,6 +639,8 @@ def _build_settings_dict(
         "plugin_cycle_interval_seconds": plugin_cycle_interval_seconds,
         "image_settings": image_settings,
         "preview_size_mode": form_data.get("previewSizeMode", "native"),
+        "history_disabled": form_data.get("historyDisabled") == "on",
+        "history_cleanup": history_cleanup,
     }
     if "inky_saturation" in form_data:
         image_settings["inky_saturation"] = float(
@@ -615,7 +669,7 @@ def save_settings() -> Any:
             "plugin_cycle_interval_seconds"
         )
         settings, plugin_cycle_interval_seconds = _build_settings_dict(
-            form_data, normalized_device_name
+            form_data, normalized_device_name, device_config
         )
         device_config.update_config(settings)
         configure_log_timezone(settings.get("timezone"))

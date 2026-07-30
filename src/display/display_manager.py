@@ -159,6 +159,9 @@ class DisplayManager:
         KPIs (ISSUE-006). ``utils.refresh_stats.compute_stats`` derives
         those numbers by counting sidecar files; no sidecar = no count.
         """
+        if self.device_config.get_config("history_disabled"):
+            return
+
         history_dir_raw = getattr(self.device_config, "history_image_dir", None)
         if not isinstance(history_dir_raw, str) or not history_dir_raw:
             return
