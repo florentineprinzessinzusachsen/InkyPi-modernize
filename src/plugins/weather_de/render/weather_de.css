@@ -166,6 +166,12 @@
 
 }
 
+/* When icons are hidden (displayMetricIcons setting), let the label/value
+   column use the full row width instead of leaving the icon's 25% blank. */
+.data-points.no-icons .data-point-data {
+  width: 100%;
+}
+
 .data-point-label {
   font-size: min(32cqh, 15cqi);
   text-align: center;

@@ -30,12 +30,14 @@
 
     <!-- Data Points Grid (Sunset, Wind, UV, etc.) -->
     {% if plugin_settings.displayMetrics and  plugin_settings.displayMetrics == "true" %}
-    <div class="data-points">
+    <div class="data-points{% if plugin_settings.displayMetricIcons == 'false' %} no-icons{% endif %}">
       {% for dp in data_points %}
         <div class="data-point column-container">
+          {% if plugin_settings.displayMetricIcons != "false" %}
           <div class="data-point-img-container">
             <img class="data-point-icon" src="{{dp.icon}}" alt="{{ dp.label }}">
           </div>
+          {% endif %}
           <div class="data-point-data">
             <div class="data-point-label">{{ dp.label }}</div>
             <div class="data-point-measurement">
