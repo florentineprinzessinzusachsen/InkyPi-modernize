@@ -72,9 +72,10 @@ class CalendarAuth(BasePlugin):
                     "Leave username blank for a calendar that doesn't need login. "
                     "When a username is set, give that calendar a short credential "
                     "label (letters/numbers/underscore only), then set its password "
-                    "on the API Keys page under CALENDAR_AUTH_PASSWORD_<LABEL>. The "
-                    "password itself is never entered here and never stored in this "
-                    "plugin's settings.",
+                    "under CALENDAR_AUTH_PASSWORD_<LABEL> on the Custom secrets page "
+                    "(linked from the API keys page, since this isn't one of the "
+                    "fixed provider keys listed there). The password itself is never "
+                    "entered here and never stored in this plugin's settings.",
                 ),
             ),
             section(

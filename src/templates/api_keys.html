@@ -58,6 +58,10 @@
                 </details>
             </div>
         </form>
+        <p class="api-keys-note">
+            Some plugins need a credential that isn't one of the providers above (e.g. a per-calendar login for Calendar with Login) —
+            <a href="{{ url_for('apikeys.apikeys_page') }}">manage custom secrets</a> for those.
+        </p>
         {% else %}
         <div class="api-keys-panel">
             <div id="apikeys-list">
