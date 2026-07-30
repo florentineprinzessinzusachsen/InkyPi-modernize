@@ -5,17 +5,19 @@
 }
 
 .abfahrtzeiten-dashboard {
-  /* height:100% here would need every ancestor (.container/body/html) to
-     have a definite height too, and none of them do in this fork's
-     base_plugin/render/plugin.html - it resolves to auto (content-sized),
-     collapsing the whole flex/container-query layout below to near-zero
-     height. dvh sidesteps that entirely by measuring the viewport
-     directly, same as every other plugin's top-level element. */
+  /* height:100% resolves correctly here because base_plugin/render/
+     plugin.html's <body> now gets an explicit height (viewport height
+     minus margins) - previously nothing in the .container/body/html
+     chain had a definite height, so this fell back to auto
+     (content-sized), collapsing the whole flex/container-query layout
+     below to near-zero height. Fixed at the shared template level so
+     every plugin's height:100% (the norm - see the built-in weather
+     plugin) works the same way, instead of patching around it here. */
   position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100dvh;
+  height: 100%;
   font-family: "Jost";
   padding: 1dvh 1dvw;
 }

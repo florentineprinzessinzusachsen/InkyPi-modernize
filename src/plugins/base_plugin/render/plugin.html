@@ -42,6 +42,17 @@
         margin-bottom: {{ plugin_settings.bottomMargin or plugin_settings.margin or 5 }}px;
         margin-left: {{ plugin_settings.leftMargin or plugin_settings.margin or 5 }}px;
         margin-right: {{ plugin_settings.rightMargin or plugin_settings.margin or 5 }}px;
+
+        /* Block-level width:auto naturally fills the containing block minus
+           margins, so .container/width:100% chains already worked without
+           this. height:auto does the opposite (shrinks to content instead
+           of filling), so without an explicit height here, every plugin's
+           own height:100% (the norm - see weather.css) resolves against an
+           undefined ancestor height and falls back to auto too: the
+           dashboard just grows to fit its content instead of being bounded
+           to the canvas, silently overflowing past the bottom of the
+           display by however much its content exceeds the intended size. */
+        height: calc({{ height }}px - {{ plugin_settings.topMargin or plugin_settings.margin or 5 }}px - {{ plugin_settings.bottomMargin or plugin_settings.margin or 5 }}px);
     ">
         <div class="container">
             {% block content %}
