@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone, date
 from astral import moon, Observer
 from astral.sun import sun as astral_sun
 from utils.time_utils import get_timezone
+from utils.app_utils import resolve_path
 from io import BytesIO
 import math
 
@@ -576,6 +577,16 @@ class WeatherDe(BasePlugin):
             dimensions = dimensions[::-1]
 
         template_params["plugin_settings"] = settings
+
+        # weather_de.html references {{static_dir}}/scripts/chart.js for the
+        # hourly-temperature graph, but nothing ever sets that variable -
+        # same in the built-in weather plugin's own template, which has the
+        # identical dead reference (not something specific to this plugin,
+        # and there's no working version to copy). Chromium screenshots run
+        # via file:// with no Flask request context, so url_for() isn't
+        # available here either; resolve_path() + to_file_url() is the same
+        # mechanism render_image() already uses for local fonts/CSS.
+        template_params["static_dir"] = self.to_file_url(resolve_path("static"))
 
         # Add last refresh time
         now = datetime.now(tz)
