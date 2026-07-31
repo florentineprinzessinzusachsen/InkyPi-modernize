@@ -1,10 +1,9 @@
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 from typing import Protocol
 from urllib.parse import urlparse
-from zoneinfo import ZoneInfo
 
 import icalendar
 import recurring_ical_events
@@ -23,6 +22,9 @@ from plugins.base_plugin.settings_schema import (
 from plugins.calendar.constants import FONT_SIZES, LOCALE_GROUPS, LOCALE_MAP
 from utils.app_utils import resolve_path
 from utils.http_client import get_http_session
+from utils.http_utils import pinned_dns
+from utils.security_utils import validate_url_with_ips
+from utils.time_utils import get_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +294,7 @@ class Calendar(BasePlugin):
             timezone_config if isinstance(timezone_config, str) else "America/New_York"
         )
         time_format = device_config.get_config("time_format", default="12h")
-        tz = ZoneInfo(timezone)
+        tz = get_timezone(timezone)
 
         current_dt = datetime.now(tz)
         start, end = self.get_view_range(view, current_dt, settings)
@@ -350,7 +352,7 @@ class Calendar(BasePlugin):
         self,
         calendar_urls: Iterable[str],
         colors: Iterable[str],
-        tz: ZoneInfo,
+        tz: tzinfo,
         start_range: datetime,
         end_range: datetime,
     ) -> list[dict[str, object]]:
@@ -433,7 +435,7 @@ class Calendar(BasePlugin):
         return start, end
 
     def parse_data_points(
-        self, event: _CalendarEvent, tz: ZoneInfo
+        self, event: _CalendarEvent, tz: tzinfo
     ) -> tuple[str, str | None, bool]:
         all_day = False
         dtstart = event.decoded("dtstart")
@@ -473,8 +475,11 @@ class Calendar(BasePlugin):
         if calendar_url.startswith("webcal://"):
             calendar_url = calendar_url.replace("webcal://", "https://")
         try:
-            response = get_http_session().get(calendar_url, timeout=30)
-            response.raise_for_status()
+            _, pinned_ips = validate_url_with_ips(calendar_url)
+            hostname = urlparse(calendar_url).hostname or ""
+            with pinned_dns(hostname, pinned_ips):
+                response = get_http_session().get(calendar_url, timeout=30)
+                response.raise_for_status()
             return icalendar.Calendar.from_ical(response.text)
         except Exception as e:
             raise RuntimeError(f"Failed to fetch iCalendar url: {str(e)}") from e

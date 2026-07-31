@@ -282,8 +282,16 @@ def import_settings() -> Any:
             for k, v in env_keys.items():
                 if k not in _mod._ALLOWED_IMPORT_ENV_KEYS or v is None:
                     continue
+                str_v = str(v)
+                if _apikeys_mod._has_invalid_control_chars(str_v):
+                    _mod.logger.warning(
+                        "Skipped env key during import: %s (invalid control "
+                        "characters in value)",
+                        k,
+                    )
+                    continue
                 try:
-                    device_config.set_env_key(k, str(v))
+                    device_config.set_env_key(k, str_v)
                     env_keys_applied += 1
                 except Exception:
                     _mod.logger.exception("Failed setting env key during import: %s", k)
@@ -369,6 +377,11 @@ def _resolve_key_value_for_save(key: str, value: str) -> tuple[str | None, bool]
 
     cleaned_value is None when the field should be left unchanged
     (empty/whitespace-only, or a stale bullet-placeholder value - JTN-598).
+
+    Raises ClientInputError if the value contains newlines/control
+    characters, which `dotenv.set_key(..., quote_mode="never")` would
+    otherwise write verbatim into .env, letting an embedded "\\nKEY=value"
+    inject arbitrary additional env vars (including internal secrets).
     """
     if not value:
         return None, False
@@ -383,6 +396,10 @@ def _resolve_key_value_for_save(key: str, value: str) -> tuple[str | None, bool]
             key,
         )
         return None, True
+    if _apikeys_mod._has_invalid_control_chars(value):
+        raise ClientInputError(
+            f"Invalid characters in value for {key}", status=400
+        )
     return value, False
 
 

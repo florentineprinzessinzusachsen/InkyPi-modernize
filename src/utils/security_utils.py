@@ -123,13 +123,21 @@ def validate_url_with_ips(url: str) -> tuple[str, tuple[str, ...]]:
 def _reject_private_ip(
     addr: ipaddress.IPv4Address | ipaddress.IPv6Address, hostname: str
 ) -> None:
-    """Raise ValueError if *addr* is private, loopback, link-local, reserved, or multicast."""
+    """Raise ValueError if *addr* is private, loopback, link-local, reserved,
+    multicast, or otherwise not globally routable.
+
+    ``is_global`` is included (not just the individual flags) because it also
+    catches ranges the individual flags miss, e.g. RFC 6598 shared address
+    space (100.64.0.0/10, used for CGNAT and as Tailscale's default tailnet
+    range) is not ``is_private``/``is_reserved``/anything else above.
+    """
     if (
         addr.is_private
         or addr.is_loopback
         or addr.is_link_local
         or addr.is_reserved
         or addr.is_multicast
+        or not addr.is_global
     ):
         raise ValueError(_URL_ERR_PRIVATE)
 

@@ -43,6 +43,32 @@ def test_save_api_keys_and_read_back(client, monkeypatch, tmp_path):
     assert cfg.load_env_key("NASA_SECRET") == "route-test-123"
 
 
+def test_save_api_keys_rejects_newline_in_value(client, monkeypatch, tmp_path):
+    """A value containing a newline must be rejected, not written verbatim.
+
+    ``dotenv.set_key(..., quote_mode="never")`` writes ``KEY=VALUE\\n``
+    unescaped - an embedded newline would let the value inject an arbitrary
+    extra ``KEY=VALUE`` line into .env, including internal secrets like
+    SECRET_KEY (whose name is never checked, only the submitted *value*).
+    """
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    resp = client.post(
+        "/settings/save_api_keys",
+        data={"NASA_SECRET": "innocuous\nSECRET_KEY=attacker-controlled"},
+    )
+    assert resp.status_code == 400
+
+    src_dir = Path(__file__).resolve().parents[2] / "src"
+    spec = importlib.util.spec_from_file_location("config", str(src_dir / "config.py"))
+    assert spec
+    assert spec.loader
+    config_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(config_mod)
+    cfg = config_mod.Config()
+    assert cfg.load_env_key("NASA_SECRET") is None
+    assert cfg.load_env_key("SECRET_KEY") != "attacker-controlled"
+
+
 def test_save_api_keys_empty_value_preserves_existing(client, monkeypatch, tmp_path):
     """JTN-598: an empty posted value must not overwrite the existing .env entry."""
     monkeypatch.setenv("PROJECT_DIR", str(tmp_path))

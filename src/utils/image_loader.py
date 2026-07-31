@@ -13,12 +13,15 @@ import tempfile
 import threading
 from collections.abc import Mapping
 from io import BytesIO
+from urllib.parse import urlparse
 
 import psutil
 import requests
 from PIL import Image, ImageOps
 
 from utils.http_client import get_http_session
+from utils.http_utils import pinned_dns
+from utils.security_utils import URLValidationError, validate_url_with_ips
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +128,21 @@ class AdaptiveImageLoader:
         logger.debug(f"Loading image from URL: {url}")
         _ensure_heif_opener()
 
-        if self.is_low_resource:
-            return self._load_from_url_lowmem(
+        try:
+            _, pinned_ips = validate_url_with_ips(url)
+        except (URLValidationError, ValueError) as e:
+            logger.error(f"Rejected image URL {url}: {e}")
+            return None
+
+        hostname = urlparse(url).hostname or ""
+        with pinned_dns(hostname, pinned_ips):
+            if self.is_low_resource:
+                return self._load_from_url_lowmem(
+                    url, dimensions, timeout_ms, resize, headers
+                )
+            return self._load_from_url_fast(
                 url, dimensions, timeout_ms, resize, headers
             )
-        return self._load_from_url_fast(url, dimensions, timeout_ms, resize, headers)
 
     def from_file(
         self, path: str, dimensions: tuple[int, int], resize: bool = True

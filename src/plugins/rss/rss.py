@@ -18,6 +18,8 @@ from plugins.base_plugin.settings_schema import (
     section,
 )
 from utils.http_client import get_http_session
+from utils.http_utils import pinned_dns
+from utils.security_utils import validate_url_with_ips
 
 logger = logging.getLogger(__name__)
 
@@ -150,10 +152,13 @@ class Rss(BasePlugin):
     def parse_rss_feed(
         self, url: str, timeout: int = 10
     ) -> list[dict[str, str | None]]:
-        resp = get_http_session().get(
-            url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        resp.raise_for_status()
+        _, pinned_ips = validate_url_with_ips(url)
+        hostname = urlparse(url).hostname or ""
+        with pinned_dns(hostname, pinned_ips):
+            resp = get_http_session().get(
+                url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            resp.raise_for_status()
 
         # Parse the feed content
         feed = feedparser.parse(resp.content)
