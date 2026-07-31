@@ -1,27 +1,41 @@
 {#- Reusable API-key card for the managed-keys form.
 
-    Compact single-row layout per the handoff design:
-        svc + usage hint on the left, status-chip + mask + Change/Add button
-        on the right. The actual password input is hidden until the user
-        clicks "Change" (configured) or "Add key" (unconfigured), so the
-        default state is information-dense and read-only.
+    Compact single-row layout: svc + usage hint on the left, status-chip +
+    mask + "Add key"/"Change key" toggle on the right. The password input
+    stays hidden (a one-row summary) until that toggle is clicked, which
+    swaps it out for the input row (input + a working Cancel button that
+    collapses back to the summary + Delete, shown only when configured).
 
-    The hidden ``.api-key-actions`` container still holds the <input> so it
-    participates in FormData on save, preserving the contract that the
-    backend sees the provider key (name= {{ key_name }}) in every submission.
+    Also used, for already-saved "custom secret" cards (any .env key that
+    isn't one of the fixed providers, e.g. calendar_auth's
+    CALENDAR_AUTH_PASSWORD_<LABEL>) - rendered inline in the very same grid
+    as the fixed providers, no separate heading or section, so a saved
+    custom secret is visually and behaviourally indistinguishable from a
+    built-in one except that its name came from the user. (A *brand-new*,
+    not-yet-saved custom secret is a different, one-step draft card built
+    directly by api_keys_page.js's addCustomSecretCard - the "Add key"
+    click this macro renders would be redundant there, since creating the
+    draft via "+ Add Custom Secret" already is that step.) label and
+    key_name are just the same raw key name for a custom secret, since
+    there's no nicer display name to show. Pass custom=True so the card
+    carries data-custom-secret="true", which api_keys_page.js uses to tell
+    a custom card apart from a fixed provider card (custom cards are
+    removed from the DOM entirely on delete; fixed-provider cards always
+    stick around, just becoming "not set").
 
     Parameters:
-        label         – Human-readable provider name (e.g. "OpenAI")
+        label         – Human-readable provider name (e.g. "OpenAI"), or the
+                        raw key name itself for a custom secret
         key_name      – Env-var / secret key name  (e.g. "OPEN_AI_SECRET")
         input_id      – HTML id for the <input>     (e.g. "openai-input")
         status_id     – HTML id for the status div   (e.g. "openai-status")
         placeholder   – Input placeholder text
         masked        – The full `masked` dict from the template context
         api_key_plugins – The plugin-usage dict (may be None)
+        custom        – True for a user-defined custom secret card
 -#}
-{% from 'macros/icons.html' import icon %}
-{% macro api_key_card(label, key_name, input_id, status_id, placeholder, masked, api_key_plugins, delete_label=None) %}
-<div class="form-group api-key-card" data-key-card data-configured="{{ 'true' if masked[key_name] else 'false' }}">
+{% macro api_key_card(label, key_name, input_id, status_id, placeholder, masked, api_key_plugins, delete_label=None, custom=False) %}
+<div class="form-group api-key-card" data-key-card data-key-name="{{ key_name }}" data-custom-secret="{{ 'true' if custom else 'false' }}" data-configured="{{ 'true' if masked[key_name] else 'false' }}">
     <div class="key-row">
         <div class="key-row-left api-key-card-head">
             <label class="form-label key-svc" for="{{ input_id }}">{{ label }}</label>
@@ -32,16 +46,17 @@
                 <span class="api-mask mono" aria-hidden="true">{{ masked[key_name] }}</span>
                 <span class="status-chip success has-dot" data-role="key-chip">Configured</span>
                 <div id="{{ status_id }}" class="api-key-status sr-only">Status: Configured ({{ masked[key_name] }})</div>
-                <button type="button" class="header-button is-secondary api-key-toggle" data-api-action="reveal-input" data-input-id="{{ input_id }}" aria-expanded="false" aria-controls="{{ input_id }}-actions">{{ icon('pencil-simple', 'btn-leading-icon') | safe }}<span data-role="toggle-label">Change key</span><span class="sr-only" data-role="toggle-context"> for {{ label }}</span></button>
+                <button type="button" class="header-button is-secondary api-key-toggle" data-api-action="reveal-input" data-input-id="{{ input_id }}" aria-expanded="false" aria-controls="{{ input_id }}-actions"><span data-role="toggle-label">Change key</span><span class="sr-only"> for {{ label }}</span></button>
             {% else %}
                 <span class="status-chip warning has-dot" data-role="key-chip">Not set</span>
                 <div id="{{ status_id }}" class="api-key-status sr-only">Status: Not configured</div>
-                <button type="button" class="header-button api-key-toggle" data-api-action="reveal-input" data-input-id="{{ input_id }}" aria-expanded="false" aria-controls="{{ input_id }}-actions"><span data-role="toggle-label">Add key</span><span class="sr-only" data-role="toggle-context"> for {{ label }}</span></button>
+                <button type="button" class="header-button is-secondary api-key-toggle" data-api-action="reveal-input" data-input-id="{{ input_id }}" aria-expanded="false" aria-controls="{{ input_id }}-actions"><span data-role="toggle-label">Add key</span><span class="sr-only"> for {{ label }}</span></button>
             {% endif %}
         </div>
     </div>
     <div class="input-container api-key-actions" id="{{ input_id }}-actions" hidden>
         <input type="password" id="{{ input_id }}" name="{{ key_name }}" placeholder="{{ '(leave blank to keep current)' if masked[key_name] else placeholder }}" data-empty-placeholder="{{ placeholder }}" class="form-input" value="" autocomplete="off" spellcheck="false">
+        <button type="button" class="header-button is-secondary" data-api-action="cancel-input">Cancel</button>
         {# data-test-skip-click: permanently removes the stored API key from .env #}
         {% if masked[key_name] %}<button type="button" class="header-button delete-button delete-button-danger" data-api-action="delete-key" data-key-name="{{ key_name }}" data-test-skip-click="true" aria-label="Delete {{ delete_label or label }} key permanently" title="Permanently remove key from .env">Delete</button>{% endif %}
     </div>

@@ -1,6 +1,7 @@
 """Settings pages, save, import/export, API keys, isolation, and safe-reset route handlers."""
 
 import os
+import re
 import unicodedata
 from typing import Any
 from zoneinfo import available_timezones
@@ -15,6 +16,20 @@ from utils.http_utils import json_error, json_success
 from utils.time_utils import calculate_seconds
 
 _DEVICE_NAME_MAX_LEN = 64
+
+# The fixed set of well-known provider keys shown as their own cards.
+# Anything else in .env (that isn't an internal app secret) is a "custom
+# secret" - the free-form mechanism plugins like calendar_auth rely on for
+# per-instance credentials (e.g. CALENDAR_AUTH_PASSWORD_<LABEL>).
+_FIXED_PROVIDER_KEYS = (
+    "OPEN_AI_SECRET",
+    "OPEN_WEATHER_MAP_SECRET",
+    "NASA_SECRET",
+    "UNSPLASH_ACCESS_KEY",
+    "GITHUB_SECRET",
+    "GOOGLE_AI_SECRET",
+)
+_CUSTOM_KEY_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _isolation_state() -> tuple[Any, list[Any], set[Any]]:
@@ -291,31 +306,25 @@ def import_settings() -> Any:
         return json_success(message=f"Restored {' and '.join(parts)}")
 
 
+def _mask_key_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        if len(value) >= 4:
+            return f"...{value[-4:]} ({len(value)} chars)"
+        return f"set ({len(value)} chars)"
+    except Exception:
+        return "set"
+
+
 @_mod.settings_bp.route("/settings/api-keys", methods=["GET"])  # type: ignore[untyped-decorator]
 def api_keys_page() -> Any:
     device_config = current_app.config["DEVICE_CONFIG"]
 
-    def mask(value: str | None) -> str | None:
-        if not value:
-            return None
-        try:
-            if len(value) >= 4:
-                return f"...{value[-4:]} ({len(value)} chars)"
-            return f"set ({len(value)} chars)"
-        except Exception:
-            return "set"
-
-    keys = {
-        "OPEN_AI_SECRET": device_config.load_env_key("OPEN_AI_SECRET"),
-        "OPEN_WEATHER_MAP_SECRET": device_config.load_env_key(
-            "OPEN_WEATHER_MAP_SECRET"
-        ),
-        "NASA_SECRET": device_config.load_env_key("NASA_SECRET"),
-        "UNSPLASH_ACCESS_KEY": device_config.load_env_key("UNSPLASH_ACCESS_KEY"),
-        "GITHUB_SECRET": device_config.load_env_key("GITHUB_SECRET"),
-        "GOOGLE_AI_SECRET": device_config.load_env_key("GOOGLE_AI_SECRET"),
+    masked = {
+        key: _mask_key_value(device_config.load_env_key(key))
+        for key in _FIXED_PROVIDER_KEYS
     }
-    masked = {k: mask(v) for k, v in keys.items()}
     api_key_plugins = {
         "OPEN_AI_SECRET": ["AI Image", "AI Text"],
         "OPEN_WEATHER_MAP_SECRET": ["Weather"],
@@ -329,25 +338,52 @@ def api_keys_page() -> Any:
     # above or an internal app secret. This is the free-form mechanism
     # plugins like calendar_auth rely on for per-instance credentials
     # (e.g. CALENDAR_AUTH_PASSWORD_<LABEL>) that can't be declared as a
-    # single static provider key. Reuses blueprints.apikeys' env-file
-    # helpers rather than duplicating them.
+    # single static provider key. Rendered as cards via the same
+    # api_key_card macro as the fixed providers (hence sharing one `masked`
+    # dict), reusing blueprints.apikeys' env-file read helpers rather than
+    # duplicating them.
     env_path = _apikeys_mod.get_env_path()
     all_entries = _apikeys_mod.parse_env_file(env_path)
-    fixed_keys = set(keys)
-    custom_entries = [
-        {"key": key, "masked": _apikeys_mod.mask_value(value)}
-        for key, value in all_entries
+    fixed_keys = set(_FIXED_PROVIDER_KEYS)
+    custom_key_names = [
+        key
+        for key, _value in all_entries
         if key not in fixed_keys and key not in _apikeys_mod._INTERNAL_KEYS
     ]
+    for key, value in all_entries:
+        if key in custom_key_names:
+            masked[key] = _mask_key_value(value)
 
     return render_template(
         "api_keys.html",
-        entries=custom_entries,
+        custom_key_names=custom_key_names,
         env_exists=os.path.exists(env_path),
         masked=masked,
         api_key_plugins=api_key_plugins,
         active_nav="api-keys",
     )
+
+
+def _resolve_key_value_for_save(key: str, value: str) -> tuple[str | None, bool]:
+    """Return (cleaned_value, was_placeholder) for a submitted key value.
+
+    cleaned_value is None when the field should be left unchanged
+    (empty/whitespace-only, or a stale bullet-placeholder value - JTN-598).
+    """
+    if not value:
+        return None, False
+    stripped = value.strip()
+    if not stripped:
+        return None, False
+    if set(stripped) <= {"•"}:
+        _mod.logger.warning(
+            "Rejected save_api_keys value for %s: value is only U+2022 "
+            "placeholder characters (likely a stale cached page or a "
+            "client that appended to the legacy bullet pre-fill).",
+            key,
+        )
+        return None, True
+    return value, False
 
 
 @_mod.settings_bp.route("/settings/save_api_keys", methods=["POST"])  # type: ignore[untyped-decorator]
@@ -361,40 +397,42 @@ def save_api_keys() -> Any:
         form_data = request.form.to_dict()
         updated = []
         skipped_placeholder = []
-        for key in (
-            "OPEN_AI_SECRET",
-            "OPEN_WEATHER_MAP_SECRET",
-            "NASA_SECRET",
-            "UNSPLASH_ACCESS_KEY",
-            "GITHUB_SECRET",
-            "GOOGLE_AI_SECRET",
-        ):
-            value = form_data.get(key)
-            if not value:
-                # Empty field means "leave current key unchanged" (JTN-598).
+
+        for key in _FIXED_PROVIDER_KEYS:
+            raw_value = form_data.get(key)
+            if raw_value is None:
                 continue
-            # Defense-in-depth against JTN-598: reject any value that is solely the
-            # U+2022 BLACK CIRCLE placeholder. Historically the form pre-filled the
-            # value attribute with literal bullet characters to fake a mask; if a
-            # stale page (or anything else) POSTs that string back, we must not
-            # overwrite the real key with bullets. Strip whitespace first so we
-            # also catch values like "  ••••  " that a stale client could send.
-            stripped = value.strip()
-            if not stripped:
-                # Whitespace-only input is treated the same as empty — keep
-                # the existing key unchanged.
-                continue
-            if set(stripped) <= {"\u2022"}:
-                _mod.logger.warning(
-                    "Rejected save_api_keys value for %s: value is only U+2022 "
-                    "placeholder characters (likely a stale cached page or a "
-                    "client that appended to the legacy bullet pre-fill).",
-                    key,
-                )
+            value, was_placeholder = _resolve_key_value_for_save(key, raw_value)
+            if was_placeholder:
                 skipped_placeholder.append(key)
+                continue
+            if value is None:
                 continue
             device_config.set_env_key(key, value)
             updated.append(key)
+
+        # Custom secrets: any other submitted field that looks like a safe
+        # env-var name and isn't an internal app secret. New custom-secret
+        # cards have no `name` attribute on their key-name input - only the
+        # paired value input's `name` is set (dynamically, client-side) to
+        # the typed key - so this naturally only ever sees real candidates,
+        # never the raw "what did the user type as a name" field itself.
+        for key, raw_value in form_data.items():
+            if key in _FIXED_PROVIDER_KEYS:
+                continue
+            if not _CUSTOM_KEY_NAME_RE.match(key):
+                continue
+            if key in _apikeys_mod._INTERNAL_KEYS:
+                continue
+            value, was_placeholder = _resolve_key_value_for_save(key, raw_value)
+            if was_placeholder:
+                skipped_placeholder.append(key)
+                continue
+            if value is None:
+                continue
+            device_config.set_env_key(key, value)
+            updated.append(key)
+
         if skipped_placeholder:
             return json_success(
                 message="API keys saved.",
@@ -408,15 +446,11 @@ def save_api_keys() -> Any:
 def delete_api_key() -> Any:
     device_config = current_app.config["DEVICE_CONFIG"]
     key = request.form.get("key")
-    valid_keys = {
-        "OPEN_AI_SECRET",
-        "OPEN_WEATHER_MAP_SECRET",
-        "NASA_SECRET",
-        "UNSPLASH_ACCESS_KEY",
-        "GITHUB_SECRET",
-        "GOOGLE_AI_SECRET",
-    }
-    if key not in valid_keys:
+    if (
+        not key
+        or not _CUSTOM_KEY_NAME_RE.match(key)
+        or key in _apikeys_mod._INTERNAL_KEYS
+    ):
         raise ClientInputError("Invalid key name", status=400)
     with route_error_boundary(
         "deleting API key",

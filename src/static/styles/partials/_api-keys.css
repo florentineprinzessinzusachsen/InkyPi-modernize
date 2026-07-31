@@ -173,10 +173,9 @@
   margin: 0 auto;
 }
 
-/* Compact single-row layout per the handoff design: stack cards vertically,
-   each card is one row with svc+usage on the left and chip+mask+button on
-   the right. The <input> row lives in a hidden container below and only
-   reveals when the user clicks "Change" / "Add key". */
+/* Compact stacked layout: each card is a header row (svc+usage on the left,
+   chip+mask on the right) plus an always-visible input row below - one
+   step, no reveal-on-click needed to get to the password field. */
 .api-keys-grid {
   display: grid;
   gap: 14px;
@@ -265,17 +264,17 @@
   white-space: nowrap;
 }
 
+.api-key-usage {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 .api-key-toggle {
   /* Handoff parity: 34px minimum with tighter 6/12 padding. */
   min-height: 34px;
   padding: 6px 12px;
   font-size: 0.85rem;
-}
-
-.api-key-usage {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-  margin-top: 2px;
 }
 
 .api-key-actions {
@@ -325,17 +324,6 @@
 .settings-container.api-keys-grid {
   justify-content: stretch;
   padding: 0;
-}
-
-.api-key-card[data-configured="false"] .api-key-toggle {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: var(--accent);
-}
-
-.api-key-card[data-configured="false"] .api-key-toggle:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
 }
 
 .api-keys-note {
@@ -509,7 +497,11 @@
   border-color: var(--accent);
 }
 
+/* .header-button.delete-button-danger (_navigation.css) fills the button
+   with var(--error) as its background - this used to also set color to
+   var(--error) here, which made the label the same colour as its own
+   background (invisible text). Force a solid, readable black label instead. */
 .delete-button-danger {
-  color: var(--error);
+  color: #000;
   border-color: var(--error);
 }
