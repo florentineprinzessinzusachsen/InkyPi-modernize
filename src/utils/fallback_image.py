@@ -16,6 +16,8 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from utils.plugin_errors import URL_ERR_NO_HOST, URL_ERR_PRIVATE, URL_ERR_SCHEME
+
 logger = logging.getLogger(__name__)
 
 # Maximum characters for the error message before truncation
@@ -35,21 +37,23 @@ _GENERIC_FALLBACK = (
 # against the raw exception string (after any ``ClassName:`` prefix has been
 # stripped).  Keep this list short and focused on user-visible validation
 # errors — deep technical errors should fall through to the generic message.
+#
+# The URL-validation patterns below are built from `utils.plugin_errors`'s
+# module constants (via `re.escape`) rather than hardcoded a second time, so
+# they can never silently drift out of sync with the live validator text the
+# way they previously did (JTN-779 follow-up — see test_fallback_image_sanitization.py).
 _FRIENDLY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # URL validation (JTN-776 / JTN-779) — screenshot, image_url, image_album
     (
-        re.compile(r"URL scheme must be http or https", re.IGNORECASE),
+        re.compile(re.escape(URL_ERR_SCHEME), re.IGNORECASE),
         "The URL you entered is not allowed. It must start with http:// or https://.",
     ),
     (
-        re.compile(r"URL host is required", re.IGNORECASE),
+        re.compile(re.escape(URL_ERR_NO_HOST), re.IGNORECASE),
         "The URL you entered is missing a host. Please enter a full URL like https://example.com.",
     ),
     (
-        re.compile(
-            r"URL host resolves to a (?:loopback|private|reserved|link-local|multicast|unspecified) address",
-            re.IGNORECASE,
-        ),
+        re.compile(re.escape(URL_ERR_PRIVATE), re.IGNORECASE),
         "That URL points to a private or local address, which is not allowed.",
     ),
     (

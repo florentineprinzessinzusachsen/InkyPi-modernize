@@ -2,11 +2,11 @@ import logging
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from PIL.Image import Image as ImageType
 
 from plugins.base_plugin.base_plugin import BasePlugin
+from utils.time_utils import get_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class YearProgress(BasePlugin):
         dimensions = self.get_oriented_dimensions(device_config)
 
         tz_name = device_config.get_config("timezone", default="America/New_York")
-        tz = ZoneInfo(tz_name)
+        tz = get_timezone(tz_name)
         current_time = datetime.now(tz)
 
         start_of_year = datetime(current_time.year, 1, 1, tzinfo=tz)

@@ -322,6 +322,28 @@
   aspect-ratio: auto;
 }
 
+/* .abfahrtzeiten-stop-entry (the abfahrtzeiten-stops widget's row wrapper)
+   is a plain .dynamic-list-item block box, not a flex container - its
+   .summary and .remove-btn children stack vertically by default, and the
+   remove button (also .icon-button) renders at its full 90px square tile
+   size with nothing to override it, per the same trap documented above.
+   Lay the row out as a flex row so the button sits inline with the summary
+   text, and reset the button to the same compact 44px target. */
+.abfahrtzeiten-stop-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.abfahrtzeiten-stop-entry .remove-btn {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  aspect-ratio: auto;
+}
+
 .dynamic-list-color-group {
   display: inline-flex;
   align-items: center;

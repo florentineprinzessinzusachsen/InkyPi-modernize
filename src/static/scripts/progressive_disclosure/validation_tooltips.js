@@ -21,7 +21,7 @@
                 if (target instanceof Element && target.matches('.form-input')) {
                     this.validateField(target);
                 }
-            });
+            }, { capture: true });
         },
 
         validateField(field) {
@@ -42,7 +42,14 @@
             field.classList.remove('valid', 'invalid');
             const existingMessage = fieldContainer.querySelector('.validation-message');
             if (existingMessage) {
-                existingMessage.remove();
+                // Some .validation-message elements (e.g. the pre-rendered
+                // <span id="{field.id}-error"> that form_validator.js looks
+                // up by id via aria-describedby) are permanent DOM nodes,
+                // not ones this file created - removing them here would
+                // permanently break form_validator.js's ability to find and
+                // populate that node again on later input/blur events.
+                // Clear the text instead of removing the node.
+                existingMessage.textContent = '';
             }
 
             for (const rule of rules) {

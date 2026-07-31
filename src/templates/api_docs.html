@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InkyPi API Docs</title>
+  <link rel="stylesheet"
+        href="{{ url_for('static', filename='vendor/swagger-ui/swagger-ui.css') }}"
+        integrity="{{ sri_for('vendor/swagger-ui/swagger-ui.css') }}" crossorigin="anonymous" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="{{ url_for('static', filename='vendor/swagger-ui/swagger-ui-bundle.js') }}"
+          integrity="{{ sri_for('vendor/swagger-ui/swagger-ui-bundle.js') }}" crossorigin="anonymous"></script>
+  <script src="{{ url_for('static', filename='vendor/swagger-ui/swagger-ui-standalone-preset.js') }}"
+          integrity="{{ sri_for('vendor/swagger-ui/swagger-ui-standalone-preset.js') }}" crossorigin="anonymous"></script>
+  <script nonce="{{ csp_nonce }}">
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "/api/openapi.json",
+        dom_id: "#swagger-ui",
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        deepLinking: true
+      });
+    };
+  </script>
+</body>
+</html>

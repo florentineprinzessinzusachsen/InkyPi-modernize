@@ -196,6 +196,11 @@ class RefreshTask:
                     "Refresh task stopped before request completed"
                 )
                 request.done.set()
+                # manual_update() can be blocked on image_saved (not done) if
+                # the request failed before the image was written - set both,
+                # same as _complete_manual_request(), so a waiter blocked on
+                # shutdown doesn't just time out.
+                request.image_saved.set()
             self.condition.notify_all()  # Wake the thread to let it exit
         if self.thread:
             logger.info("Stopping refresh task")
@@ -508,6 +513,26 @@ class RefreshTask:
             plugin_instance = refresh_action.plugin_instance
             if plugin_instance.should_refresh(current_dt) or refresh_action.force:
                 plugin_instance.latest_refresh_time = current_dt.isoformat()
+                # image_upload's non-randomized cycling advances
+                # settings["image_index"] too, for the same reason and via the
+                # same subprocess-mutation-is-lost mechanism described above -
+                # re-derive the advance here so the next render actually shows
+                # the next image instead of repeating the same one forever.
+                if (
+                    plugin_instance.plugin_id == "image_upload"
+                    and plugin_instance.settings.get("randomize") != "true"
+                ):
+                    image_locations = plugin_instance.settings.get("imageFiles[]")
+                    if isinstance(image_locations, list) and image_locations:
+                        img_index_raw = plugin_instance.settings.get("image_index")
+                        img_index = (
+                            img_index_raw if isinstance(img_index_raw, int) else 0
+                        )
+                        if img_index >= len(image_locations):
+                            img_index = 0
+                        plugin_instance.settings["image_index"] = (
+                            img_index + 1
+                        ) % len(image_locations)
         generate_ms = int((perf_counter() - _t_gen_start) * 1000)
         # Plugin lifecycle: generate_complete
         logger.info(

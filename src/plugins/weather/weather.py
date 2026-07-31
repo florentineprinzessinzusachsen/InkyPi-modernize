@@ -1,6 +1,7 @@
 import logging
 import os
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, tzinfo
 from typing import Any, cast
 
@@ -14,6 +15,7 @@ from plugins.base_plugin.settings_schema import (
     widget,
 )
 from plugins.weather import weather_api, weather_data as _wd
+from utils.app_utils import resolve_path
 from utils.time_utils import get_timezone
 
 logger = logging.getLogger(__name__)
@@ -263,10 +265,23 @@ class Weather(BasePlugin):
                 if not api_key:
                     logger.error("OpenWeatherMap API Key not configured")
                     raise RuntimeError("OpenWeatherMap API Key not configured.")
-                weather_data = self.get_weather_data(api_key, units, lat, long)
-                aqi_data = self.get_air_quality(api_key, lat, long)
-                if settings.get("titleSelection", "location") == "location":
-                    title = self.get_location(api_key, lat, long)
+                want_location = settings.get("titleSelection", "location") == "location"
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    weather_future = executor.submit(
+                        self.get_weather_data, api_key, units, lat, long
+                    )
+                    aqi_future = executor.submit(
+                        self.get_air_quality, api_key, lat, long
+                    )
+                    location_future = (
+                        executor.submit(self.get_location, api_key, lat, long)
+                        if want_location
+                        else None
+                    )
+                    weather_data = weather_future.result()
+                    aqi_data = aqi_future.result()
+                    if location_future is not None:
+                        title = location_future.result()
                 if (
                     settings.get("weatherTimeZone", "locationTimeZone")
                     == "locationTimeZone"
@@ -283,10 +298,15 @@ class Weather(BasePlugin):
                     )
             elif weather_provider == "OpenMeteo":
                 forecast_days = 7
-                weather_data = self.get_open_meteo_data(
-                    lat, long, units, forecast_days + 1
-                )
-                aqi_data = self.get_open_meteo_air_quality(lat, long)
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    weather_future = executor.submit(
+                        self.get_open_meteo_data, lat, long, units, forecast_days + 1
+                    )
+                    aqi_future = executor.submit(
+                        self.get_open_meteo_air_quality, lat, long
+                    )
+                    weather_data = weather_future.result()
+                    aqi_data = aqi_future.result()
                 template_params = self.parse_open_meteo_data(
                     weather_data, aqi_data, tz, units, time_format, lat
                 )
@@ -305,6 +325,13 @@ class Weather(BasePlugin):
         dimensions = self.get_oriented_dimensions(device_config)
 
         template_params["plugin_settings"] = settings
+        # weather.html's hourly-graph canvas loads chart.js via
+        # {{static_dir}}/scripts/chart.js - render_image()'s bare
+        # jinja2.Environment has no static_dir/url_for global, so this must
+        # be set explicitly (pattern: calendar.py, weather_de.py) or the tag
+        # resolves to a dead relative path and the graph silently fails to
+        # draw with no Python-side error.
+        template_params["static_dir"] = self.to_file_url(resolve_path("static"))
 
         # Add last refresh time
         now = datetime.now(tz)

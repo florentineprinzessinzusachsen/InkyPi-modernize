@@ -83,7 +83,11 @@ class Comic(BasePlugin):
         )
 
         logger.debug("Parsing comic panel...")
-        comic_panel = get_panel(comic)
+        try:
+            comic_panel = get_panel(comic)
+        except Exception as e:
+            logger.error(f"Failed to retrieve comic panel: {e}")
+            raise RuntimeError("Failed to retrieve latest comic.") from e
         logger.info(f"Comic panel URL: {comic_panel.get('image_url', 'Unknown')}")
 
         if comic_panel.get("title"):

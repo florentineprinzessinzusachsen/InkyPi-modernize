@@ -18,17 +18,17 @@ internals to the open internet on unauthenticated deployments.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
-import os
 import shutil
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
 
+from utils.access_control import is_private_address as _is_private_address
+from utils.access_control import local_or_authenticated_access_allowed
 from utils.http_utils import json_error
 
 logger = logging.getLogger(__name__)
@@ -49,42 +49,15 @@ _LAST_UPDATE_FAILURE_PATH = Path("/var/lib/inkypi/.last-update-failure")
 # ---------------------------------------------------------------------------
 
 
-def _is_private_address(addr: str | None) -> bool:
-    """Return True when *addr* is a loopback or RFC1918/ULA private address.
-
-    Unknown / unparseable values are treated as non-private (fail closed).
-    """
-    if not addr:
-        return False
-    try:
-        ip = ipaddress.ip_address(addr)
-    except ValueError:
-        return False
-    return ip.is_loopback or ip.is_private or ip.is_link_local
-
-
 def _access_allowed() -> tuple[bool, str | None]:
-    """Return (allowed, reason-if-denied).
+    """Return (allowed, reason-if-denied) for the diagnostics endpoint.
 
-    When PIN auth is enabled app-wide, the before_request hook has already
-    authenticated the caller (or redirected them to /login). In that case we
-    trust the gate and allow the request.
-
-    When PIN auth is disabled, we fall back to restricting access to private
-    network addresses. ``INKYPI_ENV=dev`` disables this guardrail so local
-    development / tests are unimpeded.
+    Delegates to the shared ``utils.access_control`` helper (also used by
+    the ``/api/logs`` and ``/download-logs`` routes) so all sensitive
+    introspection endpoints apply the same private-network gate. See that
+    module's docstring for the full rationale.
     """
-    if current_app.config.get("AUTH_ENABLED"):
-        return True, None
-
-    env = (os.getenv("INKYPI_ENV") or "").strip().lower()
-    if env == "dev":
-        return True, None
-
-    if _is_private_address(request.remote_addr):
-        return True, None
-
-    return False, "diagnostics endpoint requires authentication or local access"
+    return local_or_authenticated_access_allowed("diagnostics endpoint")
 
 
 # ---------------------------------------------------------------------------

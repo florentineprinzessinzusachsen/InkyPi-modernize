@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
+from services.playlist_workflows import validate_plugin_settings_security
 from utils.form_utils import sanitize_log_field
 from utils.http_utils import json_error
 
@@ -193,6 +194,11 @@ def import_plugins() -> (
             imported (int): number of instances successfully imported
             skipped  (list[str]): plugin_ids not installed on this device
             renamed  (list[str]): instances renamed to avoid name collisions
+            invalid_settings (list[str]): plugin_ids skipped because their
+                settings failed plugin-specific validation (JTN-448 follow-up;
+                mirrors the same best-effort ``validate_settings()`` check
+                ``/add_plugin`` and ``update_plugin_instance`` already run
+                before persisting)
     """
     device_config = current_app.config[_CONFIG_KEY]
     playlist_manager = device_config.get_playlist_manager()
@@ -228,6 +234,7 @@ def import_plugins() -> (
     imported = 0
     skipped: list[str] = []
     renamed: list[str] = []
+    invalid_settings: list[str] = []
 
     for inst in instances:
         plugin_id = str(inst.get("plugin_id", "")).strip()
@@ -241,6 +248,27 @@ def import_plugins() -> (
             logger.info("plugin_import: skipping unknown plugin_id=%r", plugin_id)
             if plugin_id not in skipped:
                 skipped.append(plugin_id)
+            continue
+
+        # JTN-448 follow-up: run the same plugin-specific settings validation
+        # /add_plugin and update_plugin_instance perform before persisting, so
+        # imported settings can't bypass validation the UI would otherwise
+        # enforce. Best-effort: an unexpected exception inside validate_settings
+        # itself is swallowed (matches validate_plugin_settings_security's own
+        # convention) so a buggy plugin can't block an otherwise-valid import;
+        # only an explicit validation error skips this one instance — a single
+        # bad imported plugin should not abort the whole import.
+        security_err = validate_plugin_settings_security(
+            device_config, plugin_id, settings
+        )
+        if security_err is not None:
+            logger.info(
+                "plugin_import: skipping plugin_id=%s due to invalid settings: %s",
+                sanitize_log_field(plugin_id),
+                sanitize_log_field(security_err.message),
+            )
+            if plugin_id not in invalid_settings:
+                invalid_settings.append(plugin_id)
             continue
 
         # Name collision: append suffix
@@ -274,5 +302,6 @@ def import_plugins() -> (
             "imported": imported,
             "skipped": skipped,
             "renamed": renamed,
+            "invalid_settings": invalid_settings,
         }
     )

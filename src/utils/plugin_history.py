@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +25,27 @@ logger = logging.getLogger(__name__)
 MAX_ENTRIES = 100
 # Strict allowlist regex used at the API boundary; defense in depth.
 _VALID_NAME_RE = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}\Z")
+
+# Per-file locks guarding record_change()'s read-modify-write critical
+# section. The web server runs multiple threads per request (waitress pool),
+# so two concurrent saves to the *same* plugin instance could otherwise both
+# read the same "existing" entry list and the second os.replace() would
+# silently discard the first writer's entry. Keyed by resolved file path
+# (not a single global lock) so concurrent history writes for *different*
+# plugin instances never serialize against each other. This only needs to
+# protect same-process concurrent threads, not cross-process access.
+_history_locks: dict[str, threading.Lock] = {}
+_history_locks_guard = threading.Lock()
+
+
+def _get_history_lock(path: str) -> threading.Lock:
+    """Return the per-file lock for *path*, creating it on first use."""
+    with _history_locks_guard:
+        lock = _history_locks.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _history_locks[path] = lock
+        return lock
 
 
 def _hashed_filename(instance_name: str) -> str:
@@ -73,28 +95,35 @@ def record_change(
         line = json.dumps(entry, separators=(",", ":"))
 
         # Read existing lines, append new one, then truncate to MAX_ENTRIES.
-        existing: list[str] = []
-        if os.path.isfile(path):
-            with open(path, encoding="utf-8") as fh:
-                existing = [line.rstrip("\n") for line in fh if line.strip()]
+        # The whole read-modify-write is lock-protected (per-file) so two
+        # concurrent saves to the same instance can't both read the same
+        # "existing" list and have the second os.replace() silently discard
+        # the first writer's entry.
+        with _get_history_lock(path):
+            existing: list[str] = []
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8") as fh:
+                    existing = [line.rstrip("\n") for line in fh if line.strip()]
 
-        existing.append(line)
-        if len(existing) > MAX_ENTRIES:
-            existing = existing[-MAX_ENTRIES:]
+            existing.append(line)
+            if len(existing) > MAX_ENTRIES:
+                existing = existing[-MAX_ENTRIES:]
 
-        # Atomic write via temp file in same directory.
-        dir_path = os.path.dirname(path)
-        fd, tmp_path = tempfile.mkstemp(dir=dir_path, prefix=".phist_", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write("\n".join(existing) + "\n")
-            os.replace(tmp_path, path)
-        except Exception:
+            # Atomic write via temp file in same directory.
+            dir_path = os.path.dirname(path)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=dir_path, prefix=".phist_", suffix=".tmp"
+            )
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(existing) + "\n")
+                os.replace(tmp_path, path)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
     except Exception as exc:
         # Sanitize user-controlled instance_name to prevent log injection (S5145)
         safe_name = str(instance_name).replace("\r", "").replace("\n", "")[:64]

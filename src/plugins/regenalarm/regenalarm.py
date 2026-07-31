@@ -46,9 +46,11 @@ import base64
 import logging
 import os
 import struct
-import urllib.error
-import urllib.request
 from datetime import datetime
+
+import requests
+
+from utils.http_client import get_http_session
 
 from .lib.forecast import build_forecast_request, parse_forecast_response, extract_map_image
 from .lib.map_svg import MAP_VIEWBOX_W, MAP_VIEWBOX_H, render_marker_and_trajectory
@@ -163,14 +165,30 @@ class Regenalarm(BasePlugin):
         if not has_map and not has_chart:
             raise RuntimeError("Regenalarm returned no usable rain data for this location.")
 
-        layout = self._layout_px(dimensions, has_map, has_chart)
+        # Map SVG rendering doesn't depend on the panel layout (it's a
+        # scalable viewBox), so it's safe to try first and let the actual
+        # outcome - not the pre-fetch has_map guess - drive the panel split.
+        # Otherwise a map that fails after has_map=True leaves the chart
+        # built at the "shared with a map" width even though no map panel
+        # ends up rendering, i.e. an unexplained gap where the map would
+        # have been instead of the chart filling the available width.
+        map_ok = self._add_map_params(template_params, parsed) if has_map else False
+
+        layout = self._layout_px(dimensions, map_ok, has_chart)
         template_params.update(layout)
 
         # The chart is built at its exact panel pixel size (layout["chart_w"] /
         # layout["content_h"]) so it fills the panel with no letterboxing -
         # see chart_svg.py's module docstring.
-        map_ok = self._add_map_params(template_params, parsed) if has_map else False
         chart_ok = self._add_chart_params(template_params, parsed, layout) if has_chart else False
+
+        if map_ok and has_chart and not chart_ok:
+            # Symmetric case: chart was expected (and the layout above split
+            # the width for it) but its build failed for an unrelated reason
+            # (e.g. malformed chart data) - give the map panel the full
+            # width instead of leaving the same unexplained gap in reverse.
+            layout = self._layout_px(dimensions, map_ok, False)
+            template_params.update(layout)
 
         if not map_ok and not chart_ok:
             raise RuntimeError("Regenalarm returned no usable rain data for this location.")
@@ -187,13 +205,12 @@ class Regenalarm(BasePlugin):
         body = build_forecast_request(lat, lon, wind_query=(1500, -1))
         for host in HOSTS:
             try:
-                req = urllib.request.Request(
-                    f"https://{host}/rain/bin", data=body, method="POST",
-                    headers={"Content-Length": str(len(body))},
+                resp = get_http_session().post(
+                    f"https://{host}/rain/bin", data=body, timeout=REQUEST_TIMEOUT,
                 )
-                with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-                    return parse_forecast_response(resp.read())
-            except (urllib.error.URLError, OSError, TimeoutError) as e:
+                resp.raise_for_status()
+                return parse_forecast_response(resp.content)
+            except (requests.exceptions.RequestException, OSError, TimeoutError) as e:
                 logger.warning(f"Regenalarm: host {host} failed: {e}")
                 continue
         return None

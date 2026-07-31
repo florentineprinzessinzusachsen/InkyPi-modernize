@@ -128,6 +128,7 @@
   function createLogsModule({ config, state, ui, shared }) {
     const { copyText, isErrorLine, isWarnLine, prefKey, showCopyFeedback } =
       shared;
+    let logsRequestSeq = 0;
 
     function applyLogFiltersAndRender() {
       const viewer = document.getElementById("logsViewer");
@@ -172,6 +173,7 @@
       const filterInput = document.getElementById("logsFilter");
       const levelSelect = document.getElementById("logsLevel");
       const maxLinesInput = document.getElementById("logsMaxLines");
+      const requestSeq = ++logsRequestSeq;
       try {
         const params = buildLogsParams(
           hoursSelect,
@@ -183,6 +185,11 @@
           cache: "no-store",
         });
         const data = await resp.json();
+        // Discard this response if a newer fetchAndRenderLogs() call has
+        // started in the meantime (e.g. rapidly changing hours/level/filter
+        // controls) so a stale, out-of-order response can't overwrite a
+        // fresher one - mirrors the requestSeq pattern in diagnostics.js.
+        if (requestSeq !== logsRequestSeq) return;
         state.lastLogsRaw = Array.isArray(data?.lines)
           ? data.lines.join("\n")
           : "";
@@ -190,6 +197,7 @@
         applyLogFiltersAndRender();
         flashLogsViewer();
       } catch (e) {
+        if (requestSeq !== logsRequestSeq) return;
         console.error("Failed to fetch logs", e);
       }
     }

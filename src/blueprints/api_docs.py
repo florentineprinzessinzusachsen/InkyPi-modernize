@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from flask import Blueprint, Response
-
-from utils.sri import cdn_sri
+from flask import Blueprint, Response, render_template
 
 api_docs_bp = Blueprint("api_docs", __name__)
 
@@ -16,47 +14,20 @@ _SPEC_PATH = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "static", "openapi.json")
 )
 
-_SWAGGER_CSS_URL = "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css"
-_SWAGGER_JS_URL = "https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
-
 
 @api_docs_bp.route("/api/docs", methods=["GET"])  # type: ignore
 def swagger_ui() -> Response:
-    """Serve the Swagger UI HTML page pointing at /api/openapi.json."""
-    css_integrity = cdn_sri("swagger-ui-css")
-    js_integrity = cdn_sri("swagger-ui-bundle")
+    """Serve the Swagger UI HTML page pointing at /api/openapi.json.
 
-    css_integrity_attr = (
-        f' integrity="{css_integrity}" crossorigin="anonymous"' if css_integrity else ""
-    )
-    js_integrity_attr = (
-        f' integrity="{js_integrity}" crossorigin="anonymous"' if js_integrity else ""
-    )
-
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InkyPi API Docs</title>
-  <link rel="stylesheet"
-        href="{_SWAGGER_CSS_URL}"{css_integrity_attr} />
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="{_SWAGGER_JS_URL}"{js_integrity_attr}></script>
-  <script>
-    SwaggerUIBundle({{
-      url: "/api/openapi.json",
-      dom_id: "#swagger-ui",
-      presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-      layout: "BaseLayout",
-      deepLinking: true
-    }});
-  </script>
-</body>
-</html>"""
-    return Response(html, status=200, mimetype="text/html")
+    Rendered through Jinja (rather than a raw HTML string) so the inline
+    initialisation ``<script>`` can carry the per-request ``csp_nonce`` and
+    satisfy the app's default ``script-src 'self' 'nonce-{nonce}'`` CSP.
+    swagger-ui-dist's CSS/JS are vendored locally under
+    ``static/vendor/swagger-ui/`` (matching the ``vendor/leaflet`` pattern)
+    so they're covered by ``script-src 'self'``/``style-src 'self'`` with no
+    CSP allow-list changes needed.
+    """
+    return render_template("api_docs.html")
 
 
 @api_docs_bp.route("/api/openapi.json", methods=["GET"])  # type: ignore

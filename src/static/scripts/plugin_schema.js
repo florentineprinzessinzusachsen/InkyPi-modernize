@@ -1092,7 +1092,12 @@
       const widgetType = widget.dataset.hybridWidget;
       const widgetConfig = parseJson(widget.dataset.widgetConfig || "{}", {});
       const initializer = widgetInitializers[widgetType];
-      if (initializer) initializer(widget, { ...config, ...widgetConfig });
+      // Real saved plugin settings (config) must win over a schema's static
+      // widget default (widgetConfig) - e.g. regenalarm's central-Germany
+      // default lat/long should only apply to a brand-new instance that has
+      // no saved location yet, not silently overwrite an existing one's real
+      // saved coordinates on every settings-page load (JTN-regenalarm-widget).
+      if (initializer) initializer(widget, { ...widgetConfig, ...config });
     });
   }
 

@@ -3,8 +3,11 @@
 Shows upcoming departures (with realtime delays/cancellations) for one or
 more configured (stop, line, direction) entries, grouped by stop. Backed by
 the free, keyless community HAFAS-wrapper REST APIs - see
-`src/blueprints/transit.py` for the settings-page address/stop/line picker
-that produces the saved `entries[]` this plugin reads.
+`src/static/scripts/plugin_schema.js`'s `initAbfahrtzeitenStops` (and the
+other `abfahrtzeiten*` helpers there) for the settings-page address/stop/line
+picker that produces the saved `entries[]` this plugin reads. There is no
+backend route for this - the picker calls the transit APIs directly from
+the browser, per this fork's "no plugin-level backend routes" convention.
 
 Recommended playlist refresh interval: 2-5 minutes. Departures are
 time-sensitive, but each refresh issues only one HTTP request per unique
@@ -20,6 +23,7 @@ import json
 import logging
 import math
 from datetime import datetime
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +233,7 @@ class Abfahrtzeiten(BasePlugin):
     def _fetch_stop_departures(self, session, group):
         base = PROVIDER_BASES[group["provider"]]
         resp = session.get(
-            f"{base}/stops/{group['stopId']}/departures",
+            f"{base}/stops/{quote(str(group['stopId']), safe='')}/departures",
             params={"duration": DEPARTURES_DURATION_MIN, "results": DEPARTURES_RESULTS},
             timeout=REQUEST_TIMEOUT,
         )

@@ -93,7 +93,12 @@ def fetch_contributions(username: str, api_key: str) -> dict[str, Any]:
         timeout=30,
     )
     resp.raise_for_status()
-    return cast(dict[str, Any], resp.json())
+    data = cast(dict[str, Any], resp.json())
+
+    if "errors" in data:
+        raise RuntimeError(f"GitHub API returned errors: {data['errors']}")
+
+    return data
 
 
 def parse_contributions(

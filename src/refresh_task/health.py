@@ -6,7 +6,7 @@ import logging
 import os
 from collections.abc import Callable, Mapping
 from datetime import UTC
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from utils.metrics import (
     record_refresh_failure,
@@ -48,6 +48,8 @@ class SupportsPluginHealth(Protocol):
     def get_config(self, key: str, default: object = ...) -> object: ...
 
     def write_config(self) -> None: ...
+
+    def update_atomic(self, update_fn: Callable[[dict[str, Any]], None]) -> None: ...
 
 
 class PluginHealthTracker:
@@ -146,13 +148,19 @@ class PluginHealthTracker:
                 plugin_id,
                 instance,
             )
-        plugin_instance.consecutive_failure_count = 0
-        plugin_instance.paused = False
-        plugin_instance.disabled_reason = None
+        def _apply(_cfg: dict[str, Any]) -> None:
+            plugin_instance.consecutive_failure_count = 0
+            plugin_instance.paused = False
+            plugin_instance.disabled_reason = None
+
         set_circuit_breaker_open(plugin_id, False)
         if changed:
+            # Mutate-then-persist atomically under the config lock, so a
+            # concurrent web-request thread's update_atomic() can't
+            # interleave a write between these attribute mutations and
+            # ours (see Config.update_atomic's docstring).
             try:
-                self.device_config.write_config()
+                self.device_config.update_atomic(_apply)
             except Exception:
                 logger.warning(
                     "plugin circuit_breaker: failed to persist reset for %s/%s",
@@ -160,6 +168,8 @@ class PluginHealthTracker:
                     instance,
                     exc_info=True,
                 )
+        else:
+            _apply({})
 
     def on_failure(
         self,
@@ -173,45 +183,51 @@ class PluginHealthTracker:
         if plugin_instance is None or plugin_instance.paused:
             return
         threshold = self.circuit_breaker_threshold()
-        plugin_instance.consecutive_failure_count += 1
-        logger.warning(
-            "plugin circuit_breaker: failure | plugin_id=%s instance=%s count=%d/%d",
-            plugin_id,
-            instance,
-            plugin_instance.consecutive_failure_count,
-            threshold,
-        )
-        newly_paused = False
-        if plugin_instance.consecutive_failure_count >= threshold:
-            now_iso = self._now_iso()
-            error_msg = str(
-                self.plugin_health.get(plugin_id, {}).get("last_error") or "unknown"
-            )
-            plugin_instance.paused = True
-            plugin_instance.disabled_reason = (
-                f"Paused after {plugin_instance.consecutive_failure_count} consecutive "
-                f"failures at {now_iso}. Last error: {error_msg[:120]}"
-            )
-            newly_paused = True
-            set_circuit_breaker_open(plugin_id, True)
-            logger.error(
-                "plugin circuit_breaker: paused | plugin_id=%s instance=%s"
-                " paused after %d consecutive failures",
+
+        # Mutate-then-persist atomically under the config lock (see
+        # Config.update_atomic's docstring) so a concurrent web-request
+        # thread's own update_atomic() can't interleave a write between the
+        # increment/pause-decision below and ours, which could otherwise
+        # persist a torn combination (e.g. paused=True but the failure count
+        # not yet bumped).
+        def _apply(_cfg: dict[str, Any]) -> None:
+            plugin_instance.consecutive_failure_count += 1
+            logger.warning(
+                "plugin circuit_breaker: failure | plugin_id=%s instance=%s count=%d/%d",
                 plugin_id,
                 instance,
                 plugin_instance.consecutive_failure_count,
+                threshold,
             )
-
-        if newly_paused or plugin_instance.consecutive_failure_count > 0:
-            try:
-                self.device_config.write_config()
-            except Exception:
-                logger.warning(
-                    "plugin circuit_breaker: failed to persist failure state for %s/%s",
+            if plugin_instance.consecutive_failure_count >= threshold:
+                now_iso = self._now_iso()
+                error_msg = str(
+                    self.plugin_health.get(plugin_id, {}).get("last_error")
+                    or "unknown"
+                )
+                plugin_instance.paused = True
+                plugin_instance.disabled_reason = (
+                    f"Paused after {plugin_instance.consecutive_failure_count} consecutive "
+                    f"failures at {now_iso}. Last error: {error_msg[:120]}"
+                )
+                set_circuit_breaker_open(plugin_id, True)
+                logger.error(
+                    "plugin circuit_breaker: paused | plugin_id=%s instance=%s"
+                    " paused after %d consecutive failures",
                     plugin_id,
                     instance,
-                    exc_info=True,
+                    plugin_instance.consecutive_failure_count,
                 )
+
+        try:
+            self.device_config.update_atomic(_apply)
+        except Exception:
+            logger.warning(
+                "plugin circuit_breaker: failed to persist failure state for %s/%s",
+                plugin_id,
+                instance,
+                exc_info=True,
+            )
 
         self._send_failure_webhook(
             plugin_id=plugin_id,
@@ -229,9 +245,11 @@ class PluginHealthTracker:
             or plugin_instance.consecutive_failure_count > 0
             or plugin_instance.disabled_reason is not None
         )
-        plugin_instance.consecutive_failure_count = 0
-        plugin_instance.paused = False
-        plugin_instance.disabled_reason = None
+        def _apply(_cfg: dict[str, Any]) -> None:
+            plugin_instance.consecutive_failure_count = 0
+            plugin_instance.paused = False
+            plugin_instance.disabled_reason = None
+
         set_circuit_breaker_open(plugin_id, False)
         safe_pid = str(plugin_id).replace("\r", "").replace("\n", "")[:64]
         safe_inst = str(instance).replace("\r", "").replace("\n", "")[:64]
@@ -241,8 +259,12 @@ class PluginHealthTracker:
             safe_inst,
         )
         if changed:
+            # Mutate-then-persist atomically under the config lock - see
+            # Config.update_atomic's docstring; this can genuinely race with
+            # a refresh-triggered on_failure()/on_success() call on the
+            # background RefreshTask thread, unlike most other callers here.
             try:
-                self.device_config.write_config()
+                self.device_config.update_atomic(_apply)
             except Exception:
                 logger.warning(
                     "plugin circuit_breaker: failed to persist manual reset for %s/%s",
@@ -250,6 +272,8 @@ class PluginHealthTracker:
                     safe_inst,
                     exc_info=True,
                 )
+        else:
+            _apply({})
         return True
 
     def snapshot(self) -> dict[str, HealthEntry]:

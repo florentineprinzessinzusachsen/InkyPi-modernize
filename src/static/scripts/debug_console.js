@@ -173,7 +173,7 @@
   };
 
   var _origOnUnhandled = window.onunhandledrejection;
-  window.addEventListener("unhandledrejection", function (evt) {
+  function _earlyRejectionHandler(evt) {
     var reason = evt.reason;
     var text =
       reason instanceof Error
@@ -182,7 +182,8 @@
         ? reason
         : "Unhandled promise rejection";
     _earlyErrors.push(text);
-  });
+  }
+  window.addEventListener("unhandledrejection", _earlyRejectionHandler);
 
   document.addEventListener("DOMContentLoaded", function () {
     _buildUI();
@@ -191,6 +192,14 @@
       _addEntry(msg);
     });
     _earlyErrors = [];
+
+    // Tear down the early handlers now that the flush is done and the
+    // permanent listeners below take over - otherwise both sets keep
+    // running for the page's lifetime, with the early ones pushing into
+    // _earlyErrors forever even though nothing reads it again after this
+    // one-time flush (an unbounded array leak for the tab's lifetime).
+    window.onerror = _origOnerror || null;
+    window.removeEventListener("unhandledrejection", _earlyRejectionHandler);
 
     // Forward future errors
     window.addEventListener("error", function (evt) {

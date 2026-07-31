@@ -25,6 +25,7 @@ from utils.fallback_image import (
     sanitize_error_message,
     strip_class_prefix,
 )
+from utils.plugin_errors import URL_ERR_NO_HOST, URL_ERR_PRIVATE
 
 # ---------------------------------------------------------------------------
 # strip_class_prefix
@@ -79,13 +80,16 @@ class TestSanitizeErrorMessage:
         assert "URL scheme" not in friendly  # raw validator text hidden
 
     def test_private_address_pattern(self) -> None:
-        raw = "URL host resolves to a loopback address: 127.0.0.1"
+        # Live validator raises this bare (utils.security_utils raises
+        # ValueError(URL_ERR_PRIVATE) with no extra context), but the
+        # sanitiser should still match with trailing context appended.
+        raw = f"{URL_ERR_PRIVATE}: 127.0.0.1"
         friendly = sanitize_error_message(raw)
         assert "private" in friendly.lower() or "local" in friendly.lower()
         assert "127.0.0.1" not in friendly
 
     def test_missing_host_pattern(self) -> None:
-        raw = "URL host is required"
+        raw = URL_ERR_NO_HOST
         friendly = sanitize_error_message(raw)
         assert "host" in friendly.lower() or "full URL" in friendly
 

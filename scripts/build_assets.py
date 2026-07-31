@@ -73,6 +73,8 @@ JS_MANIFEST_DEFERRED: list[str] = [
     "form_validator.js",
     "response_modal.js",
     "form_state.js",
+    "tweaks_panel.js",
+    "update_indicator.js",
 ]
 
 # ---------------------------------------------------------------------------

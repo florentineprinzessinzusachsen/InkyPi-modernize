@@ -1,4 +1,13 @@
-"""Log viewing and download route handlers."""
+"""Log viewing and download route handlers.
+
+Access control
+--------------
+Both routes here serve raw application log content, so they apply the same
+private-network gate as ``/api/diagnostics`` (see
+``utils.access_control`` for the full rationale): when app-wide PIN auth is
+disabled, access is restricted to loopback/private network callers unless
+``INKYPI_ENV=dev`` explicitly opts in.
+"""
 
 import io
 import re
@@ -7,12 +16,18 @@ from typing import Any
 from flask import Response, current_app, jsonify, request
 
 import blueprints.settings as _mod
+from utils.access_control import local_or_authenticated_access_allowed
 from utils.http_utils import json_error
 from utils.time_utils import now_device_tz
 
 
 @_mod.settings_bp.route("/download-logs", methods=["GET"])  # type: ignore[untyped-decorator]
 def download_logs() -> Response:
+    allowed, reason = local_or_authenticated_access_allowed("log download endpoint")
+    if not allowed:
+        return Response(
+            reason or "Forbidden", status=403, mimetype="text/plain"
+        )
     try:
         # Guardrail hours clamp
         hours = _mod._clamp_int(
@@ -86,6 +101,9 @@ def _filter_log_lines(lines: list[str], contains: str, level: str) -> list[str]:
 @_mod.settings_bp.route("/api/logs", methods=["GET"])  # type: ignore[untyped-decorator]
 def api_logs() -> Response | tuple[Any, int]:
     """JSON logs API with server-side filter, level selection and limits."""
+    allowed, reason = local_or_authenticated_access_allowed("logs API")
+    if not allowed:
+        return json_error(reason or "Forbidden", status=403)
     try:
         if not _mod._rate_limit_ok(request.remote_addr):
             return json_error("Too many requests", status=429)

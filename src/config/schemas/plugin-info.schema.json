@@ -9,6 +9,8 @@
     "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
     "class": { "type": "string" },
     "display_name": { "type": "string" },
+    "api_version": { "type": "string" },
+    "version": { "type": "string" },
     "image_settings": {
       "type": "array",
       "items": {

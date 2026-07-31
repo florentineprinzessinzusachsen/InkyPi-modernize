@@ -24,8 +24,6 @@ for German locations:
 
 from plugins.base_plugin.base_plugin import BasePlugin
 from plugins.base_plugin.settings_schema import field, option, row, schema, section, widget
-from PIL import Image
-import os
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone, date
@@ -34,7 +32,6 @@ from astral.sun import sun as astral_sun
 from utils.time_utils import get_timezone
 from utils.app_utils import resolve_path
 from utils.http_client import get_http_session
-from io import BytesIO
 import math
 
 logger = logging.getLogger(__name__)
@@ -546,10 +543,18 @@ class WeatherDe(BasePlugin):
         return settings.get('weatherProvider', 'OpenMeteo') == 'OpenWeatherMap'
 
     def generate_image(self, settings, device_config):
-        lat = float(settings.get('latitude'))
-        long = float(settings.get('longitude'))
-        if not lat or not long:
-            raise RuntimeError("Latitude and Longitude are required.")
+        # Defaults (NYC, matching the weather-map widget's own client-side
+        # default) so the plugin still renders with an empty settings dict
+        # (first-run preview, bare /update_now, /__smoke/render's {}).
+        lat_raw = settings.get('latitude')
+        long_raw = settings.get('longitude')
+        lat_str = lat_raw if lat_raw is not None else "40.7128"
+        long_str = long_raw if long_raw is not None else "-74.0060"
+        try:
+            lat = float(lat_str)
+            long = float(long_str)
+        except (ValueError, TypeError):
+            raise RuntimeError("Latitude and longitude must be valid numbers.") from None
 
         units = settings.get('units')
         if not units or units not in ['metric', 'imperial', 'standard']:
@@ -1214,17 +1219,20 @@ class WeatherDe(BasePlugin):
         })
 
         visibility = weather.get('current', {}).get("visibility")
-        if units == "imperial":
-            # convert from m to mi
-            visibility /= 1609.
-            at_max_visibility = visibility >= 6.2
+        if visibility is None:
+            visibility_str = "N/A"
         else:
-            # convert from m to km
-            visibility /= 1000.
-            at_max_visibility = visibility >= 10
-        visibility_str = f"{visibility:.1f}"
-        if at_max_visibility:
-            visibility_str = u"≥" + visibility_str
+            if units == "imperial":
+                # convert from m to mi
+                visibility /= 1609.
+                at_max_visibility = visibility >= 6.2
+            else:
+                # convert from m to km
+                visibility /= 1000.
+                at_max_visibility = visibility >= 10
+            visibility_str = f"{visibility:.1f}"
+            if at_max_visibility:
+                visibility_str = u"≥" + visibility_str
         data_points.append({
             "key": "Visibility",
             "label": get_ui_label("visibility", language, "Visibility"),
