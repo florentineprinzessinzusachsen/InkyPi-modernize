@@ -50,7 +50,7 @@ jobs:
             --ignore-packages recurring-ical-events
       - name: Restore benchmark baseline cache
         id: bench-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/bench-baseline.json
           key: benchmark-baseline-${{ runner.os }}-py3.12
