@@ -182,8 +182,12 @@
 
 .seg-btn.active,
 .seg-btn[aria-pressed="true"] {
-  background: var(--surface);
-  color: var(--text);
+  /* Dark-mode contrast fix: the selected state used to be var(--surface),
+     nearly indistinguishable from the unselected track's --surface-2 in
+     dark mode. Solid accent fill instead, matching .header-button.primary
+     / .action-button.primary's convention. */
+  background: var(--accent);
+  color: var(--on-accent);
   box-shadow: var(--shadow-xs);
 }
 
@@ -212,8 +216,8 @@
 }
 
 .seg-btn:has(input[type="radio"]:checked) {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--accent);
+  color: var(--on-accent);
   box-shadow: var(--shadow-xs);
 }
 

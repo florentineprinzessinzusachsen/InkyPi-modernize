@@ -306,9 +306,20 @@
   margin-bottom: 0;
 }
 
+/* .remove-btn also carries .icon-button (for its shared border/hover/focus
+   treatment), but .icon-button's own rule hard-sets height: 90px and
+   aspect-ratio: 1 for its usual context (large square tile buttons) - with
+   nothing here overriding `height` itself, that 90px height won by default
+   and (via this row's `align-items: stretch`) stretched the adjacent URL
+   input to match, producing a huge-looking input box. Reset both so this
+   button sizes to the same compact 44px touch target the row was already
+   designed around. */
 .compact-repeater-toolbar .remove-btn {
   flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
   min-height: 44px;
+  aspect-ratio: auto;
 }
 
 .dynamic-list-color-group {

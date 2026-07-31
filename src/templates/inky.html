@@ -24,7 +24,6 @@
                    device name still surfaces via hover/AT when it's shown as
                    a chip below; useful when the chip itself is truncated. #}
                 <h1 class="app-title" title="{{ config.name }}">Current display</h1>
-                <p class="page-desc">What's on the e-ink panel right now, what's next, and quick access to plugins.</p>
             </div>
             <div class="pageheader-actions dashboard-pageheader-actions">
                 {# Buttons drop their aria-label attributes so the visible
@@ -69,7 +68,7 @@
                     <p id="dashboardStageCopy" class="dashboard-stage-copy sr-only">Tap the preview to inspect it in the lightbox.</p>
                     <div class="image-container">
                         <div id="previewSkeleton" class="img-skeleton" aria-hidden="true"></div>
-                        <img id="previewImage" src="{{ url_for('main.preview_image') }}" alt="Current display for {{ config.name }}"
+                        <img id="previewImage" src="{{ url_for('main.preview_image') }}" style="border:0 !important" alt="Current display for {{ config.name }}"
                              width="{{ config.resolution[0] }}" height="{{ config.resolution[1] }}"
                              data-native-width="{{ config.resolution[0] }}" data-native-height="{{ config.resolution[1] }}">
                     </div>

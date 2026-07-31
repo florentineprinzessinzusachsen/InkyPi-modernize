@@ -260,8 +260,6 @@
   flex-wrap: wrap;
 }
 
-/* Handoff uses --surface-border (aliased to --border) for every separator;
-   --panel-border is a legacy token that skews slightly darker. */
 .danger-zone-divider {
   margin: 28px 0 16px;
   border: 0;

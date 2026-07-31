@@ -1,59 +1,80 @@
-{% from 'macros/icons.html' import icon %}
-
-{% set calendar_urls = plugin_settings.get('calendarAuthURLs[]', ['']) if plugin_settings else [''] %}
-{% set calendar_colors = plugin_settings.get('calendarAuthColors[]', ['#007BFF']) if plugin_settings else ['#007BFF'] %}
-{% set calendar_usernames = plugin_settings.get('calendarAuthUsernames[]', ['']) if plugin_settings else [''] %}
-{% set calendar_labels = plugin_settings.get('calendarAuthLabels[]', ['']) if plugin_settings else [''] %}
+{% from 'macros/icons.html' import icon %} {% set calendar_urls =
+plugin_settings.get('calendarAuthURLs[]', ['']) if plugin_settings else [''] %}
+{% set calendar_colors = plugin_settings.get('calendarAuthColors[]',
+['#007BFF']) if plugin_settings else ['#007BFF'] %} {% set calendar_usernames =
+plugin_settings.get('calendarAuthUsernames[]', ['']) if plugin_settings else
+[''] %} {% set calendar_labels = plugin_settings.get('calendarAuthLabels[]',
+['']) if plugin_settings else [''] %}
 
 <div class="dynamic-list" data-repeater-list>
-    {% for idx in range(calendar_urls | length) %}
-    <div class="dynamic-list-item compact-repeater compact-repeater-calendar-auth">
-        <div class="dynamic-list-toolbar compact-repeater-toolbar">
-            <label class="sr-only" for="calendarAuthURL{{ idx }}">Calendar URL {{ idx + 1 }}</label>
-            <input
-                type="url"
-                id="calendarAuthURL{{ idx }}"
-                name="calendarAuthURLs[]"
-                class="form-input"
-                placeholder="https://calendar.google.com/…/basic.ics"
-                value="{{ calendar_urls[idx] }}"
-                required
-                pattern="https?://.+"
-                aria-label="Calendar URL {{ idx + 1 }}"
-            >
-            <button type="button" class="remove-btn icon-button" aria-label="Remove calendar">
-                {{ icon('trash', 'action-icon') | safe }}
-            </button>
-        </div>
-        <div class="dynamic-list-toolbar compact-repeater-toolbar">
-            <input
-                type="text"
-                name="calendarAuthUsernames[]"
-                class="form-input"
-                placeholder="Username (leave blank if no login needed)"
-                autocomplete="username"
-                value="{{ calendar_usernames[idx] if idx < (calendar_usernames | length) else '' }}"
-                aria-label="Username {{ idx + 1 }}"
-                data-auth-username
-            >
-            <input
-                type="text"
-                name="calendarAuthLabels[]"
-                class="form-input"
-                placeholder="Credential label (e.g. HOME)"
-                pattern="[A-Za-z0-9_]*"
-                value="{{ calendar_labels[idx] if idx < (calendar_labels | length) else '' }}"
-                aria-label="Credential label {{ idx + 1 }}"
-                data-auth-label
-            >
-        </div>
-        <span class="dynamic-list-color-group">
-            <span>Color</span>
-            <input type="color" name="calendarAuthColors[]" class="color-picker" aria-label="Calendar color" value="{{ calendar_colors[idx] if idx < (calendar_colors | length) else '#007BFF' }}">
-        </span>
-        <small class="field-note" data-auth-key-hint></small>
+  {% for idx in range(calendar_urls | length) %}
+  <div
+    class="dynamic-list-item compact-repeater compact-repeater-calendar-auth"
+  >
+    <div class="dynamic-list-toolbar compact-repeater-toolbar">
+      <label class="sr-only" for="calendarAuthURL{{ idx }}"
+        >Calendar URL {{ idx + 1 }}</label
+      >
+      <input
+        type="url"
+        id="calendarAuthURL{{ idx }}"
+        name="calendarAuthURLs[]"
+        class="form-input"
+        placeholder="https://calendar.google.com/…/basic.ics"
+        value="{{ calendar_urls[idx] }}"
+        required
+        pattern="https?://.+"
+        aria-label="Calendar URL {{ idx + 1 }}"
+      />
+      <button
+        type="button"
+        class="remove-btn icon-button"
+        aria-label="Remove calendar"
+      >
+        {{ icon('trash', 'action-icon') | safe }}
+      </button>
     </div>
-    {% endfor %}
+    <div class="dynamic-list-toolbar compact-repeater-toolbar">
+      <input
+        type="text"
+        name="calendarAuthUsernames[]"
+        class="form-input"
+        placeholder="Username (leave blank if no login needed)"
+        autocomplete="username"
+        value="{{ calendar_usernames[idx] if idx < (calendar_usernames | length) else '' }}"
+        aria-label="Username {{ idx + 1 }}"
+        data-auth-username
+      />
+      <input
+        type="text"
+        name="calendarAuthLabels[]"
+        class="form-input"
+        placeholder="Credential label (e.g. HOME)"
+        pattern="[A-Za-z0-9_]*"
+        value="{{ calendar_labels[idx] if idx < (calendar_labels | length) else '' }}"
+        aria-label="Credential label {{ idx + 1 }}"
+        data-auth-label
+      />
+    </div>
+    <span class="dynamic-list-color-group">
+      <span>Color</span>
+      <input
+        type="color"
+        name="calendarAuthColors[]"
+        class="color-picker"
+        aria-label="Calendar color"
+        value="{{ calendar_colors[idx] if idx < (calendar_colors | length) else '#007BFF' }}"
+      />
+    </span>
+    <small class="field-note" data-auth-key-hint></small>
+  </div>
+  {% endfor %}
 </div>
-<button type="button" class="action-button compact is-secondary" data-repeater-add>Add Calendar</button>
-<small class="field-note">Paste an .ics feed URL from Google Calendar, Outlook, Mailcow, or any CalDAV provider.</small>
+<button
+  type="button"
+  class="action-button compact is-secondary"
+  data-repeater-add
+>
+  Add Calendar
+</button>
+<small class="field-note">Paste .ics feed URL</small>
