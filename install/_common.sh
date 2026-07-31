@@ -14,7 +14,7 @@
 #   - setup_zramswap_service / setup_earlyoom_service
 #   - configure_persistent_journal / disable_wifi_powersave
 #   - stop_service
-#   - build_css_bundle
+#   - build_css_bundle (also builds the JS/CSS dist bundle, despite the name)
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -209,6 +209,26 @@ build_css_bundle() {
     exit 1
   fi
   echo_success "CSS bundle built."
+
+  # build_assets.py reads the main.css just built above as its CSS source, so
+  # it must run after build_css.py, not instead of it. Produces
+  # src/static/dist/{common.<hash>.min.css,common-sync.<hash>.min.js,
+  # common-deferred.<hash>.min.js,manifest.json} - base.html serves those
+  # (2 JS requests + 1 CSS, all cacheable for a year) instead of main.css plus
+  # ~10 individual <script> tags whenever dist/manifest.json is present and
+  # non-empty (app_setup/asset_helpers.py). Same fail-hard policy as the CSS
+  # build: a broken bundle would silently serve JS-less pages.
+  echo "Building minified JS/CSS asset bundle"
+  if ! "$VENV_PATH/bin/python" "$SCRIPT_DIR/../scripts/build_assets.py"; then
+    echo_error "ERROR: Asset bundle build failed. The web UI will not render correctly."
+    exit 1
+  fi
+  local manifest_output="$SCRIPT_DIR/../src/static/dist/manifest.json"
+  if [ ! -f "$manifest_output" ]; then
+    echo_error "ERROR: Asset manifest was not generated at $manifest_output."
+    exit 1
+  fi
+  echo_success "Asset bundle built."
 }
 
 # ---------------------------------------------------------------------------

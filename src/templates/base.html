@@ -37,7 +37,8 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles/main.css') }}">
     {% endif %}
     {% if bundled_assets_enabled %}
-    <script src="{{ url_for('static', filename='dist/' + bundled_asset('common.js')) }}" defer></script>
+    <script src="{{ url_for('static', filename='dist/' + bundled_asset('common-sync.js')) }}"></script>
+    <script src="{{ url_for('static', filename='dist/' + bundled_asset('common-deferred.js')) }}" defer></script>
     {% else %}
     <script src="{{ url_for('static', filename='scripts/theme.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/csrf.js') }}"></script>

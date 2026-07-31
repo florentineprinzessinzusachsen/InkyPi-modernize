@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -82,17 +83,19 @@ class TestBuildAssetsScript:
         result = _run_build_assets(dist, minify=False)
         assert result.returncode == 0, result.stderr
         manifest = json.loads((dist / "manifest.json").read_text())
-        assert "common.js" in manifest, "manifest missing 'common.js'"
+        assert "common-sync.js" in manifest, "manifest missing 'common-sync.js'"
+        assert "common-deferred.js" in manifest, "manifest missing 'common-deferred.js'"
         assert "common.css" in manifest, "manifest missing 'common.css'"
 
-    def test_js_bundle_exists_and_nonempty(self, tmp_path: Path) -> None:
+    def test_js_bundles_exist_and_nonempty(self, tmp_path: Path) -> None:
         dist = tmp_path / "dist"
         result = _run_build_assets(dist, minify=False)
         assert result.returncode == 0, result.stderr
         manifest = json.loads((dist / "manifest.json").read_text())
-        js_file = dist / manifest["common.js"]
-        assert js_file.is_file(), f"JS bundle file not found: {manifest['common.js']}"
-        assert js_file.stat().st_size > 0, "JS bundle is empty"
+        for key in ("common-sync.js", "common-deferred.js"):
+            js_file = dist / manifest[key]
+            assert js_file.is_file(), f"JS bundle file not found: {manifest[key]}"
+            assert js_file.stat().st_size > 0, f"JS bundle '{key}' is empty"
 
     def test_css_bundle_exists_and_nonempty(self, tmp_path: Path) -> None:
         dist = tmp_path / "dist"
@@ -105,17 +108,23 @@ class TestBuildAssetsScript:
         ), f"CSS bundle file not found: {manifest['common.css']}"
         assert css_file.stat().st_size > 0, "CSS bundle is empty"
 
-    def test_js_bundle_contains_all_manifest_files(self, tmp_path: Path) -> None:
+    def test_js_bundles_contain_expected_files(self, tmp_path: Path) -> None:
         dist = tmp_path / "dist"
         result = _run_build_assets(dist, minify=False)
         assert result.returncode == 0, result.stderr
         manifest = json.loads((dist / "manifest.json").read_text())
-        js_content = (dist / manifest["common.js"]).read_text(encoding="utf-8")
-        # Each file in JS_MANIFEST should be referenced in the bundle
+        sync_content = (dist / manifest["common-sync.js"]).read_text(encoding="utf-8")
         for expected_file in ["theme.js", "csrf.js", "client_errors.js"]:
             assert (
-                expected_file in js_content
-            ), f"Expected '{expected_file}' marker in JS bundle"
+                expected_file in sync_content
+            ), f"Expected '{expected_file}' marker in sync JS bundle"
+        deferred_content = (dist / manifest["common-deferred.js"]).read_text(
+            encoding="utf-8"
+        )
+        for expected_file in ["form_validator.js", "response_modal.js", "form_state.js"]:
+            assert (
+                expected_file in deferred_content
+            ), f"Expected '{expected_file}' marker in deferred JS bundle"
 
     def test_hash_in_filename(self, tmp_path: Path) -> None:
         """Filenames must contain an 8-char hex hash for cache busting."""
@@ -123,16 +132,10 @@ class TestBuildAssetsScript:
         result = _run_build_assets(dist, minify=False)
         assert result.returncode == 0, result.stderr
         manifest = json.loads((dist / "manifest.json").read_text())
+        hash_re = re.compile(r"\.([0-9a-f]{8})\.")
         for versioned in manifest.values():
-            parts = versioned.split(".")
-            # Expect: common.bundle.<hash>.[min.]js or .css
-            hash_part = parts[2]
-            assert (
-                len(hash_part) == 8
-            ), f"Expected 8-char hash in '{versioned}', got '{hash_part}'"
-            assert all(
-                c in "0123456789abcdef" for c in hash_part
-            ), f"Hash '{hash_part}' is not hex"
+            match = hash_re.search(versioned)
+            assert match, f"Expected an 8-char hex hash in '{versioned}'"
 
     def test_deterministic_hash(self, tmp_path: Path) -> None:
         """Running twice with identical inputs should produce identical hashes."""

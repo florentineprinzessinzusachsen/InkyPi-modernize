@@ -20,6 +20,7 @@ from urllib.parse import quote, urlencode, urlunsplit
 
 from flask import Flask, Response, abort, g, redirect, request, session
 
+from app_setup.compression import apply_response_compression
 from app_setup.smoke import SMOKE_RENDER_PATH, smoke_render_enabled
 from config import Config
 from utils.http_utils import json_error
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 
 # Constants (formerly magic numbers in inkypi.py)
 _CACHE_1_YEAR = 31_536_000
-_CACHE_1_DAY = 86_400
 _CSRF_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 #: Endpoints that MUST skip CSRF validation because the caller is a
 #: browser-initiated automatic request with no session cookie:
@@ -374,18 +374,6 @@ def setup_csp_nonce(app: Flask) -> None:
 # ---------------------------------------------------------------------------
 
 
-_STATIC_ASSET_EXTS = (
-    ".css",
-    ".js",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".svg",
-    ".woff",
-    ".woff2",
-    ".ttf",
-)
 _DEFAULT_CSP_TEMPLATE = (
     "default-src 'self'; img-src 'self' data: https:; "
     "style-src 'self' 'unsafe-inline'; "
@@ -419,16 +407,23 @@ def _emit_request_timing_log(response: Response) -> None:
 
 
 def _apply_static_cache_headers(response: Response) -> None:
-    """Set long-lived Cache-Control on hashed static assets."""
-    if not request.path.startswith("/static/"):
+    """Force long-lived caching on content-hashed bundle output only.
+
+    Flask's static route defaults to `Cache-Control: no-cache` for
+    everything under /static/ (SEND_FILE_MAX_AGE_DEFAULT=None) and always
+    sets that header itself before this after_request hook runs, so a
+    plain `.setdefault()` here can never override it. That's the right
+    behavior for most of /static/ - main.css and the individual per-script
+    files are not content-hashed, so their bytes can change on a deploy
+    without their URL changing, and caching those long-lived would serve
+    stale code. /static/dist/ (build_assets.py's output) is different: every
+    filename it writes includes a content hash, so the same URL can never
+    point at different bytes - safe, and worth actually forcing, to cache
+    for a year.
+    """
+    if not request.path.startswith("/static/dist/"):
         return
-    if any(request.path.endswith(ext) for ext in _STATIC_ASSET_EXTS):
-        response.headers.setdefault(
-            "Cache-Control",
-            f"public, max-age={_CACHE_1_YEAR}, immutable",
-        )
-    else:
-        response.headers.setdefault("Cache-Control", f"public, max-age={_CACHE_1_DAY}")
+    response.headers["Cache-Control"] = f"public, max-age={_CACHE_1_YEAR}, immutable"
 
 
 def _apply_baseline_security_headers(response: Response) -> None:
@@ -523,6 +518,13 @@ def setup_security_headers(app: Flask, *, dev_mode: bool) -> None:
             pass
         try:
             _apply_hot_reload_header(response, dev_mode=dev_mode)
+        except Exception:
+            pass
+        # Compression runs last so it sees the final headers/body — it
+        # rewrites Content-Length and adds Content-Encoding/Vary, which no
+        # earlier step should need to reason about.
+        try:
+            apply_response_compression(response)
         except Exception:
             pass
         return response
