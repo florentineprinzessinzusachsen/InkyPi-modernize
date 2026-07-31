@@ -286,10 +286,23 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
+#: Canonical set of env-var string values treated as truthy across the app.
+#: This is the single source of truth for env-bool parsing — grep for
+#: ``_TRUTHY``/``_env_bool`` before adding another local copy elsewhere.
+ENV_TRUTHY_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    """Return True if the environment variable *name* is set to a truthy value.
+
+    Recognises ``"1"``, ``"true"``, ``"yes"``, ``"on"`` (case-insensitive,
+    whitespace-trimmed) as truthy; an unset or otherwise-valued variable is
+    falsy. *default* is only returned if reading/parsing the env var raises
+    unexpectedly — the normal path never raises.
+    """
     try:
         raw = os.getenv(name, "")
-        return raw.strip().lower() in ("1", "true", "yes", "on")
+        return raw.strip().lower() in ENV_TRUTHY_VALUES
     except Exception:
         logger.warning(
             "Failed to parse env var %s as bool, using default %s", name, default
@@ -516,7 +529,7 @@ def http_get(
         timeout, CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS
     )
 
-    log_latency = _env_bool("INKYPI_HTTP_LOG_LATENCY", False)
+    log_latency = env_bool("INKYPI_HTTP_LOG_LATENCY", False)
     t0 = perf_counter() if log_latency else 0.0
     try:
         resp = session.get(

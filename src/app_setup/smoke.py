@@ -29,11 +29,11 @@ path, which is already separately exercised by higher-level integration tests.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from flask import Flask, Response, current_app, request
 
+from utils.http_utils import env_bool as _env_bool
 from utils.http_utils import json_error
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,6 @@ SMOKE_RENDER_PATH = "/__smoke/render"
 #: even see the route.
 SMOKE_RENDER_ENV_VAR = "INKYPI_SMOKE_FORCE_RENDER"
 
-_TRUTHY = frozenset({"1", "true", "yes"})
-
 
 def smoke_render_enabled() -> bool:
     """Return True if the smoke render endpoint should be registered/exempt.
@@ -56,7 +54,7 @@ def smoke_render_enabled() -> bool:
     Read at request time rather than import time so tests can toggle the env
     var via monkeypatch without reloading the module.
     """
-    return os.getenv(SMOKE_RENDER_ENV_VAR, "").strip().lower() in _TRUTHY
+    return _env_bool(SMOKE_RENDER_ENV_VAR)
 
 
 def register_smoke_endpoints(app: Flask) -> None:

@@ -499,11 +499,6 @@
       }
     }
 
-    function startPolling() {
-      refreshPreview();
-      return setInterval(refreshPreview, pollIntervalMs);
-    }
-
     function initRealtime() {
       let pollTimerId = null;
       let sseSource = null;

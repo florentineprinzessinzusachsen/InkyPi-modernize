@@ -21,7 +21,6 @@ events_bp = Blueprint("events", __name__)
 
 
 @events_bp.route("/api/events", methods=["GET"])  # type: ignore
-@events_bp.route("/api/events", methods=["GET"])  # type: ignore
 def sse_events() -> Response:
     """Stream SSE events to the client.
 

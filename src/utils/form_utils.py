@@ -7,7 +7,6 @@ so they can be unit-tested without an application context.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
 from html import escape
 from typing import Any
 
@@ -53,10 +52,6 @@ def sanitize_response_value(value: Any) -> str:
     return escape(sanitize_log_field(str(value)), quote=False)
 
 
-# Canonical alias so callers can use the more descriptive name.
-sanitize_for_log = sanitize_log_field
-
-
 # ---------------------------------------------------------------------------
 # Validation error
 # ---------------------------------------------------------------------------
@@ -74,50 +69,6 @@ class ValidationError(ValueError):
         self.message = message
         self.field: str | None = field
         super().__init__(message)
-
-
-# ---------------------------------------------------------------------------
-# Range validation
-# ---------------------------------------------------------------------------
-
-
-def validate_int_range(
-    value: Any,
-    *,
-    field: str,
-    min: int,
-    max: int,
-) -> int:
-    """Validate that *value* is an integer within [*min*, *max*].
-
-    Mirrors the pattern established by ``_validate_cycle_minutes`` in
-    ``src/blueprints/playlist.py`` but raises :class:`ValidationError`
-    instead of returning an error response, so it can be used in pure
-    validation code without Flask context.
-
-    Args:
-        value: The raw value to validate (will be coerced via ``int()``).
-        field: Human-readable field name included in any error message.
-        min: Inclusive lower bound.
-        max: Inclusive upper bound.
-
-    Returns:
-        The validated integer value.
-
-    Raises:
-        ValidationError: If *value* cannot be converted to ``int`` or is
-            outside [*min*, *max*].
-    """
-    try:
-        int_val = int(value)
-    except (ValueError, TypeError) as exc:
-        raise ValidationError(f"{field} must be an integer", field=field) from exc
-    if int_val < min or int_val > max:
-        raise ValidationError(
-            f"{field} must be between {min} and {max}",
-            field=field,
-        )
-    return int_val
 
 
 # ---------------------------------------------------------------------------
@@ -162,49 +113,6 @@ def validate_json_schema(data: dict[str, Any], schema: dict[str, Any]) -> list[s
     except Exception as exc:
         logger.debug("JSON schema validation encountered an error: %s", exc)
     return errors
-
-
-# ---------------------------------------------------------------------------
-# Required-field validation
-# ---------------------------------------------------------------------------
-
-
-class MissingFieldsError(ValueError):
-    """Raised when one or more required form fields are absent or empty.
-
-    Attributes:
-        missing: List of human-readable field labels that failed validation.
-        message: Pre-formatted error string.
-    """
-
-    def __init__(self, missing: list[str]) -> None:
-        self.missing: list[str] = list(missing)
-        self.message: str = f"Required fields missing: {', '.join(missing)}"
-        super().__init__(self.message)
-
-
-def validate_required(data: dict[str, Any], required: list[str]) -> None:
-    """Raise :class:`MissingFieldsError` if any required key is absent or empty.
-
-    A field is considered *missing* when its value in *data* is ``None``, an
-    empty string, or a string consisting entirely of whitespace.
-
-    Args:
-        data: Mapping of field names to values (e.g. parsed form data).
-        required: List of keys that must be present and non-empty.
-
-    Raises:
-        MissingFieldsError: If one or more required fields are missing.
-    """
-
-    def _is_empty(val: Any) -> bool:
-        if val is None:
-            return True
-        return not str(val).strip()
-
-    missing = [key for key in required if key not in data or _is_empty(data[key])]
-    if missing:
-        raise MissingFieldsError(missing)
 
 
 # ---------------------------------------------------------------------------
@@ -256,39 +164,3 @@ def validate_plugin_required_fields(
     if missing:
         return f"Required fields missing: {', '.join(missing)}"
     return None
-
-
-# ---------------------------------------------------------------------------
-# FormRequest dataclass
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class FormRequest:
-    """Immutable wrapper around parsed and validated form input.
-
-    Attributes:
-        data: The raw parsed form data dictionary.
-        plugin_id: Extracted ``plugin_id`` value (may be empty string if absent).
-        extra: Any additional metadata attached at construction time.
-    """
-
-    data: dict[str, Any] = field(default_factory=dict)
-    plugin_id: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> FormRequest:
-        """Construct a :class:`FormRequest` from a raw form data dict.
-
-        Extracts ``plugin_id`` from the dict (without mutating it) and stores
-        the original dict as :attr:`data`.
-
-        Args:
-            raw: Parsed form data, e.g. from ``parse_form(request.form)``.
-
-        Returns:
-            A populated :class:`FormRequest`.
-        """
-        plugin_id = str(raw.get("plugin_id") or "")
-        return cls(data=dict(raw), plugin_id=plugin_id)

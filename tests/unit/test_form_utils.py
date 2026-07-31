@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from utils.form_utils import (
-    FormRequest,
-    MissingFieldsError,
     sanitize_log_field,
     sanitize_response_value,
     validate_plugin_required_fields,
-    validate_required,
 )
 
 # ---------------------------------------------------------------------------
@@ -109,60 +104,6 @@ class TestSanitizeResponseValue:
         result = sanitize_response_value("<b>\ninjected</b>")
         assert "\n" not in result
         assert "<" not in result
-
-
-# ---------------------------------------------------------------------------
-# validate_required
-# ---------------------------------------------------------------------------
-
-
-class TestValidateRequired:
-    def test_all_present_no_error(self):
-        validate_required({"a": "1", "b": "2"}, ["a", "b"])  # should not raise
-
-    def test_raises_for_missing_key(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({"a": "1"}, ["a", "b"])
-        assert "b" in exc_info.value.missing
-
-    def test_raises_for_empty_string(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({"a": ""}, ["a"])
-        assert "a" in exc_info.value.missing
-
-    def test_raises_for_whitespace_only(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({"a": "   "}, ["a"])
-        assert "a" in exc_info.value.missing
-
-    def test_raises_for_none_value(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({"a": None}, ["a"])
-        assert "a" in exc_info.value.missing
-
-    def test_extra_keys_ignored(self):
-        validate_required({"a": "1", "extra": "x"}, ["a"])  # should not raise
-
-    def test_empty_required_list(self):
-        validate_required({}, [])  # no required keys → no error
-
-    def test_multiple_missing_all_reported(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({}, ["x", "y", "z"])
-        assert set(exc_info.value.missing) == {"x", "y", "z"}
-
-    def test_message_contains_missing_fields(self):
-        with pytest.raises(MissingFieldsError) as exc_info:
-            validate_required({"a": ""}, ["a"])
-        assert "a" in exc_info.value.message
-        assert "Required fields missing" in exc_info.value.message
-
-    def test_value_with_content_passes(self):
-        validate_required({"name": "Alice"}, ["name"])  # should not raise
-
-    def test_zero_int_passes(self):
-        # 0 str-ifies to "0" which has len 1 → not empty
-        validate_required({"count": 0}, ["count"])
 
 
 # ---------------------------------------------------------------------------
@@ -283,45 +224,3 @@ class TestValidatePluginRequiredFields:
         assert result is not None
         assert "FieldA" in result
         assert "FieldB" in result
-
-
-# ---------------------------------------------------------------------------
-# FormRequest
-# ---------------------------------------------------------------------------
-
-
-class TestFormRequest:
-    def test_construction_defaults(self):
-        fr = FormRequest()
-        assert fr.plugin_id == ""
-        assert fr.data == {}
-        assert fr.extra == {}
-
-    def test_from_dict_extracts_plugin_id(self):
-        raw = {"plugin_id": "weather", "city": "Paris"}
-        fr = FormRequest.from_dict(raw)
-        assert fr.plugin_id == "weather"
-        assert fr.data["city"] == "Paris"
-
-    def test_from_dict_preserves_all_keys(self):
-        raw = {"plugin_id": "x", "a": "1", "b": "2"}
-        fr = FormRequest.from_dict(raw)
-        assert fr.data["a"] == "1"
-        assert fr.data["b"] == "2"
-
-    def test_from_dict_missing_plugin_id(self):
-        fr = FormRequest.from_dict({"setting": "value"})
-        assert fr.plugin_id == ""
-
-    def test_immutability(self):
-        fr = FormRequest(data={"x": "1"}, plugin_id="p")
-        with pytest.raises((AttributeError, TypeError)):
-            fr.plugin_id = "other"  # type: ignore[misc]
-
-    def test_explicit_construction(self):
-        fr = FormRequest(data={"k": "v"}, plugin_id="myplug", extra={"meta": True})
-        assert fr.extra["meta"] is True
-
-    def test_from_dict_none_plugin_id_gives_empty_string(self):
-        fr = FormRequest.from_dict({"plugin_id": None})
-        assert fr.plugin_id == ""

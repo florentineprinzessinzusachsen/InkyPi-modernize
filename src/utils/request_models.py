@@ -63,13 +63,6 @@ class PlaylistUpdateRequest:
 
 
 @dataclass(frozen=True, slots=True)
-class ApiKeysSaveRequest:
-    """Validated payload for saving API key entries."""
-
-    entries: list[Any]
-
-
-@dataclass(frozen=True, slots=True)
 class PluginOrderRequest:
     """Validated dashboard plugin order payload."""
 
@@ -306,18 +299,6 @@ def _truthy_async_flag(value: Any) -> bool:
         "y",
         "on",
     }
-
-
-def parse_api_keys_save_request(
-    data: Any,
-) -> tuple[ApiKeysSaveRequest | None, RequestModelError | None]:
-    """Parse and validate the API-key save payload envelope."""
-    if not isinstance(data, dict):
-        return None, RequestModelError("Invalid JSON payload")
-    entries = data.get("entries", [])
-    if not isinstance(entries, list):
-        return None, RequestModelError("Invalid entries format", field="entries")
-    return ApiKeysSaveRequest(entries=entries), None
 
 
 def parse_plugin_order_request(

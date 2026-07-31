@@ -8,7 +8,6 @@ from flask import Flask
 def register_blueprints(app: Flask) -> None:
     """Register all InkyPi Flask blueprints."""
     from blueprints.api_docs import api_docs_bp
-    from blueprints.apikeys import apikeys_bp
     from blueprints.auth import auth_bp
     from blueprints.client_error import client_error_bp
     from blueprints.client_log import client_log_bp
@@ -29,7 +28,6 @@ def register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
-    app.register_blueprint(apikeys_bp)
     app.register_blueprint(client_error_bp)
     app.register_blueprint(client_log_bp)
     app.register_blueprint(errors_bp)

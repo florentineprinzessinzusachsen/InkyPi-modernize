@@ -2,7 +2,6 @@
 """Tests for input validation hardening fixes (JTN-134 through JTN-142).
 
 Covers:
-- JTN-134: API key save endpoint returns 400 for malformed input
 - JTN-136: Settings import returns 400 for invalid uploaded JSON
 - JTN-137: Playlist POST endpoints return 400 for malformed JSON
 - JTN-138: Save settings returns 422 for invalid numeric image settings
@@ -16,67 +15,6 @@ import io
 import json
 import subprocess
 from unittest.mock import MagicMock
-
-from blueprints.apikeys import API_KEY_VALIDATION_ERROR
-
-# ---------------------------------------------------------------------------
-# JTN-134: API key save endpoint input validation
-# ---------------------------------------------------------------------------
-
-
-class TestApiKeySaveValidation:
-    """POST /api-keys/save should return 400 for malformed input, not 500."""
-
-    def test_non_string_value_returns_400(self, client, tmp_path, monkeypatch):
-        env_path = tmp_path / "test.env"
-        env_path.write_text("")
-        monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_path))
-        resp = client.post(
-            "/api-keys/save",
-            json={"entries": [{"key": "TEST_KEY", "value": 123}]},
-        )
-        assert resp.status_code == 400
-        data = resp.get_json()
-        assert data["success"] is False
-        assert data["error"] == API_KEY_VALIDATION_ERROR
-
-    def test_non_dict_entry_returns_400(self, client, tmp_path, monkeypatch):
-        env_path = tmp_path / "test.env"
-        env_path.write_text("")
-        monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_path))
-        resp = client.post(
-            "/api-keys/save",
-            json={"entries": ["not_a_dict"]},
-        )
-        assert resp.status_code == 400
-        data = resp.get_json()
-        assert data["success"] is False
-
-    def test_non_string_key_returns_400(self, client, tmp_path, monkeypatch):
-        env_path = tmp_path / "test.env"
-        env_path.write_text("")
-        monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_path))
-        resp = client.post(
-            "/api-keys/save",
-            json={"entries": [{"key": 999, "value": "ok"}]},
-        )
-        assert resp.status_code == 400
-
-    def test_keep_existing_with_none_value_does_not_crash(
-        self, client, tmp_path, monkeypatch
-    ):
-        """When .env has a malformed line that parses as None, keepExisting should not 500."""
-        env_path = tmp_path / ".env"
-        # dotenv_values returns None for keys without values
-        env_path.write_text("BROKEN_KEY\n")
-        monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_path))
-        resp = client.post(
-            "/api-keys/save",
-            json={"entries": [{"key": "BROKEN_KEY", "keepExisting": True}]},
-        )
-        # Should succeed (200) or validate (400), but never 500
-        assert resp.status_code in {200, 400, 422}
-
 
 # ---------------------------------------------------------------------------
 # JTN-136: Settings import with invalid uploaded JSON

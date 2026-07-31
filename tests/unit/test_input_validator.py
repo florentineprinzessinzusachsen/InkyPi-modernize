@@ -2,8 +2,6 @@
 
 Covers:
 - ValidationError
-- validate_int_range
-- sanitize_for_log (alias for sanitize_log_field)
 - validate_json_schema
 """
 
@@ -11,12 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from utils.form_utils import (
-    ValidationError,
-    sanitize_for_log,
-    validate_int_range,
-    validate_json_schema,
-)
+from utils.form_utils import ValidationError, validate_json_schema
 
 # ---------------------------------------------------------------------------
 # ValidationError
@@ -46,92 +39,6 @@ class TestValidationError:
             raise ValidationError("out of range", field="saturation")
         assert exc_info.value.field == "saturation"
         assert "out of range" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
-# validate_int_range
-# ---------------------------------------------------------------------------
-
-
-class TestValidateIntRange:
-    def test_valid_value_at_min(self):
-        assert validate_int_range(1, field="cycle_minutes", min=1, max=1440) == 1
-
-    def test_valid_value_at_max(self):
-        assert validate_int_range(1440, field="cycle_minutes", min=1, max=1440) == 1440
-
-    def test_valid_value_in_middle(self):
-        assert validate_int_range(60, field="cycle_minutes", min=1, max=1440) == 60
-
-    def test_value_as_string(self):
-        # Accepts numeric strings
-        assert validate_int_range("30", field="minutes", min=1, max=100) == 30
-
-    def test_below_min_raises(self):
-        with pytest.raises(ValidationError) as exc_info:
-            validate_int_range(0, field="cycle_minutes", min=1, max=1440)
-        assert exc_info.value.field == "cycle_minutes"
-        assert "1" in exc_info.value.message
-        assert "1440" in exc_info.value.message
-
-    def test_above_max_raises(self):
-        with pytest.raises(ValidationError) as exc_info:
-            validate_int_range(1441, field="cycle_minutes", min=1, max=1440)
-        assert exc_info.value.field == "cycle_minutes"
-
-    def test_non_numeric_raises(self):
-        with pytest.raises(ValidationError) as exc_info:
-            validate_int_range("abc", field="interval", min=1, max=100)
-        assert exc_info.value.field == "interval"
-        assert "integer" in exc_info.value.message.lower()
-
-    def test_none_raises(self):
-        with pytest.raises(ValidationError):
-            validate_int_range(None, field="interval", min=1, max=100)
-
-    def test_float_truncates_and_validates(self):
-        # int(3.9) == 3, which is in [1, 10]
-        assert validate_int_range(3.9, field="val", min=1, max=10) == 3
-
-    def test_negative_range(self):
-        assert validate_int_range(-5, field="temp", min=-10, max=0) == -5
-
-    def test_zero_range(self):
-        assert validate_int_range(5, field="val", min=5, max=5) == 5
-
-    def test_exactly_boundary_passes(self):
-        assert validate_int_range(10, field="v", min=1, max=10) == 10
-
-
-# ---------------------------------------------------------------------------
-# sanitize_for_log (canonical alias)
-# ---------------------------------------------------------------------------
-
-
-class TestSanitizeForLog:
-    def test_is_same_as_sanitize_log_field(self):
-        from utils.form_utils import sanitize_log_field
-
-        assert sanitize_for_log is sanitize_log_field
-
-    def test_strips_newlines(self):
-        assert sanitize_for_log("hello\nworld") == "helloworld"
-
-    def test_strips_carriage_return(self):
-        assert sanitize_for_log("hello\rworld") == "helloworld"
-
-    def test_strips_null_byte(self):
-        assert sanitize_for_log("hello\x00world") == "helloworld"
-
-    def test_truncates(self):
-        long_str = "x" * 500
-        assert len(sanitize_for_log(long_str)) == 200
-
-    def test_coerces_non_string(self):
-        assert sanitize_for_log(42) == "42"
-
-    def test_empty_string(self):
-        assert sanitize_for_log("") == ""
 
 
 # ---------------------------------------------------------------------------

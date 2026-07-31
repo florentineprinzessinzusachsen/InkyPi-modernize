@@ -51,11 +51,11 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
 
     Rewritten for the unified card-based API-keys page (the separate
     "generic" list-row UI/`/api-keys/save` JSON flow this test used to drive
-    was merged away; `/api-keys/save` itself still exists as a real route
-    with its own coverage in test_apikeys_blueprint.py/test_apikeys_xss.py,
-    it's just no longer what this page's own UI calls). The real UI now
-    saves via a single form POST to /settings/save_api_keys and deletes
-    immediately (no separate "Save" click needed) via /settings/delete_api_key.
+    was merged away; `/api-keys/save` itself has since been removed entirely
+    as dead UI surface - see test_apikeys_blueprint.py's module docstring).
+    The real UI saves via a single form POST to /settings/save_api_keys and
+    deletes immediately (no separate "Save" click needed) via
+    /settings/delete_api_key.
     """
     from tests.integration.browser_helpers import navigate_and_wait
 

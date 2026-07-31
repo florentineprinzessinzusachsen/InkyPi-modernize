@@ -465,18 +465,6 @@ def service_worker() -> Any:
     return response
 
 
-# Serve static assets from src/static for test and dev environments
-@main_bp.route("/static/<path:filename>", methods=["GET"])  # type: ignore
-def static_files(filename: str) -> Any:
-    try:
-        static_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "static")
-        )
-        return send_from_directory(static_dir, filename)
-    except Exception:
-        return ("Not found", 404)
-
-
 @main_bp.record  # type: ignore
 def _configure_app_static(state: Any) -> None:
     """Ensure Flask's built-in static route serves from src/static for tests/dev."""

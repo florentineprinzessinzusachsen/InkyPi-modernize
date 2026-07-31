@@ -62,6 +62,7 @@ from plugins.plugin_registry import load_plugins, pop_hot_reload_info
 from refresh_task import RefreshTask
 from utils.app_utils import generate_startup_image, get_ip_address
 from utils.config_schema import ConfigValidationError
+from utils.http_utils import env_bool as _env_bool
 from utils.i18n import init_i18n
 from utils.sri import init_sri
 
@@ -97,7 +98,6 @@ logger = logging.getLogger(__name__)
 # Module-level runtime config (env-derived; main() may overwrite)
 # ---------------------------------------------------------------------------
 
-_TRUTHY = frozenset({"1", "true", "yes"})
 _DEFAULT_MAX_UPLOAD = 10 * 1024 * 1024
 _DEFAULT_WEB_THREADS = 2
 _DEFAULT_WEB_THREADS_DEV = 8
@@ -202,11 +202,6 @@ def _get_web_threads() -> int:
         )
         return default
     return max(1, value)
-
-
-def _env_bool(name: str, default: str = "") -> bool:
-    """Return True when the environment variable *name* holds a truthy value."""
-    return os.getenv(name, default).strip().lower() in _TRUTHY
 
 
 def _env_dev_mode() -> bool:

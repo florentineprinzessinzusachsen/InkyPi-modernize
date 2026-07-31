@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 from utils.request_models import (
-    parse_api_keys_save_request,
     parse_device_cycle_request,
     parse_playlist_create_request,
     parse_playlist_name_request,
@@ -124,24 +123,6 @@ def test_parse_playlist_update_request_rejects_non_object_payload() -> None:
     assert parsed is None
     assert error is not None
     assert error.message == "Invalid JSON data"
-
-
-def test_parse_api_keys_save_request_accepts_entries_list() -> None:
-    parsed, error = parse_api_keys_save_request(
-        {"entries": [{"key": "MY_KEY", "value": "secret"}]}
-    )
-
-    assert error is None
-    assert parsed is not None
-    assert parsed.entries == [{"key": "MY_KEY", "value": "secret"}]
-
-
-def test_parse_api_keys_save_request_rejects_non_list_entries() -> None:
-    parsed, error = parse_api_keys_save_request({"entries": "bad"})
-
-    assert parsed is None
-    assert error is not None
-    assert error.field == "entries"
 
 
 def test_parse_plugin_order_request_returns_string_order() -> None:

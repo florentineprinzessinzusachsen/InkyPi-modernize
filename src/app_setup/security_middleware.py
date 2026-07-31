@@ -23,6 +23,7 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from app_setup.compression import apply_response_compression
 from app_setup.smoke import SMOKE_RENDER_PATH, smoke_render_enabled
 from config import Config
+from utils.http_utils import env_bool as _env_bool
 from utils.http_utils import json_error
 from utils.rate_limit import (
     TokenBucket,
@@ -50,8 +51,6 @@ _RATE_EXEMPT = frozenset({"/healthz", "/readyz", "/api/csp-report"})
 _MUTATE_WINDOW = 60  # seconds
 _MUTATE_MAX = 60  # requests per IP per window
 
-_TRUTHY = frozenset({"1", "true", "yes"})
-
 #: Default allow-list of hostnames that may appear in a redirect ``Location``
 #: header when upgrading HTTP to HTTPS. Operators can override this via the
 #: ``INKYPI_ALLOWED_HOSTS`` env var (comma-separated). Only requests whose
@@ -60,10 +59,6 @@ _TRUTHY = frozenset({"1", "true", "yes"})
 #: open-redirect attacks via spoofed ``Host`` headers (JTN-317, CodeQL
 #: ``py/url-redirection`` alert #52).
 _DEFAULT_ALLOWED_HOSTS = "inkypi.local,localhost,127.0.0.1"
-
-
-def _env_bool(name: str, default: str = "") -> bool:
-    return os.getenv(name, default).strip().lower() in _TRUTHY
 
 
 def _load_allowed_hosts() -> frozenset[str]:
