@@ -217,6 +217,13 @@ class TestFallbackImageOnFailure:
             first_arg, Image.Image
         ), f"Expected PIL Image to be passed to display_image, got {type(first_arg)}"
 
+        # utils.refresh_stats reads history_meta["status"] to separate
+        # successes from failures for the dashboard's Refreshes/Errors KPIs.
+        history_meta = call_args[1].get("history_meta")
+        assert history_meta is not None
+        assert history_meta["status"] == "failure"
+        assert history_meta["error_class"] == "ValueError"
+
 
 # ---------------------------------------------------------------------------
 # Circuit-breaker persistence to disk

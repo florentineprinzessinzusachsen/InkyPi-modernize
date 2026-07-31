@@ -115,10 +115,15 @@ def test_display_pipeline_success_records_metrics_and_stage(
         plugin_id="clock",
         instance_name=None,
         request_id="request-1",
+        generate_ms=150,
     )
 
     assert (display_ms, preprocess_ms) == (21, 8)
     assert display_manager.calls[0]["history_meta"]["plugin_id"] == "clock"
+    # utils.refresh_stats reads these to compute the dashboard's
+    # Refreshes/Errors/Avg-render KPIs.
+    assert display_manager.calls[0]["history_meta"]["status"] == "success"
+    assert display_manager.calls[0]["history_meta"]["duration_ms"] == 150
     assert stages == [
         ("refresh-1", "display_pipeline", 21, None),
         ("refresh-1", "display_driver", 21, {"driver": "mock"}),
@@ -244,3 +249,9 @@ def test_display_pipeline_failure_records_health_and_progress_error(
         "Saving image",
         "Image saved; writing to display",
     ]
+    # The sidecar is written (optimistically, as "success") before the
+    # hardware push below it in the call stack, so a display-hardware
+    # failure here does not retroactively flip it - see push_to_display's
+    # docstring-adjacent comment. push_fallback_image separately records a
+    # "failure" sidecar for the same refresh_action.
+    assert display_manager.calls[0]["history_meta"]["status"] == "success"

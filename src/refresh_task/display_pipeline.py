@@ -23,7 +23,7 @@ class SupportsDisplayPipeline(Protocol):
         self,
         image: Image.Image,
         image_settings: object = ...,
-        history_meta: dict[str, str | None] | None = ...,
+        history_meta: dict[str, str | int | None] | None = ...,
         on_image_saved: Callable[[Mapping[str, Any]], None] | None = ...,
     ) -> object: ...
 
@@ -63,6 +63,7 @@ class DisplayPipeline:
         instance_name: str | None,
         request_id: str | None,
         manual_request: ManualUpdateRequest | None,
+        generate_ms: int | None = None,
     ) -> tuple[int | None, int | None]:
         """Push the image to the display, or skip when the cache is warm."""
         if not used_cached:
@@ -76,6 +77,7 @@ class DisplayPipeline:
                 instance_name=instance_name,
                 request_id=request_id,
                 manual_request=manual_request,
+                generate_ms=generate_ms,
             )
         logger.info(
             f"Image already displayed, skipping refresh. | refresh_info: {refresh_info}"
@@ -104,10 +106,21 @@ class DisplayPipeline:
         instance_name: str | None,
         request_id: str | None,
         manual_request: ManualUpdateRequest | None = None,
+        generate_ms: int | None = None,
     ) -> tuple[int | None, int | None]:
         """Push image to the display hardware and record display benchmark stages."""
         logger.info(f"Updating display. | refresh_info: {refresh_info}")
-        history_meta = self.housekeeper.build_history_meta(refresh_action)
+        # Written optimistically as "success" here, before the display push
+        # below — the sidecar has to be on disk before the (slow) hardware
+        # write so a manual-update caller can be released early (JTN-786), so
+        # a display-hardware failure below still writes this same sidecar as
+        # "success" in addition to the "failure" one push_fallback_image
+        # writes for the same refresh_action. Image generation genuinely did
+        # succeed to get this far, so it is not mislabeled - just possibly
+        # double-counted on the rare hardware-failure path.
+        history_meta = self.housekeeper.build_history_meta(
+            refresh_action, duration_ms=generate_ms
+        )
         logger.info(
             "plugin_lifecycle: display_start",
             extra={

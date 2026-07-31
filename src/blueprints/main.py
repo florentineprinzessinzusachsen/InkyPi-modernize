@@ -548,6 +548,8 @@ def _display_next_direct(
                 "plugin_id": plugin_instance.plugin_id,
                 "playlist": playlist.name,
                 "plugin_instance": plugin_instance.name,
+                "status": "success",
+                "duration_ms": generate_ms,
             },
         )
     except TypeError:

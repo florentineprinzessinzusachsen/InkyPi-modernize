@@ -593,6 +593,7 @@ class RefreshTask:
             instance_name=instance_name,
             request_id=request_id,
             manual_request=manual_request,
+            generate_ms=generate_ms,
         )
 
         request_ms = int((perf_counter() - _t_req_start) * 1000)
@@ -634,6 +635,7 @@ class RefreshTask:
         instance_name: str | None,
         request_id: str | None,
         manual_request: ManualUpdateRequest | None,
+        generate_ms: int | None = None,
     ) -> tuple[int | None, int | None]:
         """Push the image to the display, or skip when the cache is warm.
 
@@ -652,6 +654,7 @@ class RefreshTask:
                 instance_name=instance_name,
                 request_id=request_id,
                 manual_request=manual_request,
+                generate_ms=generate_ms,
             )
         return self.display_pipeline.push_or_skip_display(
             used_cached=used_cached,
@@ -664,6 +667,7 @@ class RefreshTask:
             instance_name=instance_name,
             request_id=request_id,
             manual_request=manual_request,
+            generate_ms=generate_ms,
         )
 
     def _push_to_display(
@@ -677,6 +681,7 @@ class RefreshTask:
         instance_name: str | None,
         request_id: str | None,
         manual_request: ManualUpdateRequest | None = None,
+        generate_ms: int | None = None,
     ) -> tuple[int | None, int | None]:
         """Push image to the display hardware and record benchmark stages."""
         return self.display_pipeline.push_to_display(
@@ -689,6 +694,7 @@ class RefreshTask:
             instance_name=instance_name,
             request_id=request_id,
             manual_request=manual_request,
+            generate_ms=generate_ms,
         )
 
     def _save_benchmark(

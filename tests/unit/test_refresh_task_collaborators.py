@@ -79,7 +79,48 @@ def test_refresh_housekeeper_build_history_meta_prefers_explicit_instance() -> N
         "plugin_id": "weather",
         "playlist": "Default",
         "plugin_instance": "override",
+        "status": "success",
     }
+
+
+def test_refresh_housekeeper_build_history_meta_defaults_to_success() -> None:
+    """utils.refresh_stats reads "status" to split successes from failures for
+    the dashboard's Refreshes/Errors KPIs — a missing field here meant every
+    sidecar silently counted as a failure (dashboard errors == refreshes)."""
+    history_meta = RefreshHousekeeper.build_history_meta(
+        _StaticRefreshAction(
+            {
+                "refresh_type": "Playlist",
+                "plugin_id": "weather",
+                "playlist": "Default",
+                "plugin_instance": "morning",
+            }
+        )
+    )
+
+    assert history_meta["status"] == "success"
+    assert "error_class" not in history_meta
+    assert "duration_ms" not in history_meta
+
+
+def test_refresh_housekeeper_build_history_meta_records_failure_and_duration() -> None:
+    history_meta = RefreshHousekeeper.build_history_meta(
+        _StaticRefreshAction(
+            {
+                "refresh_type": "Manual Update",
+                "plugin_id": "weather",
+                "playlist": None,
+                "plugin_instance": None,
+            }
+        ),
+        status="failure",
+        error_class="RuntimeError",
+        duration_ms=1234,
+    )
+
+    assert history_meta["status"] == "failure"
+    assert history_meta["error_class"] == "RuntimeError"
+    assert history_meta["duration_ms"] == 1234
 
 
 def test_plugin_health_tracker_update_populates_state_before_failure_hook(

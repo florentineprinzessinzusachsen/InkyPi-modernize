@@ -904,6 +904,8 @@ def _update_now_direct(
             "plugin_id": plugin_id,
             "playlist": None,
             "plugin_instance": None,
+            "status": "success",
+            "duration_ms": generate_ms,
         }
         _safe_display_image(
             display_manager,
@@ -963,6 +965,7 @@ def _push_update_now_fallback(
                 "plugin_id": plugin_id,
                 "playlist": None,
                 "plugin_instance": None,
+                "status": "failure",
                 "error_class": type(exc).__name__,
             }
             if record_history
@@ -1053,6 +1056,8 @@ def _run_update_now(
                 "plugin_id": plugin_id,
                 "playlist": None,
                 "plugin_instance": None,
+                "status": "success",
+                "duration_ms": generate_ms,
             }
             _safe_display_image(
                 display_manager,

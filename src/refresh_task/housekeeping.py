@@ -34,7 +34,7 @@ class SupportsDisplayImage(Protocol):
         self,
         image: Image.Image,
         image_settings: object,
-        history_meta: dict[str, str | None],
+        history_meta: dict[str, str | int | None],
     ) -> object: ...
 
 
@@ -93,10 +93,20 @@ class RefreshHousekeeper:
         refresh_action: RefreshActionLike,
         *,
         instance_name: str | None = None,
-    ) -> dict[str, str | None]:
-        """Build a consistent history metadata payload from a refresh action."""
+        status: str = "success",
+        error_class: str | None = None,
+        duration_ms: int | None = None,
+    ) -> dict[str, str | int | None]:
+        """Build a consistent history metadata payload from a refresh action.
+
+        ``status`` defaults to "success" since most callers build this for the
+        happy path; the fallback/error path passes ``status="failure"``
+        explicitly. ``utils.refresh_stats`` reads this field to separate
+        successes from failures for the dashboard's Refreshes/Errors KPIs —
+        without it, every sidecar was silently counted as a failure.
+        """
         refresh_info = refresh_action.get_refresh_info()
-        return {
+        meta: dict[str, str | int | None] = {
             "refresh_type": refresh_info.get("refresh_type"),
             "plugin_id": refresh_info.get("plugin_id"),
             "playlist": refresh_info.get("playlist"),
@@ -105,7 +115,13 @@ class RefreshHousekeeper:
                 if instance_name is not None
                 else refresh_info.get("plugin_instance")
             ),
+            "status": status,
         }
+        if error_class is not None:
+            meta["error_class"] = error_class
+        if duration_ms is not None:
+            meta["duration_ms"] = duration_ms
+        return meta
 
     def stale_display_path(self) -> str | None:
         """Return the currently displayed image path if one exists."""
@@ -141,7 +157,10 @@ class RefreshHousekeeper:
                 fallback,
                 image_settings=plugin_config.get("image_settings", []),
                 history_meta=self.build_history_meta(
-                    refresh_action, instance_name=instance_name
+                    refresh_action,
+                    instance_name=instance_name,
+                    status="failure",
+                    error_class=type(exc).__name__,
                 ),
             )
             logger.info(
