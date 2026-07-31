@@ -23,7 +23,7 @@ pytest-flask>=1.3,<2
 hypothesis>=6.0,<7
 
 # Type checking
-mypy>=1.0,<2
+mypy>=2.3.0,<3
 # Pin types-requests to preserve PR #301 (JTN-525) precision.
 types-requests==2.32.0.20241016
 
