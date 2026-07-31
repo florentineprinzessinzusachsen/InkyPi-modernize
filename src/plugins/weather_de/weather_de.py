@@ -26,13 +26,14 @@ from plugins.base_plugin.base_plugin import BasePlugin
 from plugins.base_plugin.settings_schema import field, option, row, schema, section, widget
 from PIL import Image
 import os
-import requests
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone, date
 from astral import moon, Observer
 from astral.sun import sun as astral_sun
 from utils.time_utils import get_timezone
 from utils.app_utils import resolve_path
+from utils.http_client import get_http_session
 from io import BytesIO
 import math
 
@@ -533,6 +534,17 @@ class WeatherDe(BasePlugin):
         template_params['style_settings'] = True
         return template_params
 
+    def api_key_required_for_settings(self, settings):
+        """Only OpenWeatherMap needs a key - Open-Meteo/Bright Sky are keyless.
+
+        Called by the settings-page route (see blueprints/plugin.py) once the
+        instance's actual saved settings are known, to downgrade the
+        unconditional `required: True` above for instances that aren't
+        actually using OpenWeatherMap. Mirrors the same default/condition
+        generate_image() uses below.
+        """
+        return settings.get('weatherProvider', 'OpenMeteo') == 'OpenWeatherMap'
+
     def generate_image(self, settings, device_config):
         lat = float(settings.get('latitude'))
         long = float(settings.get('longitude'))
@@ -553,15 +565,25 @@ class WeatherDe(BasePlugin):
         time_format = device_config.get_config("time_format", default="12h")
         tz = get_timezone(timezone)
 
+        # Each provider branch below makes 2-3 independent HTTP calls (none
+        # depends on another's response - they're only combined afterward in
+        # the parse_*_data() call) that were previously issued one at a
+        # time; running them concurrently cuts that provider's total wait to
+        # its slowest single call instead of the sum of all of them.
         try:
             if weather_provider == "OpenWeatherMap":
                 api_key = device_config.load_env_key("OPEN_WEATHER_MAP_SECRET")
                 if not api_key:
                     raise RuntimeError("Open Weather Map API Key not configured.")
-                weather_data = self.get_weather_data(api_key, units, lat, long)
-                aqi_data = self.get_air_quality(api_key, lat, long)
-                if settings.get('titleSelection', 'location') == 'location':
-                    title = self.get_location(api_key, lat, long)
+                want_location = settings.get('titleSelection', 'location') == 'location'
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    weather_future = executor.submit(self.get_weather_data, api_key, units, lat, long)
+                    aqi_future = executor.submit(self.get_air_quality, api_key, lat, long)
+                    location_future = executor.submit(self.get_location, api_key, lat, long) if want_location else None
+                    weather_data = weather_future.result()
+                    aqi_data = aqi_future.result()
+                    if location_future is not None:
+                        title = location_future.result()
                 if settings.get('weatherTimeZone', 'locationTimeZone') == 'locationTimeZone':
                     logger.info("Using location timezone for OpenWeatherMap data.")
                     wtz = self.parse_timezone(weather_data)
@@ -574,14 +596,21 @@ class WeatherDe(BasePlugin):
                 model = settings.get('openMeteoModel', 'best_match')
                 if model not in OPEN_METEO_MODELS:
                     model = 'best_match'
-                weather_data = self.get_open_meteo_data(lat, long, units, forecast_days + 1, model)
-                aqi_data = self.get_open_meteo_air_quality(lat, long)
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    weather_future = executor.submit(self.get_open_meteo_data, lat, long, units, forecast_days + 1, model)
+                    aqi_future = executor.submit(self.get_open_meteo_air_quality, lat, long)
+                    weather_data = weather_future.result()
+                    aqi_data = aqi_future.result()
                 template_params = self.parse_open_meteo_data(weather_data, aqi_data, tz, units, time_format, lat, language)
             elif weather_provider == "BrightSky":
                 forecast_days = 7
-                current_data = self.get_bright_sky_current(lat, long)
-                forecast_data = self.get_bright_sky_forecast(lat, long, forecast_days + 1)
-                aqi_data = self.get_open_meteo_air_quality(lat, long)
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    current_future = executor.submit(self.get_bright_sky_current, lat, long)
+                    forecast_future = executor.submit(self.get_bright_sky_forecast, lat, long, forecast_days + 1)
+                    aqi_future = executor.submit(self.get_open_meteo_air_quality, lat, long)
+                    current_data = current_future.result()
+                    forecast_data = forecast_future.result()
+                    aqi_data = aqi_future.result()
                 template_params = self.parse_bright_sky_data(current_data, forecast_data.get("weather", []), aqi_data, tz, units, time_format, lat, long, language)
             else:
                 raise RuntimeError(f"Unknown weather provider: {weather_provider}")
@@ -1558,7 +1587,7 @@ class WeatherDe(BasePlugin):
 
     def get_weather_data(self, api_key, units, lat, long):
         url = WEATHER_URL.format(lat=lat, long=long, units=units, api_key=api_key)
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve weather data: {response.content}")
             raise RuntimeError("Failed to retrieve weather data.")
@@ -1567,7 +1596,7 @@ class WeatherDe(BasePlugin):
 
     def get_air_quality(self, api_key, lat, long):
         url = AIR_QUALITY_URL.format(lat=lat, long=long, api_key=api_key)
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to get air quality data: {response.content}")
@@ -1577,7 +1606,7 @@ class WeatherDe(BasePlugin):
 
     def get_location(self, api_key, lat, long):
         url = GEOCODING_URL.format(lat=lat, long=long, api_key=api_key)
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to get location: {response.content}")
@@ -1591,7 +1620,7 @@ class WeatherDe(BasePlugin):
     def get_open_meteo_data(self, lat, long, units, forecast_days, model="best_match"):
         unit_params = OPEN_METEO_UNIT_PARAMS[units]
         url = OPEN_METEO_FORECAST_URL.format(lat=lat, long=long, forecast_days=forecast_days, model=model) + f"&{unit_params}"
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Open-Meteo weather data: {response.content}")
@@ -1601,7 +1630,7 @@ class WeatherDe(BasePlugin):
 
     def get_open_meteo_air_quality(self, lat, long):
         url = OPEN_METEO_AIR_QUALITY_URL.format(lat=lat, long=long)
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Open-Meteo air quality data: {response.content}")
             raise RuntimeError("Failed to retrieve Open-Meteo air quality data.")
@@ -1610,7 +1639,7 @@ class WeatherDe(BasePlugin):
 
     def get_bright_sky_current(self, lat, long):
         url = BRIGHT_SKY_CURRENT_URL.format(lat=lat, long=long)
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Bright Sky current weather: {response.content}")
             raise RuntimeError("Failed to retrieve Bright Sky current weather.")
@@ -1621,7 +1650,7 @@ class WeatherDe(BasePlugin):
         today = date.today()
         last = today + timedelta(days=days)
         url = BRIGHT_SKY_WEATHER_URL.format(lat=lat, long=long, date=today.isoformat(), last_date=last.isoformat())
-        response = requests.get(url, timeout=30)
+        response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Bright Sky forecast: {response.content}")
             raise RuntimeError("Failed to retrieve Bright Sky forecast.")

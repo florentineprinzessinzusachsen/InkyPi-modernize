@@ -100,6 +100,7 @@ logger = logging.getLogger(__name__)
 _TRUTHY = frozenset({"1", "true", "yes"})
 _DEFAULT_MAX_UPLOAD = 10 * 1024 * 1024
 _DEFAULT_WEB_THREADS = 2
+_DEFAULT_WEB_THREADS_DEV = 8
 
 
 def _parse_refresh_datetime(iso_value: object) -> datetime | None:
@@ -169,21 +170,37 @@ def _format_sidebar_load_average() -> str | None:
 def _get_web_threads() -> int:
     """Return the waitress thread count, env-configurable via INKYPI_WEB_THREADS.
 
-    Defaults to 2 (suitable for Pi Zero 2 W's 425 MB RAM). Users with more
-    headroom can set INKYPI_WEB_THREADS=4 or higher via a systemd drop-in.
+    Defaults to 2 in production (suitable for Pi Zero 2 W's 425 MB RAM).
+    Users with more headroom can set INKYPI_WEB_THREADS=4 or higher via a
+    systemd drop-in.
+
+    Dev mode (--dev / INKYPI_ENV=dev) defaults higher (8) instead: waitress
+    is a fixed-size thread pool, and two things routinely occupy a thread for
+    a long time even at 1 user - the dashboard keeps an SSE connection open
+    for as long as the tab is (blueprints/events.py's /api/events), and any
+    synchronous plugin render (Preview, the on-demand instance-image cache
+    fill, etc.) blocks its own thread for the render's full duration, which
+    can be several seconds for a Chromium-backed plugin. At the production
+    default of 2, one open dashboard tab plus one slow render is already
+    enough to leave zero threads for anything else - every other request
+    (any page, in any tab) just hangs with no response at all until one
+    frees up. That's a real, observed failure mode in dev, not a Pi concern,
+    so it gets a roomier default here; explicit INKYPI_WEB_THREADS always
+    wins over both defaults.
     """
     raw = os.environ.get("INKYPI_WEB_THREADS")
     if raw is None or raw == "":
-        return _DEFAULT_WEB_THREADS
+        return _DEFAULT_WEB_THREADS_DEV if DEV_MODE else _DEFAULT_WEB_THREADS
     try:
         value = int(raw)
     except (ValueError, TypeError):
+        default = _DEFAULT_WEB_THREADS_DEV if DEV_MODE else _DEFAULT_WEB_THREADS
         logger.warning(
             "Invalid INKYPI_WEB_THREADS=%r, falling back to default (%d)",
             raw,
-            _DEFAULT_WEB_THREADS,
+            default,
         )
-        return _DEFAULT_WEB_THREADS
+        return default
     return max(1, value)
 
 

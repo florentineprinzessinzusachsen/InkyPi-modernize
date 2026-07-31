@@ -380,10 +380,75 @@ def compute_image_hash(image: Image.Image) -> str:
     return hashlib.sha256(img_bytes).hexdigest()
 
 
+_BROWSER_CANDIDATES = [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "chromium",
+    "chromium-headless-shell",
+    "google-chrome",
+]
+
+
+_CHROMIUM_RESOURCE_FLAGS = [
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--use-gl=swiftshader",
+    "--hide-scrollbars",
+    "--in-process-gpu",
+    "--js-flags=--jitless",
+    "--disable-zero-copy",
+    "--disable-gpu-memory-buffer-compositor-resources",
+    "--disable-extensions",
+    "--disable-plugins",
+    "--mute-audio",
+    "--no-sandbox",
+]
+_CHROMIUM_FILE_ACCESS_FLAGS = [
+    # Allow loading local file-based resources referenced by templates
+    "--allow-file-access-from-files",
+    "--enable-local-file-accesses",
+    # Relax same-origin so file:// linked assets load predictably
+    "--disable-web-security",
+]
+
+
+def _find_chromium_executable() -> str | None:
+    """Return the resolved path of the first available browser binary, or None.
+
+    Shared by both screenshot backends below, so the Playwright path and the
+    CLI-subprocess fallback path agree on which browser actually exists on
+    this machine, instead of Playwright separately resolving (and
+    version-pin-locking to) its own bundled download - see
+    _playwright_screenshot_html for why that matters.
+    """
+    for browser in _BROWSER_CANDIDATES:
+        if os.path.exists(browser):
+            return browser
+        resolved = shutil.which(browser)
+        if resolved:
+            return resolved
+    return None
+
+
 def _playwright_screenshot_html(
     html_file_path: str, dimensions: tuple[int, int]
 ) -> Image.Image | None:
-    """Try to render a local HTML file using Playwright (if available)."""
+    """Try to render a local HTML file using Playwright (if available).
+
+    Passes executable_path explicitly (resolved the same way the CLI
+    fallback below finds its browser) instead of letting Playwright fall
+    back to its own bundled-browser resolution, which is pinned to a
+    specific downloaded revision. If that pinned revision isn't the one
+    actually present in the local Playwright cache (e.g. the `playwright`
+    pip package was upgraded without rerunning `playwright install`, or vice
+    versa) launch() raises immediately and every single render silently
+    falls through to the slower CLI-subprocess path below - invisibly, since
+    the exception is swallowed. Reusing our own resolution here means the
+    faster, more capable Playwright path (proper "wait for images to load"
+    behavior, not just a fixed screenshot timing) is used whenever *any*
+    known-working browser binary is present, matching the CLI path's
+    likelihood of success instead of a narrower one.
+    """
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -393,13 +458,13 @@ def _playwright_screenshot_html(
     try:
         with sync_playwright() as p:
             try:
-                browser = p.chromium.launch(
-                    args=[
-                        "--allow-file-access-from-files",
-                        "--enable-local-file-accesses",
-                        "--disable-web-security",
-                    ]
-                )
+                launch_kwargs: dict[str, Any] = {
+                    "args": _CHROMIUM_RESOURCE_FLAGS + _CHROMIUM_FILE_ACCESS_FLAGS,
+                }
+                executable_path = _find_chromium_executable()
+                if executable_path:
+                    launch_kwargs["executable_path"] = executable_path
+                browser = p.chromium.launch(**launch_kwargs)
             except Exception:
                 return None
             try:
@@ -500,49 +565,25 @@ def _find_browser_command(
 ) -> list[str] | None:
     """Return the browser subprocess command for a headless screenshot, or None.
 
-    Iterates through known browser binary paths/names and returns a fully-formed
-    argument list for the first one that exists on the system.  Returns ``None``
-    when no suitable browser is found.
+    Uses _find_chromium_executable() (shared with the Playwright path above)
+    to resolve the binary.  Returns ``None`` when no suitable browser is found.
     """
-    browsers = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "chromium",
-        "chromium-headless-shell",
-        "google-chrome",
+    browser = _find_chromium_executable()
+    if not browser:
+        return None
+
+    command = [
+        browser,
+        "--headless",
+        f"--screenshot={img_file_path}",
+        f"--window-size={dimensions[0]},{dimensions[1]}",
+        *_CHROMIUM_RESOURCE_FLAGS,
+        *_CHROMIUM_FILE_ACCESS_FLAGS,
+        target,
     ]
-
-    for browser in browsers:
-        if os.path.exists(browser) or shutil.which(browser):
-            command = [
-                browser,
-                "--headless",
-                f"--screenshot={img_file_path}",
-                f"--window-size={dimensions[0]},{dimensions[1]}",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--use-gl=swiftshader",
-                "--hide-scrollbars",
-                "--in-process-gpu",
-                "--js-flags=--jitless",
-                "--disable-zero-copy",
-                "--disable-gpu-memory-buffer-compositor-resources",
-                "--disable-extensions",
-                "--disable-plugins",
-                "--mute-audio",
-                "--no-sandbox",
-                # Allow loading local file-based resources referenced by templates
-                "--allow-file-access-from-files",
-                "--enable-local-file-accesses",
-                # Relax same-origin so file:// linked assets load predictably
-                "--disable-web-security",
-                target,
-            ]
-            if timeout_ms:
-                command.append(f"--timeout={timeout_ms}")
-            return command
-
-    return None
+    if timeout_ms:
+        command.append(f"--timeout={timeout_ms}")
+    return command
 
 
 def _tempfile_is_empty(img_file_path: str | None) -> bool:

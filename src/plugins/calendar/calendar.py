@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlparse
@@ -20,6 +21,7 @@ from plugins.base_plugin.settings_schema import (
     widget,
 )
 from plugins.calendar.constants import FONT_SIZES, LOCALE_GROUPS, LOCALE_MAP
+from utils.app_utils import resolve_path
 from utils.http_client import get_http_session
 
 logger = logging.getLogger(__name__)
@@ -326,6 +328,16 @@ class Calendar(BasePlugin):
             "font_scale": font_scale,
         }
 
+        # calendar.html references {{static_dir}}/scripts/calendar.min.js to load
+        # FullCalendar, but nothing ever set that variable - Chromium screenshots
+        # run via file:// with no Flask request context, so url_for() isn't
+        # available here either; resolve_path() + to_file_url() is the same
+        # mechanism render_image() already uses for local fonts/CSS. Without it
+        # FullCalendar never loads and the page renders as a blank white image
+        # with no error, since the failure is a browser-side ReferenceError
+        # invisible to the Python-side logs.
+        template_params["static_dir"] = self.to_file_url(resolve_path("static"))
+
         image = self.render_image(
             dimensions, "calendar.html", "calendar.css", template_params
         )
@@ -343,9 +355,18 @@ class Calendar(BasePlugin):
         end_range: datetime,
     ) -> list[dict[str, object]]:
         parsed_events: list[dict[str, object]] = []
+        pairs = list(zip(calendar_urls, colors, strict=False))
 
-        for calendar_url, color in zip(calendar_urls, colors, strict=False):
-            cal = self.fetch_calendar(calendar_url)
+        # Calendar fetches are pure network I/O against third-party servers
+        # (each one can easily take 1-3s+) and were previously done one at a
+        # time - with N calendars configured, total wait was N times the
+        # slowest server's latency instead of just the slowest one.
+        with ThreadPoolExecutor(max_workers=min(len(pairs), 8) or 1) as executor:
+            fetched_calendars = list(
+                executor.map(lambda pair: self.fetch_calendar(pair[0]), pairs)
+            )
+
+        for (_calendar_url, color), cal in zip(pairs, fetched_calendars, strict=True):
             events = recurring_ical_events.of(cal).between(start_range, end_range)
             contrast_color = self.get_contrast_color(color)
 

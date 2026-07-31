@@ -48,12 +48,14 @@ from plugins.base_plugin.settings_schema import (
 )
 from plugins.calendar_auth.constants import FONT_SIZES, LOCALE_GROUPS, LOCALE_MAP
 from PIL import ImageColor
+from concurrent.futures import ThreadPoolExecutor
 import icalendar
 import re
 import recurring_ical_events
 import logging
-import requests
 from datetime import datetime, timedelta
+from utils.app_utils import resolve_path
+from utils.http_client import get_http_session
 from utils.time_utils import get_timezone
 
 logger = logging.getLogger(__name__)
@@ -72,11 +74,10 @@ class CalendarAuth(BasePlugin):
                 ),
                 callout(
                     "Leave username blank for a calendar that doesn't need login. "
-                    "When a username is set, give that calendar a short credential "
-                    "label (letters/numbers/underscore only), then set its password "
-                    "under CALENDAR_AUTH_PASSWORD_<LABEL> in the Custom secrets "
-                    "section of the API keys page. The password itself is never "
-                    "entered here and never stored in this plugin's settings.",
+                    "If set, give that calendar a credential "
+                    "label (letters/numbers/underscore only), then set  "
+                    "CALENDAR_AUTH_PASSWORD_<LABEL> with the password as a custom secret "
+                    "on the API keys page.",
                 ),
             ),
             section(
@@ -299,6 +300,17 @@ class CalendarAuth(BasePlugin):
             "font_scale": FONT_SIZES.get(settings.get("fontSize", "normal"))
         }
 
+        # calendar_auth.html references {{static_dir}}/scripts/calendar.min.js to
+        # load FullCalendar, but nothing ever set that variable (same latent bug
+        # as the built-in calendar plugin it was cloned from). Chromium
+        # screenshots run via file:// with no Flask request context, so
+        # url_for() isn't available here either; resolve_path() + to_file_url()
+        # is the same mechanism render_image() already uses for local fonts/CSS.
+        # Without it FullCalendar never loads and the page renders as a blank
+        # white image with no error, since the failure is a browser-side
+        # ReferenceError invisible to the Python-side logs.
+        template_params["static_dir"] = self.to_file_url(resolve_path("static"))
+
         image = self.render_image(dimensions, "calendar_auth.html", "calendar_auth.css", template_params)
 
         if not image:
@@ -341,8 +353,24 @@ class CalendarAuth(BasePlugin):
     def fetch_ics_events(self, calendars, tz, start_range, end_range):
         parsed_events = []
 
-        for calendar_url, color, auth in calendars:
-            cal = self.fetch_calendar(calendar_url, auth)
+        # Calendar fetches are pure network I/O (each one measured 1-3s+
+        # against a slow remote server) and were previously done one at a
+        # time - with N calendars configured, that's N times the slowest
+        # server's latency instead of just the slowest one. The shared,
+        # connection-pooled session (same one calendar.py/other plugins
+        # use) also gets connection reuse for calendars on the same host
+        # (common - multiple calendars from one provider account), plus
+        # its built-in retry policy for free.
+        session = get_http_session()
+        with ThreadPoolExecutor(max_workers=min(len(calendars), 8) or 1) as executor:
+            fetched_calendars = list(
+                executor.map(
+                    lambda entry: self.fetch_calendar(entry[0], entry[2], session),
+                    calendars,
+                )
+            )
+
+        for (calendar_url, color, auth), cal in zip(calendars, fetched_calendars):
             events = recurring_ical_events.of(cal).between(start_range, end_range)
             contrast_color = self.get_contrast_color(color)
 
@@ -405,12 +433,13 @@ class CalendarAuth(BasePlugin):
             end = (dtstart + duration).isoformat()
         return start, end, all_day
 
-    def fetch_calendar(self, calendar_url, auth):
+    def fetch_calendar(self, calendar_url, auth, session=None):
         # workaround for webcal urls
         if calendar_url.startswith("webcal://"):
             calendar_url = calendar_url.replace("webcal://", "https://")
+        http = session or get_http_session()
         try:
-            response = requests.get(calendar_url, auth=auth, timeout=30)
+            response = http.get(calendar_url, auth=auth, timeout=30)
             response.raise_for_status()
             return icalendar.Calendar.from_ical(response.text)
         except Exception as e:

@@ -15,6 +15,7 @@ budget of the BVG/VBB APIs.
 from plugins.base_plugin.base_plugin import BasePlugin
 from plugins.base_plugin.settings_schema import schema, section, widget
 from utils.http_client import get_http_session
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import math
@@ -196,21 +197,33 @@ class Abfahrtzeiten(BasePlugin):
         stops = []
         any_succeeded = False
         session = get_http_session()
-        for group in stop_groups:
-            stop_result = {
-                "name": group["stopName"],
-                "provider": PROVIDER_LABELS.get(group["provider"], group["provider"]),
-                "departures": [],
-                "error": None,
-            }
+
+        def fetch_one(group):
             try:
-                rows = self._fetch_stop_departures(session, group)
-                stop_result["departures"] = rows
-                any_succeeded = True
+                return group, self._fetch_stop_departures(session, group), None
             except Exception as e:
                 logger.warning(f"Abfahrtzeiten: departures fetch failed for stop {group['stopId']} ({group['provider']}): {e}")
-                stop_result["error"] = "Departures unavailable"
-            stops.append(stop_result)
+                return group, [], "Departures unavailable"
+
+        # Each stop is an independent request to a (often different)
+        # transit API, previously fetched one at a time - with N stops
+        # configured, total wait was N times the slowest provider's
+        # latency instead of just the slowest one. Errors are still caught
+        # per-stop inside fetch_one, so one slow/broken stop can't cancel
+        # or fail any of the others - same isolation as the sequential
+        # version, just concurrent.
+        with ThreadPoolExecutor(max_workers=min(len(stop_groups), 8) or 1) as executor:
+            results = list(executor.map(fetch_one, stop_groups))
+
+        for group, rows, error in results:
+            stops.append({
+                "name": group["stopName"],
+                "provider": PROVIDER_LABELS.get(group["provider"], group["provider"]),
+                "departures": rows,
+                "error": error,
+            })
+            if error is None:
+                any_succeeded = True
         return stops, any_succeeded
 
     def _fetch_stop_departures(self, session, group):
