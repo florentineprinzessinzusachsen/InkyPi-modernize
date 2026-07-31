@@ -2,17 +2,33 @@
 
 from unittest.mock import patch
 
+from PIL import Image
+
+
+def _save_png(path, size=(10, 10), color="white"):
+    Image.new("RGB", size, color).save(path)
+
 
 def test_get_current_image_conditional_request(client, device_config_dev):
-    """Test get_current_image with If-Modified-Since header — 404 when no image exists."""
-    resp1 = client.get("/current-image")
-    assert resp1.status_code == 404  # No image exists in test fixture
+    """Test get_current_image with an If-Modified-Since header newer than the
+    file's mtime — the server should report 304 Not Modified."""
+    _save_png(device_config_dev.current_image_file)
+    resp1 = client.get(
+        "/api/current_image",
+        headers={"If-Modified-Since": "Sun, 01 Jan 2090 00:00:00 GMT"},
+    )
+    assert resp1.status_code == 304
 
 
 def test_get_current_image_no_conditional(client, device_config_dev):
-    """Test get_current_image without conditional headers — 404 when no image."""
-    resp = client.get("/current-image")
-    assert resp.status_code == 404
+    """Test get_current_image without conditional headers — 200 with image bytes
+    when an image exists."""
+    _save_png(device_config_dev.current_image_file)
+    resp = client.get("/api/current_image")
+    assert resp.status_code == 200
+    assert resp.content_type == "image/png"
+    assert "Last-Modified" in resp.headers
+    assert resp.data
 
 
 def test_refresh_info_with_exception(client, device_config_dev):
@@ -95,11 +111,13 @@ def test_static_files_route(client):
 
 
 def test_current_image_with_invalid_if_modified_since(client, device_config_dev):
-    """Test get_current_image with invalid If-Modified-Since header — 404 when no image."""
+    """Test get_current_image with an invalid If-Modified-Since header — parsing
+    fails and the image is served normally (200)."""
+    _save_png(device_config_dev.current_image_file)
     resp = client.get(
-        "/current-image", headers={"If-Modified-Since": "invalid-date-format"}
+        "/api/current_image", headers={"If-Modified-Since": "invalid-date-format"}
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
 
 
 def test_dashboard_renders(client, device_config_dev):

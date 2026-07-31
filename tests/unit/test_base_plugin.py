@@ -35,15 +35,17 @@ def test_generate_settings_template_uses_schema_when_available():
 def test_render_image_with_base_template(monkeypatch, tmp_path):
     # This test verifies that render_image works even if the plugin has no custom render dir
     # by relying on the autouse fixture that patches take_screenshot_html to a fake image.
+    import plugins.base_plugin.base_plugin as base_plugin_module
     from plugins.base_plugin.base_plugin import BasePlugin
 
-    # Create a minimal fake plugin id with no render/ directory
+    # Create a minimal fake plugin id with no render/ directory. get_plugin_dir()
+    # resolves plugin paths relative to the module-level PLUGINS_DIR constant, so
+    # patch that to tmp_path rather than creating a directory in the real
+    # src/plugins/ tree (which would leave an untracked directory on disk with
+    # no teardown).
     fake_plugin_id = "__fake__"
-
-    # Ensure the fake plugin dir exists without render/
-    plugins_root = os.path.join(os.path.dirname(__file__), "..", "..", "src", "plugins")
-    plugins_root = os.path.abspath(plugins_root)
-    os.makedirs(os.path.join(plugins_root, fake_plugin_id), exist_ok=True)
+    monkeypatch.setattr(base_plugin_module, "PLUGINS_DIR", str(tmp_path))
+    os.makedirs(os.path.join(str(tmp_path), fake_plugin_id), exist_ok=True)
 
     p = BasePlugin({"id": fake_plugin_id})
 

@@ -7,7 +7,8 @@ Coverage:
 - Correct PIN → session authed, redirect to /
 - Wrong PIN → login page re-rendered with error
 - Rate-limit lockout after 5 failed attempts
-- Exempt paths (/sw.js, /static/*, /api/health) accessible without auth
+- Exempt paths (/sw.js, /static/*, /api/health/plugins, /api/health/system)
+  accessible without auth
 - /logout clears session and redirects to /login
 """
 
@@ -68,8 +69,12 @@ def _make_auth_app(pin: str | None = None, monkeypatch=None) -> Flask:
     def index():
         return ("home", 200)
 
-    @app.route("/api/health")
-    def api_health():
+    @app.route("/api/health/plugins")
+    def api_health_plugins():
+        return ("ok", 200)
+
+    @app.route("/api/health/system")
+    def api_health_system():
         return ("ok", 200)
 
     @app.route("/sw.js")
@@ -193,8 +198,12 @@ class TestAuthEnabled:
         resp = client.get("/static/test.css")
         assert resp.status_code == 200
 
-    def test_api_health_exempt(self, client):
-        resp = client.get("/api/health")
+    def test_api_health_plugins_exempt(self, client):
+        resp = client.get("/api/health/plugins")
+        assert resp.status_code == 200
+
+    def test_api_health_system_exempt(self, client):
+        resp = client.get("/api/health/system")
         assert resp.status_code == 200
 
     # ------------------------------------------------------------------

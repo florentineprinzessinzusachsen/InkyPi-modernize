@@ -65,8 +65,12 @@ def _make_app(
     app.register_blueprint(auth_bp)
 
     # Stub out the allowlisted endpoints
-    @app.route("/api/health")
-    def api_health():
+    @app.route("/api/health/plugins")
+    def api_health_plugins():
+        return ("ok", 200)
+
+    @app.route("/api/health/system")
+    def api_health_system():
         return ("ok", 200)
 
     @app.route("/api/version/info")
@@ -128,7 +132,8 @@ class TestTokenUnset:
 
     def test_allowlist_without_token_requires_pin_session(self, client):
         """Without a token configured, allowlist paths require PIN auth."""
-        # /api/health is always exempt — use a different allowlist path
+        # /api/health/plugins and /api/health/system are auth-exempt regardless
+        # of the read-only token allowlist — use a different allowlist path.
         resp = client.get("/api/version/info")
         assert resp.status_code == 302
         assert "/login" in resp.headers["Location"]

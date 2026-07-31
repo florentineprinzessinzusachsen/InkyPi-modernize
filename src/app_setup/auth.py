@@ -32,14 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Paths that never require authentication
 _AUTH_SKIP_PREFIXES = ("/static/",)
-_AUTH_SKIP_EXACT = frozenset({"/login", "/logout", "/sw.js", "/api/health"})
+_AUTH_SKIP_EXACT = frozenset(
+    {"/login", "/logout", "/sw.js", "/api/health/plugins", "/api/health/system"}
+)
 # Also skip Flask/Werkzeug internal health probes registered by health.py
 _AUTH_SKIP_HEALTH = frozenset({"/healthz", "/readyz"})
 
 # Read-only token allowlist — GET/HEAD/OPTIONS only (JTN-477)
 _READONLY_TOKEN_ALLOWLIST = frozenset(
     {
-        "/api/health",
+        "/api/health/plugins",
+        "/api/health/system",
         "/api/version/info",
         "/api/uptime",
         "/api/screenshot",

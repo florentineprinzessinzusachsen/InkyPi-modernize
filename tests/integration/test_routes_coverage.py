@@ -162,7 +162,7 @@ def test_history_clear_route(client, device_config_dev):
 
 def test_history_delete_entry_route(client, device_config_dev):
     """Test deleting nonexistent history entry returns 404."""
-    resp = client.delete("/history/entry/123")
+    resp = client.post("/history/delete", json={"filename": "nonexistent.png"})
     assert resp.status_code == 404
 
 

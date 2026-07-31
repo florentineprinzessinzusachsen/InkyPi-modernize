@@ -113,5 +113,3 @@ def test_csp_header_present(icons_csp_env, client):
     )
     assert csp is not None
     # Allow either CDN present or not; if icons are purely local, unpkg may be absent
-    # if "https://unpkg.com" not in csp:
-    #     pytest.skip("CDN not required when using local inline SVGs")
