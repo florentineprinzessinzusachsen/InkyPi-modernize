@@ -225,19 +225,19 @@
                         <span class="form-label">Margins:</span>
                         <div class="form-group nowrap">
                             <label for="topMargin" class="form-label">Top</label>
-                            <input type="number" class="form-input" id="topMargin" name="topMargin" min="0" max="100" step="5">px
+                            <input type="number" class="form-input" id="topMargin" name="topMargin" min="0" max="100" step="5"><span class="form-label">px</span>
                         </div>
                         <div class="form-group nowrap">
                             <label for="bottomMargin" class="form-label">Bottom</label>
-                            <input type="number" class="form-input" id="bottomMargin" name="bottomMargin" min="0" max="100" step="5">px
+                            <input type="number" class="form-input" id="bottomMargin" name="bottomMargin" min="0" max="100" step="5"><span class="form-label">px</span>
                         </div>
                         <div class="form-group nowrap">
                             <label for="leftMargin" class="form-label">Left</label>
-                            <input type="number" class="form-input" id="leftMargin" name="leftMargin" min="0" max="100" step="5">px
+                            <input type="number" class="form-input" id="leftMargin" name="leftMargin" min="0" max="100" step="5"><span class="form-label">px</span>
                         </div>
                         <div class="form-group nowrap">
                             <label for="rightMargin" class="form-label">Right</label>
-                            <input type="number" class="form-input" id="rightMargin" name="rightMargin" min="0" max="100" step="5">px
+                            <input type="number" class="form-input" id="rightMargin" name="rightMargin" min="0" max="100" step="5"><span class="form-label">px</span>
                         </div>
                     </div>
                 </div>
@@ -245,7 +245,7 @@
                 <div class="form-group">
                     <span id="background-label" class="form-label">Background:</span>
                     <div class="form-group nowrap" role="group" aria-labelledby="background-label">
-                        <label>
+                        <label class="form-label">
                             <input type="radio" name="backgroundOption" value="color" checked>
                             Color
                         </label>
@@ -253,7 +253,7 @@
                         <span class="color-preview" style="--preview-color: #ffffff" data-color-preview="backgroundColor"></span>
                     </div>
                     <div class="form-group nowrap">
-                        <label>
+                        <label class="form-label">
                             <input type="radio" name="backgroundOption" value="image">
                             Image
                         </label>
@@ -358,29 +358,12 @@
         <div class="workflow-preview-card-head">
             <div>
                 <h2 id="pluginPreviewHeading">Preview</h2>
-                <p>Rendered for {{ resolution[0] }}&times;{{ resolution[1] }}. Compare the live display against this plugin output before applying or scheduling it.</p>
             </div>
         </div>
         <div class="status-bar">
-            <!-- Compact current display thumbnail on the left -->
-            <div class="status-card compact">
-                <div class="status-title">Current display</div>
-                <div class="status-body">
-                    <div class="image-container" id="currentPreviewContainer">
-                        <div id="previewSkeleton" class="img-skeleton" aria-hidden="true"></div>
-                        <img id="previewImage" src="{{ url_for('main.preview_image') }}" alt="Current display" width="{{ resolution[0] }}" height="{{ resolution[1] }}" data-native-width="{{ resolution[0] }}" data-native-height="{{ resolution[1] }}">
-                        <div id="deviceFrameOverlay" class="device-frame-overlay" aria-hidden="true"></div>
-                    </div>
-                    <div class="status-meta compact">
-                        <span class="label">Updated</span>
-                        <span id="currentDisplayTime" class="value">—</span>
-                    </div>
-                </div>
-            </div>
-            <!-- Full, non-cropped plugin instance preview on the right -->
-            <div class="status-card instance">
-                <div class="status-title">{% if plugin_instance %}This plugin instance{% else %}Latest from this plugin{% endif %}</div>
-                <div class="status-body">
+            <!-- Full, non-cropped plugin instance preview -->
+            <div class="status-card instance" style="border:0 !important">
+                <div class="status-body" style="border:0 !important">
                     <div class="img-skeleton instance-preview-skeleton" aria-hidden="true"></div>
                     <img id="instancePreviewImage" src="#" alt="{% if plugin_instance %}Latest for this instance{% else %}Latest from this plugin{% endif %}" loading="lazy" hidden>
                     <div id="instancePreviewFallback" class="status-placeholder" aria-live="polite" hidden>
@@ -428,16 +411,12 @@
             <span id="plugin-form-status" class="validation-message" role="status" aria-live="polite"></span>
             <!-- HTMX swap target for inline validation feedback (JTN-506) -->
             <div id="plugin-form-errors" class="plugin-form-errors" aria-live="polite"></div>
-            <label class="workflow-device-toggle" for="toggleDeviceFrame">
-                <input type="checkbox" id="toggleDeviceFrame" aria-label="Show device frame"> Show device frame
-            </label>
             <div class="form-help workflow-help">
                 {# SR-only help text is referenced by aria-describedby on the
                    pageheader action buttons (moved up per the design refresh). #}
-                <div id="update-now-help" class="sr-only">Generate and display image immediately with current settings</div>
+                <div id="update-now-help" class="sr-only">Render a preview of the current settings without changing the displayed image or saving anything</div>
                 {% if plugin_instance %}
                 <div id="update-instance-help" class="sr-only">Save this plugin instance's configuration and refresh the displayed image</div>
-                <p>Use <strong>Save instance</strong> in the header above to save and refresh the displayed image.</p>
                 {% else %}
                 <div id="add-playlist-help" class="sr-only">Add this plugin to an automated playlist. Current settings will be saved when you add it.</div>
                 <p>Saving does not schedule recurrence. Use <strong>Add to playlist</strong> in the header to jump to the Schedule tab, where the playlist entry is created from your current settings.</p>
@@ -491,6 +470,7 @@
             pluginId: {{ plugin.id | tojson }},
             pluginSettings: {{ (plugin_settings | default({})) | tojson }},
             previewUrl: {{ url_for("main.preview_image") | tojson }},
+            previewNowImageUrl: {{ url_for("plugin.preview_now_image", plugin_id=plugin.id) | tojson }},
             progressContext: { page: "plugin", pluginId: {{ plugin.id | tojson }}, instance: {{ (plugin_instance | default(None)) | tojson }} },
             refreshInfoUrl: {{ url_for("main.refresh_info") | tojson }},
             resolution: {{ resolution | tojson }},
@@ -502,6 +482,7 @@
                 save_settings: {{ url_for("plugin.save_plugin_settings") | tojson }},
                 update_instance: {{ url_for('plugin.update_plugin_instance', instance_name=(plugin_instance or '')) | tojson }},
                 update_now: {{ url_for("plugin.update_now") | tojson }},
+                preview_now: {{ url_for("plugin.preview_now") | tojson }},
             },
         };
         document.addEventListener('DOMContentLoaded', () => {

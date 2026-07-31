@@ -200,6 +200,14 @@
           urls: config.urls,
           uploadedFiles,
           onAfterSuccess: () => {
+            if (action === "update_now") {
+              // Preview never touches the display or saved instance state -
+              // just swap in the freshly-rendered scratch image, not the
+              // real current-display/instance-cache refresh the other
+              // actions trigger.
+              refreshPreviewNowImage();
+              return;
+            }
             setTimeout(() => {
               refreshPreviewsAfterSuccess();
             }, 250);
@@ -420,6 +428,24 @@
       instImgEl.src = `${imageUrl}?t=${Date.now()}`;
       instImgEl.onload = () => setHidden(skeleton, true);
       instImgEl.onerror = onPrimaryError;
+    }
+
+    // Swaps the instance-preview image for the scratch render POST /preview_now
+    // just produced. Deliberately does not touch config.lastRefresh/instanceLastTime
+    // or the current-display card - a preview click isn't a real refresh of
+    // anything saved, just a look at how the on-page (possibly unsaved)
+    // settings would render.
+    function refreshPreviewNowImage() {
+      const instImgEl = document.getElementById("instancePreviewImage");
+      if (!instImgEl || !config.previewNowImageUrl) return;
+      const skeleton = instImgEl.previousElementSibling;
+      const fallback = document.getElementById("instancePreviewFallback");
+      setHidden(skeleton, false);
+      setHidden(fallback, true);
+      setHidden(instImgEl, false);
+      instImgEl.src = `${config.previewNowImageUrl}?t=${Date.now()}`;
+      instImgEl.onload = () => setHidden(skeleton, true);
+      instImgEl.onerror = () => showInstanceFallback(instImgEl, skeleton, fallback);
     }
 
     async function displayInstanceNow() {

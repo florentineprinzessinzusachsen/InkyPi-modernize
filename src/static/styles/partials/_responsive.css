@@ -284,16 +284,6 @@
 
 /* ── Enhanced responsive design ── */
 @media (max-width: 900px) {
-    .status-bar {
-        grid-template-columns: 1fr;
-        gap: 12px;
-    }
-    .status-card.compact .image-container {
-        width: 100%;
-        max-width: 300px;
-        margin: 0 auto;
-    }
-
     /* Better modal sizing */
     .modal-content {
         margin: 10% auto;

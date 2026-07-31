@@ -226,10 +226,6 @@
         backdrop-filter: blur(16px);
     }
 
-    .workflow-device-toggle {
-        font-size: 0.92rem;
-    }
-
     .workflow-action-group {
         display: grid;
         grid-template-columns: 1fr;

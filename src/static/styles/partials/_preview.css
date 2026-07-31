@@ -1,21 +1,10 @@
 
-/* Device frame overlay for large preview */
-.device-frame-overlay {
-  position: absolute;
-  inset: 0;
-  background: center / contain no-repeat;
-  pointer-events: none;
-  display: none;
-}
-.image-container.show-frame .device-frame-overlay { display: block; }
-
-/* Status bar (top previews) */
-/* Side-by-side preview pair — mirrors the React `preview-pair` in
-   screens.jsx. Each side gets an equal-width card with a monospace eyebrow
-   header (status-title) above the preview image. */
+/* Status bar (top preview) — used to hold the "current display" thumbnail
+   and the instance preview side by side; now just the single full-width
+   instance preview, so it's one column and gets to be much larger. */
 .status-bar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 12px;
     margin: 6px 0 0 0;
 }
@@ -46,37 +35,12 @@
     padding: 6px 8px;
 }
 
-/* Compact cards have minimal height, instance cards maintain space for larger content */
-.status-card.compact .status-body {
-    min-height: auto;
-    flex-direction: column;
-    gap: 4px;
-}
-
 .status-card.instance .status-body {
     min-height: 56px;
     overflow: visible;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .status-body img { max-width: 100%; max-height: 160px; display: block; }
-
-/* Compact current display thumbnail — now a full-width equal-pair partner */
-.status-card.compact .image-container {
-    width: 100%;
-    max-width: 100%;
-}
-.status-card.compact .image-container img {
-    max-width: 100%;
-    max-height: 10rem;
-    object-fit: contain;
-    cursor: zoom-in;
-}
-
-.status-card.compact .image-container.native {
-    width: 100%;
-    max-width: 100%;
-    overflow: hidden;
-}
 
 /* Status card image hover feedback */
 .status-card.instance .status-body:hover {

@@ -209,6 +209,23 @@ def plugin_page(plugin_id: str) -> Any:
                     template_params["plugin_settings"] = saved_instance.settings
                     template_params["plugin_instance"] = saved_instance_name
 
+        # Some plugins only need their declared api_key for certain settings
+        # (e.g. weather_de's OpenWeatherMap key is only relevant when that
+        # provider is actually selected - Open-Meteo/Bright Sky are keyless).
+        # generate_settings_template() runs before instance settings are known
+        # and so can't make that call itself; a plugin can instead implement
+        # this optional hook to downgrade `required` once the real settings
+        # (saved instance, or {} for a fresh draft) are available. Purely
+        # additive - plugins that don't define it keep today's behavior.
+        api_key_meta = template_params.get("api_key")
+        if api_key_meta and api_key_meta.get("required"):
+            requirement_check = getattr(plugin, "api_key_required_for_settings", None)
+            if callable(requirement_check):
+                settings_for_check = template_params.get("plugin_settings") or {}
+                api_key_meta["required"] = bool(
+                    requirement_check(settings_for_check)
+                )
+
         template_params["playlists"] = playlist_manager.get_playlist_names()
 
         # Find latest refresh time for this plugin (any instance)
@@ -1187,6 +1204,131 @@ def update_now() -> Any:
     except Exception as e:
         logger.exception("Error in update_now: %s", e)
         return json_error(_ERR_INTERNAL, status=500, code="internal_error")
+
+
+def _preview_scratch_path(device_config: Any, plugin_id: str) -> str:
+    """Return the scratch-file path used to hand a /preview_now render back
+    to the browser via /preview_now_image, keyed by plugin_id only (there's
+    no saved instance yet for a draft plugin, and this is throwaway scratch
+    space, not the real per-instance cache instance_image() maintains)."""
+    safe_id = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in plugin_id)
+    return os.path.join(device_config.plugin_image_dir, f"_preview_scratch_{safe_id}.png")
+
+
+@plugin_bp.route("/preview_now", methods=["POST"])  # type: ignore[untyped-decorator]
+def preview_now() -> Any:
+    """Render a plugin image from the submitted form settings for an
+    in-browser preview only.
+
+    Unlike ``/update_now``, this never pushes to the display (mock or real
+    hardware), never records a history entry, and never touches any saved
+    instance/playlist state — the settings page's "Preview" button uses this
+    so previewing how in-progress (possibly unsaved) settings would look
+    can't change what's actually on the e-ink display or get persisted.
+    Renders synchronously and in-process, same as the existing on-demand
+    cache-fill path in instance_image() below.
+    """
+    device_config = current_app.config[_CONFIG_KEY]
+
+    plugin_id: str | None = None
+    try:
+        parsed, parse_error = parse_plugin_update_now_request(_plugin_form_data())
+        if parse_error is not None:
+            _raise_request_model_error(parse_error)
+        if parsed is None:
+            _raise_request_model_error(
+                RequestModelError(message="Invalid form payload", status=400)
+            )
+        plugin_id = parsed.plugin_id
+        plugin_settings = parsed.plugin_settings
+
+        plugin_config = device_config.get_plugin(plugin_id)
+        if not plugin_config:
+            logger.warning(
+                "preview_now: plugin not found plugin_id=%s",
+                sanitize_log_field(plugin_id),
+            )
+            return json_error(_ERR_PLUGIN_NOT_FOUND, status=404)
+
+        plugin = get_plugin_instance(plugin_config)
+        try:
+            image = plugin.generate_image(plugin_settings, device_config)
+        except URLValidationError as e:
+            # JTN-776 pattern (see update_now above): user error, not a server
+            # error, and safe_message() keeps exception text off the wire.
+            safe_msg = e.safe_message()
+            logger.info(
+                "preview_now: plugin %s rejected URL: %s",
+                sanitize_log_field(plugin_id),
+                sanitize_log_field(safe_msg),
+            )
+            return json_error(
+                safe_msg, status=422, code="validation_error", details={"field": "url"}
+            )
+        except ScreenshotBackendError:
+            logger.warning(
+                "preview_now: plugin %s screenshot backend unavailable",
+                sanitize_log_field(plugin_id),
+                exc_info=True,
+            )
+            return json_error(
+                SCREENSHOT_BACKEND_UNAVAILABLE_MSG, status=503, code="backend_unavailable"
+            )
+        except TimeoutError:
+            logger.warning(
+                "preview_now: plugin %s render timed out",
+                sanitize_log_field(plugin_id),
+            )
+            return json_error(
+                MANUAL_UPDATE_TIMEOUT_MSG, status=504, code="manual_update_timeout"
+            )
+        except ProviderReportedPluginError as e:
+            safe_msg = e.safe_message()
+            logger.info(
+                "preview_now: plugin %s provider rejected request: %s",
+                sanitize_log_field(plugin_id),
+                sanitize_log_field(str(e)),
+            )
+            return json_error(safe_msg, status=400, code="provider_rejected")
+        except RuntimeError:
+            logger.exception(
+                "preview_now: plugin %s failed to generate preview",
+                sanitize_log_field(plugin_id),
+            )
+            return json_error(_ERR_INTERNAL, status=400, code="plugin_error")
+
+        if image is None:
+            return json_error(_ERR_INTERNAL, status=500, code="internal_error")
+
+        scratch_path = _preview_scratch_path(device_config, plugin_id)
+        os.makedirs(os.path.dirname(scratch_path), exist_ok=True)
+        image.save(scratch_path, format="PNG")
+        return json_success(message="Preview generated")
+    except ClientInputError as e:
+        return json_error(e.message, status=e.status, code=e.code, details=e.details)
+    except Exception as e:
+        logger.exception(
+            "preview_now: unexpected error for plugin %s: %s",
+            sanitize_log_field(plugin_id or "?"),
+            e,
+        )
+        return json_error(_ERR_INTERNAL, status=500, code="internal_error")
+
+
+@plugin_bp.route("/preview_now_image/<string:plugin_id>", methods=["GET"])  # type: ignore[untyped-decorator]
+def preview_now_image(plugin_id: str) -> Any:
+    """Serve the scratch image most recently written by /preview_now.
+
+    Always no-store: this file is overwritten on every preview click, and
+    the browser must never show a stale preview from cache.
+    """
+    device_config = current_app.config[_CONFIG_KEY]
+    path = _preview_scratch_path(device_config, plugin_id)
+    if not os.path.isfile(path):
+        return (_ERR_NOT_FOUND, 404)
+    resp = send_file(path)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @plugin_bp.route("/save_plugin_settings", methods=["POST"])  # type: ignore[untyped-decorator]

@@ -387,17 +387,6 @@
   border-radius: 0;
 }
 
-.workflow-device-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-body[data-page="plugin"] .workflow-device-toggle {
-  display: none;
-}
-
 body[data-page="plugin"] .workflow-help {
   margin-top: 0;
   color: var(--text-3);

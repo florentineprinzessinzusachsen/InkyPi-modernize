@@ -494,6 +494,20 @@ class RefreshTask:
                 "generate_image",
                 int((perf_counter() - stage_t0) * 1000),
             )
+        if isinstance(refresh_action, PlaylistRefresh):
+            # PlaylistRefresh.execute() sets plugin_instance.latest_refresh_time
+            # too, but that call runs inside the render subprocess (see
+            # worker.py) when plugin isolation is enabled (the default) - only
+            # the rendered image crosses back over the process boundary, so
+            # that mutation is silently lost and this process's copy of the
+            # PluginInstance (the one write_config() actually persists) never
+            # advances. Re-derive the same "was this cycle a fresh render, not
+            # a same-turn reuse of the cached on-disk image" decision here, in
+            # this process, so the playlist page's "Refreshed X ago" text and
+            # thumbnail actually update.
+            plugin_instance = refresh_action.plugin_instance
+            if plugin_instance.should_refresh(current_dt) or refresh_action.force:
+                plugin_instance.latest_refresh_time = current_dt.isoformat()
         generate_ms = int((perf_counter() - _t_gen_start) * 1000)
         # Plugin lifecycle: generate_complete
         logger.info(

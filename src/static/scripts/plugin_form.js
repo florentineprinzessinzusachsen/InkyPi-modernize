@@ -152,6 +152,11 @@
       url = urls.add_to_playlist; const scheduleFormData = new FormData(scheduleForm); const scheduleData = {}; for (const [k, v] of scheduleFormData.entries()) scheduleData[k] = v; formData.append('refresh_settings', JSON.stringify(scheduleData));
     } else if (action === 'update_instance'){
       url = urls.update_instance; method = 'PUT'; clearFormOnSubmit = false;
+    } else if (action === 'update_now' && urls.preview_now){
+      // The "Preview" button must never push to the display or persist
+      // settings - route it through the dedicated preview-only endpoint
+      // (synchronous, no job-queue) instead of /update_now.
+      url = urls.preview_now;
     }
     // NOTE: action === 'save_settings' is handled declaratively via HTMX on the
     // Save Settings button (JTN-506). It is intentionally no longer routed
@@ -164,9 +169,11 @@
     const timeoutId = setTimeout(() => controller.abort(), 90000);
     try {
       progress.setStep('Sending…', 30);
-      // Request async processing for update_now so the browser doesn't block
+      // Request async processing for update_now so the browser doesn't block.
+      // Only applies when still pointed at the real /update_now (preview_now
+      // is always synchronous and ignores this header).
       const headers = {};
-      if (action === 'update_now' || url === urls.update_now) { headers['X-Async'] = 'true'; }
+      if (url === urls.update_now) { headers['X-Async'] = 'true'; }
       const response = await fetch(url, { method, body: formData, signal: controller.signal, headers });
 
       // -- Async job-queue flow for update_now (202 Accepted) --
