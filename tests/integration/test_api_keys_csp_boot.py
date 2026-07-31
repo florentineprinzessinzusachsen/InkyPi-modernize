@@ -30,13 +30,18 @@ def test_no_inline_script_in_api_keys_page(client):
 
 
 def test_api_keys_frame_has_data_attributes(client):
-    """The .api-keys-frame container must carry data-* boot config attributes."""
+    """The .api-keys-frame container must carry data-* boot config attributes.
+
+    The separate "generic" vs "managed" pages/endpoints this test used to
+    check for (data-save-generic-url) were unified into one page and one
+    save/delete mechanism (data-save-managed-url/data-delete-managed-url
+    only) when the orphaned generic API-keys page was merged in.
+    """
     resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
     assert "data-delete-managed-url=" in html
-    assert "data-save-generic-url=" in html
     assert "data-save-managed-url=" in html
 
 
@@ -55,13 +60,15 @@ def test_js_self_initialises_from_data_attributes(client):
 
 
 def test_delete_button_uses_delegation(client):
-    """JTN-325: delete buttons in generic mode use data-api-action='delete-row'."""
-    # Verify the JS handler supports both delete actions
+    """JTN-325: delete buttons use event delegation via data-api-action='delete-key'.
+
+    The separate "generic" mode's own 'delete-row' action was removed when
+    the generic and managed pages were unified into one delete mechanism.
+    """
     js_resp = client.get("/static/scripts/api_keys_page.js")
     js = js_resp.get_data(as_text=True)
 
-    assert '"delete-row"' in js, "JS must handle 'delete-row' action"
-    assert '"delete-key"' in js, "JS must handle 'delete-key' action for managed mode"
+    assert '"delete-key"' in js, "JS must handle 'delete-key' action via delegation"
 
 
 def test_external_js_loaded_with_defer(client):

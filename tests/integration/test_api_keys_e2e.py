@@ -25,23 +25,32 @@ def test_api_keys_page_loads(live_server, browser_page):
 
 
 def test_api_key_input_and_save(live_server, browser_page):
+    """Add a custom secret via the unified card UI and save it.
+
+    Selectors/endpoint updated for the merged card-based page: the separate
+    "generic" .apikey-row list UI and its /api-keys/save JSON flow no longer
+    exist — custom secrets are drafted as cards (#addCustomSecretBtn) and
+    saved via a single form POST to /settings/save_api_keys.
+    """
     page = browser_page
     navigate_and_wait(page, live_server, "/settings/api-keys")
 
     # Prevent page reload after save
     page.evaluate("window.location.reload = () => {};")
 
-    page.locator("#addApiKeyBtn").click()
-    new_row = page.locator(".apikey-row").last
-    new_row.locator(".apikey-key").fill("JOURNEY_TEST_KEY")
-    new_row.locator(".apikey-value").fill("test-api-key-12345")
+    page.locator("#addCustomSecretBtn").click()
+    draft_card = page.locator('.api-key-card[data-custom-draft="true"]').last
+    draft_card.locator(".custom-secret-name-input").fill("JOURNEY_TEST_KEY")
+    draft_card.locator(".custom-secret-value-input").fill("test-api-key-12345")
 
     # Track save requests
     save_responses = []
     page.on(
         "response",
         lambda resp: (
-            save_responses.append(resp.status) if "/api-keys/save" in resp.url else None
+            save_responses.append(resp.status)
+            if "/settings/save_api_keys" in resp.url
+            else None
         ),
     )
 

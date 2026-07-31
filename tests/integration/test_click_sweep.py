@@ -339,9 +339,14 @@ def _click_one(page, descriptor: dict) -> tuple[dict, dict]:
                 "click_error": f"{exc}; fallback also failed: {inner}",
             }
     # Give navigations a chance to commit so reload/anchor clicks reach a
-    # stable state before we snapshot.
+    # stable state before we snapshot. wait_for_load_state returns as soon
+    # as the state is reached rather than sleeping the full timeout, so a
+    # generous budget here only costs time on the (real) full-navigation
+    # case — observed flaky under full-suite load with the previous 500ms
+    # when a full page load (e.g. the sidebar brand link) didn't commit in
+    # time and made a real navigation look like a silent no-op.
     try:
-        page.wait_for_load_state("domcontentloaded", timeout=500)
+        page.wait_for_load_state("domcontentloaded", timeout=2000)
     except Exception:  # noqa: BLE001 — no navigation in flight is expected
         pass
     page.wait_for_timeout(_CLICK_SETTLE_MS)

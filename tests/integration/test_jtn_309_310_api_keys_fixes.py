@@ -87,30 +87,42 @@ def test_internal_keys_constant_contains_expected_names():
 
 
 def test_add_api_key_button_present_in_generic_page(client):
-    """JTN-310: the + Add API Key button must be rendered for custom secrets."""
+    """JTN-310: the + Add Custom Secret button must be rendered for custom secrets.
+
+    Renamed from "Add API Key"/#addApiKeyBtn since fixed providers no longer
+    need an "add" affordance — only custom secrets do.
+    """
     resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert 'id="addApiKeyBtn"' in html, "Add API Key button must be present in DOM"
-    assert "Add API Key" in html
+    assert (
+        'id="addCustomSecretBtn"' in html
+    ), "Add Custom Secret button must be present in DOM"
+    assert "Add Custom Secret" in html
 
 
 def test_add_row_guard_in_js(client):
-    """JTN-310: api_keys_page.js addRow must guard against missing #apikeys-list."""
+    """JTN-310: api_keys_page.js addCustomSecretCard must guard against missing #apiKeysGrid."""
     resp = client.get("/static/scripts/api_keys_page.js")
     assert resp.status_code == 200
     js = resp.get_data(as_text=True)
 
-    assert 'getElementById("apikeys-list")' in js
-    assert "api_keys_page: #apikeys-list not found in DOM" in js
+    assert 'getElementById("apiKeysGrid")' in js
+    assert "api_keys_page: #apiKeysGrid not found in DOM" in js
 
 
 def test_init_wires_add_button_click_handler(client):
-    """JTN-310: init() must attach a click listener on #addApiKeyBtn."""
+    """JTN-310: init() must handle #addCustomSecretBtn clicks via delegation.
+
+    addBtn deliberately does NOT get its own direct listener — it's handled
+    by the single delegated data-api-action="add-custom-secret" click
+    listener alongside delete/cancel/reveal/toggle-password, since a direct
+    listener here would double-fire addCustomSecretCard() per click.
+    """
     resp = client.get("/static/scripts/api_keys_page.js")
     assert resp.status_code == 200
     js = resp.get_data(as_text=True)
 
-    assert 'addBtn.addEventListener("click"' in js
-    assert "() => addRow()" in js
+    assert '"add-custom-secret"' in js
+    assert "addCustomSecretCard();" in js

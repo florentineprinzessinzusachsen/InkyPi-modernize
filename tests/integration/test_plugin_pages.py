@@ -184,10 +184,19 @@ def test_github_plugin_uses_hidden_state_instead_of_inline_display(client):
 
 
 def test_preview_size_mode_native_on_plugin(client, device_config_dev):
+    """The page must not error with preview_size_mode="native" set.
+
+    The old dual-preview-card layout templated data-native-width/height
+    hints onto a server-rendered <img> so it could size correctly before JS
+    ran; the single remaining "this plugin instance" preview card populates
+    its image entirely via JS (src starts as "#", hidden until loaded), so
+    there's no longer a server-side native/fit rendering distinction to
+    check for attribute-by-attribute.
+    """
     device_config_dev.update_value("preview_size_mode", "native", write=True)
     resp = client.get("/plugin/ai_text")
     assert resp.status_code == 200
-    assert b'data-native-width="' in resp.data and b'data-native-height="' in resp.data
+    assert b'id="instancePreviewImage"' in resp.data
 
 
 def test_preview_size_mode_fit_on_plugin(client, device_config_dev):
@@ -199,11 +208,15 @@ def test_preview_size_mode_fit_on_plugin(client, device_config_dev):
 
 
 def test_plugin_page_status_bar_present(client):
+    """currentDisplayTime was part of the removed "Current display" card
+    (there's no longer a side-by-side comparison against the physical
+    display) — the single remaining preview card has its own "Last
+    generated" timestamp, id="instanceLastTime"."""
     resp = client.get("/plugin/ai_text")
     assert resp.status_code == 200
     body = resp.data
     assert b'class="status-bar"' in body
-    assert b'id="currentDisplayTime"' in body
+    assert b'id="instanceLastTime"' in body
 
 
 def test_plugin_page_instance_preview_shown_when_instance(client):

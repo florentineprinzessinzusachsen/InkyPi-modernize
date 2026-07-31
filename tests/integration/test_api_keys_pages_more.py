@@ -1,3 +1,6 @@
+import re
+
+
 def test_generic_api_keys_page_uses_canonical_template(client):
     resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
@@ -5,7 +8,9 @@ def test_generic_api_keys_page_uses_canonical_template(client):
 
     assert 'id="themeToggle"' in html
     assert "API Keys" in html
-    assert "Add API Key" in html
+    # "Add API Key" was the old generic-page button label; the unified page's
+    # equivalent action is "+ Add Custom Secret".
+    assert "Add Custom Secret" in html
 
 
 def test_generic_api_keys_list_delete_button_has_aria_label(
@@ -20,11 +25,19 @@ def test_generic_api_keys_list_delete_button_has_aria_label(
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert 'aria-label="Delete MY_TEST_KEY API key"' in html
+    # Format is now shared with the managed-provider cards: "Delete X key
+    # permanently" (previously "Delete X API key", no "permanently").
+    assert 'aria-label="Delete MY_TEST_KEY key permanently"' in html
 
 
 def test_generic_api_keys_list_inputs_have_aria_labels(client, monkeypatch, tmp_path):
-    """JTN-202: list-view key/value inputs include the key name in aria-label."""
+    """JTN-202: a custom secret's value input has an accessible name.
+
+    The old separate "key name" / "value, hidden" aria-label pair described
+    a since-removed list-style layout. Custom secrets now render through the
+    same api_key_card macro as fixed providers: a <label for=input_id> gives
+    the input its accessible name instead of a dynamic aria-label string.
+    """
     monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
     env_file = tmp_path / ".env"
     env_file.write_text("ANOTHER_KEY=secretvalue\n")
@@ -33,9 +46,14 @@ def test_generic_api_keys_list_inputs_have_aria_labels(client, monkeypatch, tmp_
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    assert 'aria-label="ANOTHER_KEY key name"' in html
-    # JTN-382: value input is now type=password with ", hidden" suffix in aria-label
-    assert 'aria-label="ANOTHER_KEY value, hidden"' in html
+    match = re.search(
+        r'<input type="password" id="([^"]+)" name="ANOTHER_KEY"', html
+    )
+    assert match, "Expected a password input named ANOTHER_KEY"
+    input_id = match.group(1)
+    assert f'for="{input_id}">ANOTHER_KEY</label>' in html, (
+        f"Expected a <label for={input_id!r}> giving the input its accessible name"
+    )
 
 
 def test_managed_api_keys_card_delete_button_has_aria_label(client, device_config_dev):

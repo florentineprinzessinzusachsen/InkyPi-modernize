@@ -60,7 +60,11 @@ def test_dark_mode_defines_core_color_variables(client):
 def test_no_hardcoded_white_black_outside_root(client):
     """No hardcoded #fff/#000 in selectors outside :root/[data-theme] blocks.
 
-    Exceptions: _print.css (fallback values), data URIs, and rgba() values.
+    Exceptions: _print.css (fallback values), data URIs, rgba() values, and
+    .delete-button-danger's label color (deliberately theme-independent
+    black — it fills its own fixed var(--error) background regardless of
+    page theme, so it needs fixed-color text for contrast, not a token that
+    would vary with light/dark mode).
     """
     partials = _read_partials_individually()
 
@@ -73,6 +77,7 @@ def test_no_hardcoded_white_black_outside_root(client):
         # Remove :root and [data-theme] blocks from consideration
         cleaned = re.sub(r":root\s*\{[^}]+\}", "", css)
         cleaned = re.sub(r'\[data-theme="[^"]*"\]\s*\{[^}]+\}', "", cleaned)
+        cleaned = re.sub(r"\.delete-button-danger\s*\{[^}]+\}", "", cleaned)
 
         # Remove data URIs (SVG backgrounds etc.)
         cleaned = re.sub(r'url\("data:[^"]*"\)', "", cleaned)

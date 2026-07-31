@@ -1,6 +1,8 @@
-"""Regression guards for the API Keys page (`/api-keys`, generic mode).
+"""Regression guards for the API Keys page.
 
-Covers three related dogfood findings:
+Covers three related dogfood findings, now against the unified card-based
+page (the separate "generic" list-row page/addRow/deleteRow/saveGenericKeys
+these tests originally targeted was merged away):
   - ISSUE-003: the "X providers / Y configured" badges did not update when
     the user added a preset row, even though the editor row was visible.
   - ISSUE-004: the badges always rendered identical numbers (because both
@@ -22,6 +24,18 @@ def _read_js() -> str:
     return API_KEYS_JS.read_text(encoding="utf-8")
 
 
+def _function_body(js: str, name: str) -> str:
+    """Return the source from `function name(` up to the next top-level
+    function/closure declaration. Simple substring slicing rather than
+    brace-matching, which breaks on any function containing a nested
+    `if { ... }` block (the closing `}` of an inner block can share the
+    same indentation as the function's own closing brace)."""
+    start = js.index(f"function {name}(")
+    next_decl = re.search(r"\n  (?:async )?function \w+\(", js[start + 1 :])
+    end = start + 1 + next_decl.start() if next_decl else len(js)
+    return js[start:end]
+
+
 def test_refresh_key_counts_function_exists_and_updates_both_chips():
     """The page must have a function that recomputes both badges from the
     current DOM. Without this the labels stay stale after add/delete."""
@@ -38,89 +52,58 @@ def test_refresh_key_counts_uses_distinct_semantics_for_provider_vs_configured()
     """The two badges MUST distinguish 'has a key entered' from 'has a value
     saved'. Otherwise they remain redundantly identical (ISSUE-004)."""
     js = _read_js()
-    # Heuristic: the function should evaluate both the key field and either
-    # the existing-saved flag or the value field length to bump 'configured'
-    # separately from 'providers'.
-    func_match = re.search(
-        r"function refreshKeyCounts\(\)\s*\{(?P<body>.*?)\n {4}\}",
-        js,
-        flags=re.S,
+    body = _function_body(js, "refreshKeyCounts")
+    assert "totalProviders" in body and "totalConfigured" in body
+    # "Configured" counts cards actually flagged data-configured="true" (set
+    # only once a save/delete round-trip completes) - a distinct, narrower
+    # signal than "providers" (every rendered card, fixed + custom).
+    assert 'data-configured="true"' in body, (
+        "configured count must depend on the data-configured flag, not just "
+        "the total number of rendered cards"
     )
-    assert func_match, "refreshKeyCounts body not found"
-    body = func_match.group("body")
-    assert "providers" in body and "configured" in body
-    # Configured logic must check value content or existing-saved flag.
-    assert (
-        'dataset.existing === "true"' in body
-        or "wasSaved" in body
-        or ".value.length" in body
-    ), "configured count must depend on value/existing state, not just key presence"
 
 
 def test_refresh_key_counts_called_after_add_delete_and_value_input():
-    """The badges must update on every state-change path: addRow,
-    deleteRow, value input. Otherwise they go stale."""
+    """The badges must update on every structural state-change path: adding
+    a custom-secret draft, cancelling/deleting one. Otherwise they go stale.
+
+    Unlike the old addRow/deleteRow pair, counts are no longer recomputed on
+    every keystroke — "configured" only changes when data-configured flips,
+    which itself only happens after a real save/delete round-trip, so a
+    per-keystroke refresh would have nothing new to report anyway.
+    """
     js = _read_js()
-    # addRow wires both name-input and value-input listeners that call refresh.
-    add_match = re.search(
-        r"function addRow\([^)]*\)\s*\{(?P<body>.*?)\n {4}\}",
-        js,
-        flags=re.S,
+    assert "refreshKeyCounts();" in _function_body(js, "addCustomSecretCard")
+    assert "refreshKeyCounts();" in _function_body(js, "cancelInput"), (
+        "cancelling a not-yet-saved draft removes its card and must refresh "
+        "the provider count"
     )
-    assert add_match, "addRow function not found"
-    add_body = add_match.group("body")
-    assert add_body.count("refreshKeyCounts()") >= 2, (
-        "addRow should call refreshKeyCounts at least twice "
-        "(after appending the row and inside an input listener)"
-    )
-    delete_match = re.search(
-        r"function deleteRow\([^)]*\)\s*\{(?P<body>.*?)\n {4}\}",
-        js,
-        flags=re.S,
-    )
-    assert delete_match, "deleteRow function not found"
-    assert "refreshKeyCounts()" in delete_match.group("body")
+    assert "refreshKeyCounts();" in _function_body(js, "updateDeletedStatus")
 
 
 def test_save_generic_keys_marks_empty_value_input_aria_invalid():
-    """On submit, an empty new-row value must produce an inline aria-invalid
-    + validation-message on the field — not just a corner toast (ISSUE-005)."""
+    """On submit, an empty new-draft value must produce an inline
+    aria-invalid + toast on the field — not just a silent no-op (ISSUE-005).
+    """
     js = _read_js()
-    save_match = re.search(
-        r"async function saveGenericKeys\(\)\s*\{(?P<body>.*?)\n {4}\}",
-        js,
-        flags=re.S,
-    )
-    assert save_match, "saveGenericKeys function not found"
-    body = save_match.group("body")
-    # Must collect inputs (not just a boolean) and mark them invalid.
+    body = _function_body(js, "validateCustomSecretDrafts")
     assert (
-        "missingValueInputs" in body or "missingValueInput" in body
-    ), "saveGenericKeys should track WHICH inputs were empty so it can mark them"
+        'valueInput?.setAttribute("aria-invalid", "true")' in body
+    ), "An empty value input must get aria-invalid='true' on submit"
     assert (
-        'setAttribute("aria-invalid", "true")' in body
-    ), "Empty value inputs must get aria-invalid='true' on submit"
-    assert (
-        "validation-message" in body
-    ), "An inline validation-message element must be inserted/used"
-    # Toast still fires for visual users.
-    assert "Please enter a value for new API keys" in body
-    # Focus moves to the first invalid input so keyboard users land there.
-    assert ".focus()" in body
+        "Enter a value for" in body
+    ), "A toast must tell the user which entry needs a value"
+    # Focus moves to the invalid input so keyboard users land there.
+    assert "_safeFocus(valueInput)" in body
 
 
 def test_save_generic_clears_prior_aria_invalid_at_start_of_each_submit():
     """Each new submit must clear stale aria-invalid from the previous run
     so a fixed input doesn't keep its old error state visually."""
     js = _read_js()
-    save_match = re.search(
-        r"async function saveGenericKeys\(\)\s*\{(?P<body>.*?)\n {4}\}",
-        js,
-        flags=re.S,
-    )
-    assert save_match
-    body = save_match.group("body")
-    assert 'setAttribute("aria-invalid", "false")' in body, (
-        "saveGenericKeys must reset aria-invalid='false' on every submit "
-        "before re-validating, otherwise old errors stick around."
+    body = _function_body(js, "validateCustomSecretDrafts")
+    assert 'nameInput?.setAttribute("aria-invalid", "false")' in body
+    assert 'valueInput?.setAttribute("aria-invalid", "false")' in body, (
+        "validateCustomSecretDrafts must reset aria-invalid='false' on every "
+        "submit before re-validating, otherwise old errors stick around."
     )

@@ -161,6 +161,25 @@ def _state_changed(before: dict, after: dict) -> bool:
     return False
 
 
+def _already_active(before: dict) -> bool:
+    """True if a toggle was already in its "on"/"selected" state before the click.
+
+    A single-select control (e.g. a clock-face picker option) that's already
+    the active choice is expected to no-op when clicked again — that's
+    correct behaviour, not a silent-failure candidate. Without this, a page
+    whose default state happens to have one option pre-selected (e.g. the
+    clock plugin's DEFAULT_CLOCK_FACE) would always flag it.
+    """
+    class_list = (before.get("classList") or "").split()
+    return (
+        before.get("ariaChecked") == "true"
+        or before.get("ariaPressed") == "true"
+        or before.get("checked") is True
+        or "selected" in class_list
+        or "active" in class_list
+    )
+
+
 def _click_toggle(page, descriptor: dict) -> tuple[dict | None, dict | None]:
     marker = descriptor["id"]
     selector = f"[data-togglesweep-id='{marker}']"
@@ -229,6 +248,8 @@ def test_toggle_reflection(live_server, browser_page, sweep: SweepPage):
                 f"{descriptor['tag']}[{descriptor.get('type') or descriptor.get('role')}]"
                 f" '{descriptor['text']}': click/state lookup failed"
             )
+            continue
+        if _already_active(before):
             continue
         if not _state_changed(before, after):
             silent_failures.append(

@@ -7,7 +7,7 @@ For each plugin in :data:`PLUGIN_FORM_INPUTS` this test:
 2. Fills minimum-viable inputs from the per-plugin fixture dict.
 3. Clicks the primary ``data-plugin-action="update_now"`` button
    ("Update Preview").
-4. Asserts the ``#previewImage`` ``src`` actually changed after the click —
+4. Asserts the ``#instancePreviewImage`` ``src`` actually changed after the click —
    the client-side ``refreshPreviewImage()`` cache-busts with ``?t=<ts>`` on
    successful ``/update_now``, so an unchanged src means the handler silently
    no-opped.
@@ -47,9 +47,9 @@ _UPDATE_PREVIEW_TIMEOUT_MS = 15000
 
 
 def _preview_src(page) -> str | None:
-    """Return the current ``#previewImage`` src (or None if missing)."""
+    """Return the current ``#instancePreviewImage`` src (or None if missing)."""
     return page.evaluate(
-        "() => document.getElementById('previewImage')?.getAttribute('src') || null"
+        "() => document.getElementById('instancePreviewImage')?.getAttribute('src') || null"
     )
 
 
@@ -61,7 +61,7 @@ def _preview_src(page) -> str | None:
 def test_update_preview_changes_image_src(
     live_server, browser_page, flask_app, monkeypatch, plugin_id: str
 ):
-    """Update Preview must flip ``#previewImage`` src for each plugin.
+    """Update Preview must flip ``#instancePreviewImage`` src for each plugin.
 
     We force the refresh task OFF so ``/update_now`` takes the direct path
     and stub the display driver so no physical hardware is touched. The
@@ -87,14 +87,18 @@ def test_update_preview_changes_image_src(
         timeout=30000,
     )
     page.wait_for_selector("#settingsForm", timeout=10000)
-    page.wait_for_selector("#previewImage", timeout=10000)
+    # `state="attached"`, not the default "visible": a fresh instance with no
+    # prior refresh renders this image hidden behind a "No images generated
+    # yet" fallback (refreshInstancePreview() in plugin_page.js) until a
+    # Preview/Update actually produces one.
+    page.wait_for_selector("#instancePreviewImage", state="attached", timeout=10000)
 
     fill_form_inputs(page, PLUGIN_FORM_INPUTS[plugin_id])
 
     before_src = _preview_src(page)
     assert (
         before_src is not None
-    ), f"{plugin_id}: #previewImage missing src attribute on load"
+    ), f"{plugin_id}: #instancePreviewImage missing src attribute on load"
 
     update_btn = page.locator('[data-plugin-action="update_now"]').first
     assert (
@@ -106,14 +110,15 @@ def test_update_preview_changes_image_src(
     # pattern and avoids flakes on slow CI boxes.
     update_btn.click(timeout=5000, force=True)
 
-    # Wait for refreshPreviewImage() to swap in the cache-busted src.
-    # The handler posts to /update_now, then on success schedules a 250 ms
-    # setTimeout before updating the src — budget generously for CI.
+    # Wait for refreshPreviewNowImage() to swap in the cache-busted src and
+    # un-hide the image. The handler posts to /preview_now, then on success
+    # schedules a short setTimeout before updating the src — budget
+    # generously for CI.
     page.wait_for_function(
         """
         (prev) => {
-          const img = document.getElementById('previewImage');
-          return img && img.getAttribute('src') !== prev;
+          const img = document.getElementById('instancePreviewImage');
+          return img && img.getAttribute('src') !== prev && !img.hidden;
         }
         """,
         arg=before_src,
@@ -122,7 +127,7 @@ def test_update_preview_changes_image_src(
 
     after_src = _preview_src(page)
     assert after_src and after_src != before_src, (
-        f"{plugin_id}: #previewImage src did not change after Update Preview "
+        f"{plugin_id}: #instancePreviewImage src did not change after Update Preview "
         f"(before={before_src!r}, after={after_src!r}) — handler likely "
         "silently no-opped."
     )

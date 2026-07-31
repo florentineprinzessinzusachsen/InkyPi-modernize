@@ -267,6 +267,10 @@ class TestRefreshTaskHooks:
             plugin_id = "clock"
             name = "My Clock"
             settings = {}
+            latest_refresh_time = None
+
+            def should_refresh(self, current_dt):
+                return True
 
         class _FakePlaylist:
             name = "default"

@@ -2,7 +2,7 @@
 """Per-plugin configure -> preview -> save -> reload journey (JTN-723).
 
 Extends :mod:`tests.integration.test_plugin_preview_smoke` (JTN-691). That
-smoke test proves Update Preview flips ``#previewImage`` src. This journey
+smoke test proves Update Preview flips ``#instancePreviewImage`` src. This journey
 proves the *full* edit-preview-save-return cycle persists the user's input:
 
 0. Create a named playlist instance for the plugin directly via the model
@@ -10,7 +10,7 @@ proves the *full* edit-preview-save-return cycle persists the user's input:
    the old draft-save button which created one on first save).
 1. Navigate to ``/plugin/<id>?instance=<name>``.
 2. Fill the per-plugin form from :data:`PLUGIN_FORM_INPUTS`.
-3. Click Update Preview -> assert ``#previewImage`` src changes.
+3. Click Update Preview -> assert ``#instancePreviewImage`` src changes.
 4. Click Save instance -> assert the PUT /update_plugin_instance/<name>
    response is ok.
 5. Navigate AWAY to ``/``.
@@ -75,9 +75,9 @@ _ROUNDTRIP_PLUGINS = sorted(PLUGIN_FORM_INPUTS.keys())
 
 
 def _preview_src(page) -> str | None:
-    """Return current ``#previewImage`` src (or None if element/attr missing)."""
+    """Return current ``#instancePreviewImage`` src (or None if element/attr missing)."""
     return page.evaluate(
-        "() => document.getElementById('previewImage')?.getAttribute('src') || null"
+        "() => document.getElementById('instancePreviewImage')?.getAttribute('src') || null"
     )
 
 
@@ -107,7 +107,7 @@ def _read_form_value(page, name: str):
 
 
 def _click_update_preview(page, plugin_id: str) -> str:
-    """Click Update Preview and wait for ``#previewImage`` src to flip.
+    """Click Update Preview and wait for ``#instancePreviewImage`` src to flip.
 
     Returns the new (post-click) src so callers can compare across clicks.
     Raises via ``assert`` on missing button or unchanged src (the JTN-681
@@ -116,7 +116,7 @@ def _click_update_preview(page, plugin_id: str) -> str:
     before_src = _preview_src(page)
     assert (
         before_src is not None
-    ), f"{plugin_id}: #previewImage missing src attribute before click"
+    ), f"{plugin_id}: #instancePreviewImage missing src attribute before click"
 
     btn = page.locator('[data-plugin-action="update_now"]').first
     assert (
@@ -132,8 +132,8 @@ def _click_update_preview(page, plugin_id: str) -> str:
     page.wait_for_function(
         """
         (prev) => {
-          const img = document.getElementById('previewImage');
-          return img && img.getAttribute('src') !== prev;
+          const img = document.getElementById('instancePreviewImage');
+          return img && img.getAttribute('src') !== prev && !img.hidden;
         }
         """,
         arg=before_src,
@@ -141,7 +141,7 @@ def _click_update_preview(page, plugin_id: str) -> str:
     )
     after_src = _preview_src(page)
     assert after_src and after_src != before_src, (
-        f"{plugin_id}: #previewImage src did not change after Update Preview "
+        f"{plugin_id}: #instancePreviewImage src did not change after Update Preview "
         f"(before={before_src!r}, after={after_src!r})"
     )
     return after_src
@@ -261,7 +261,7 @@ def test_plugin_preview_save_roundtrip(
         # --- Step 1: land on the plugin page --------------------------------
         page.goto(instance_url, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_selector("#settingsForm", timeout=10000)
-        page.wait_for_selector("#previewImage", timeout=10000)
+        page.wait_for_selector("#instancePreviewImage", state="attached", timeout=10000)
 
         # --- Step 2: configure ---------------------------------------------
         fill_form_inputs(page, inputs)
@@ -283,7 +283,7 @@ def test_plugin_preview_save_roundtrip(
         page.goto(f"{live_server}/", wait_until="domcontentloaded", timeout=30000)
         page.goto(instance_url, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_selector("#settingsForm", timeout=10000)
-        page.wait_for_selector("#previewImage", timeout=10000)
+        page.wait_for_selector("#instancePreviewImage", state="attached", timeout=10000)
 
         # --- Step 7: round-trip assertion (the heart of JTN-723) -----------
         # Every value we submitted in step 2 must come back re-hydrated in

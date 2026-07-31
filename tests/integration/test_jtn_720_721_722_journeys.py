@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import pytest
 
@@ -252,42 +251,7 @@ def test_jtn_721_playlist_roundtrip_create_add_reorder_delete_persist(
     assert [plugin.name for plugin in playlist.plugins] == ["Clock Alpha", "Todo Gamma"]
 
 
-def test_jtn_722_api_key_roundtrip_add_edit_delete(
-    live_server,
-    browser_page,
-    monkeypatch,
-    tmp_path,
-):
-    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
-    env_path = Path(tmp_path) / ".env"
-    env_path.write_text("", encoding="utf-8")
-
-    page = browser_page
-    navigate_and_wait(page, live_server, "/settings/api-keys")
-
-    page.locator("#addApiKeyBtn").click()
-    new_row = page.locator(".apikey-row").last
-    new_row.locator(".apikey-key").fill("JOURNEY_KEY")
-    new_row.locator(".apikey-value").fill("first-secret")
-    page.locator("#saveApiKeysBtn").click()
-    page.wait_for_timeout(1600)
-
-    navigate_and_wait(page, live_server, "/settings/api-keys")
-    assert page.locator(".apikey-row .apikey-key").first.input_value() == "JOURNEY_KEY"
-    assert "JOURNEY_KEY=first-secret" in env_path.read_text(encoding="utf-8")
-
-    page.locator(".apikey-row .apikey-value").first.fill("second-secret")
-    page.locator("#saveApiKeysBtn").click()
-    page.wait_for_timeout(1600)
-
-    navigate_and_wait(page, live_server, "/settings/api-keys")
-    assert "JOURNEY_KEY=second-secret" in env_path.read_text(encoding="utf-8")
-
-    page.once("dialog", lambda dialog: dialog.accept())
-    page.locator('.apikey-row .btn-delete[data-api-action="delete-row"]').click()
-    page.locator("#saveApiKeysBtn").click()
-    page.wait_for_timeout(1600)
-
-    navigate_and_wait(page, live_server, "/settings/api-keys")
-    assert page.locator(".apikey-row .apikey-key").count() == 0
-    assert "JOURNEY_KEY" not in env_path.read_text(encoding="utf-8")
+# JTN-722's add/edit/delete API-key roundtrip journey lives in
+# tests/integration/journeys/test_api_key_roundtrip.py — this duplicate
+# (written against the old .apikey-row list UI and its since-removed
+# /api-keys/save-per-click flow) was removed rather than rewritten twice.

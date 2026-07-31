@@ -47,7 +47,16 @@ def _read_env_keys(env_path: str) -> dict[str, str]:
 
 
 def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
-    """Full lifecycle: add via UI, edit via API, delete via UI — persisted at each step."""
+    """Full lifecycle: add, edit, delete — persisted at each step.
+
+    Rewritten for the unified card-based API-keys page (the separate
+    "generic" list-row UI/`/api-keys/save` JSON flow this test used to drive
+    was merged away; `/api-keys/save` itself still exists as a real route
+    with its own coverage in test_apikeys_blueprint.py/test_apikeys_xss.py,
+    it's just no longer what this page's own UI calls). The real UI now
+    saves via a single form POST to /settings/save_api_keys and deletes
+    immediately (no separate "Save" click needed) via /settings/delete_api_key.
+    """
     from tests.integration.browser_helpers import navigate_and_wait
 
     key_name = _unique_key_name()
@@ -61,21 +70,20 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         # ---- Step 1: navigate to /settings/api-keys ----
         page = browser_page
         rc = navigate_and_wait(page, live_server, "/settings/api-keys")
-        # Stub window.alert/confirm so JS `confirm()` in deleteRow doesn't hang.
-        page.evaluate("window.confirm = () => true;" "window.alert = () => undefined;")
-        # Prevent the post-save reload from racing Playwright — we'll reload
-        # explicitly so we control timing.
-        page.evaluate("window.location.reload = () => {};")
+        # Stub window.confirm so deleteKey()'s confirm() doesn't hang, and
+        # window.location.reload so the post-save reload doesn't race
+        # Playwright — we reload explicitly so we control timing.
+        page.evaluate("window.confirm = () => true;" "window.location.reload = () => {};")
 
-        # ---- Step 2: add a new key via the UI ----
-        page.locator("#addApiKeyBtn").click()
-        new_row = page.locator(".apikey-row[data-existing='false']").last
-        new_row.locator(".apikey-key").fill(key_name)
-        new_row.locator(".apikey-value").fill(_FAKE_KEY_VALUE)
+        # ---- Step 2: add a new custom secret via the UI ----
+        page.locator("#addCustomSecretBtn").click()
+        draft_card = page.locator('.api-key-card[data-custom-draft="true"]').last
+        draft_card.locator(".custom-secret-name-input").fill(key_name)
+        draft_card.locator(".custom-secret-value-input").fill(_FAKE_KEY_VALUE)
 
         save_btn = page.locator("#saveApiKeysBtn")
         with page.expect_response(
-            lambda r: "/api-keys/save" in r.url and r.request.method == "POST"
+            lambda r: "/settings/save_api_keys" in r.url and r.request.method == "POST"
         ) as save_info:
             save_btn.click()
         assert save_info.value.status == 200, "initial save should succeed"
@@ -89,31 +97,27 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         # No console errors / client-log posts from the add flow.
         rc.assert_no_errors(name="api_keys_after_add")
 
-        # ---- Step 4+5: reload and confirm the new row is still listed. ----
+        # ---- Step 4+5: reload and confirm the new card is still listed,
+        # now finalized (its name is a static label, not an editable input). ----
         rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         page.evaluate(
             "window.confirm = () => true;" "window.location.reload = () => {};"
         )
-        listed_keys = page.locator(".apikey-row[data-existing='true'] .apikey-key")
-        listed_values = [
-            listed_keys.nth(i).input_value() for i in range(listed_keys.count())
-        ]
-        assert (
-            key_name in listed_values
-        ), f"key {key_name} should persist across reload but only saw {listed_values}"
+        card = page.locator(f'.api-key-card[data-key-name="{key_name}"]')
+        assert card.count() == 1, f"key {key_name} should persist across reload"
+        assert card.get_attribute("data-configured") == "true"
 
-        # ---- Step 6+7: edit the value. Existing-row inputs are readonly in
-        # the generic UI, so the supported edit path is to re-POST via the
-        # same save endpoint with a new value. That is exactly what the
-        # managed-row `keepExisting` branch in the JS bypasses, so hitting
-        # the JSON endpoint directly is the correct backend contract.
-        resp = client.post(
-            "/api-keys/save",
-            json={"entries": [{"key": key_name, "value": _FAKE_KEY_VALUE_EDITED}]},
-        )
-        assert resp.status_code == 200, f"edit save failed: {resp.data!r}"
+        # ---- Step 6+7: edit the value via the same card's "Change key"
+        # toggle -> reveal the (now-empty, write-only) value input -> save. ----
+        card.locator(".api-key-toggle").click()
+        card.locator('input[type="password"]').fill(_FAKE_KEY_VALUE_EDITED)
+        with page.expect_response(
+            lambda r: "/settings/save_api_keys" in r.url and r.request.method == "POST"
+        ) as edit_info:
+            save_btn.click()
+        assert edit_info.value.status == 200, "edit save should succeed"
 
-        # ---- Step 8: edit is reflected — no duplicate row, value updated. ----
+        # ---- Step 8: edit is reflected — no duplicate entry, value updated. ----
         env_after_edit = _read_env_keys(env_path)
         assert (
             env_after_edit.get(key_name) == _FAKE_KEY_VALUE_EDITED
@@ -130,63 +134,53 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
             len(key_lines_after_edit) == 1
         ), f"editing must not create a duplicate key; found {key_lines_after_edit!r}"
 
-        # ---- Step 9+10: reload and verify the edit persisted visually. ----
+        # ---- Step 9+10: reload and verify the edit persisted. ----
         rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         page.evaluate(
             "window.confirm = () => true;" "window.location.reload = () => {};"
         )
-        listed_keys = page.locator(".apikey-row[data-existing='true'] .apikey-key")
-        listed_values = [
-            listed_keys.nth(i).input_value() for i in range(listed_keys.count())
-        ]
-        assert (
-            key_name in listed_values
-        ), "edited key should still be present after reload"
-        # And the underlying value matches the edit.
+        card = page.locator(f'.api-key-card[data-key-name="{key_name}"]')
+        assert card.count() == 1, "edited key should still be present after reload"
         assert _read_env_keys(env_path).get(key_name) == _FAKE_KEY_VALUE_EDITED
 
-        # ---- Step 11+12: delete via the UI. The confirm() dialog is stubbed
-        # to return true above, so clicking the delete button removes the row
-        # immediately; we then save to persist the deletion.
-        target_row = page.locator(
-            f".apikey-row[data-existing='true']:has(.apikey-key[value='{key_name}'])"
-        ).first
-        target_row.locator(".btn-delete").click()
+        # ---- Step 11+12: delete via the UI. The Delete button lives in the
+        # same .api-key-actions row as the password input, hidden again after
+        # the reload above — reveal it via the toggle first. Unlike the old
+        # flow, deleteKey() fires its own request immediately on confirm, no
+        # separate "Save" click needed to persist a deletion. ----
+        card.locator(".api-key-toggle").click()
         with page.expect_response(
-            lambda r: "/api-keys/save" in r.url and r.request.method == "POST"
+            lambda r: "/settings/delete_api_key" in r.url and r.request.method == "POST"
         ) as del_info:
-            page.locator("#saveApiKeysBtn").click()
-        assert del_info.value.status == 200, "save-after-delete should succeed"
+            card.locator('[data-api-action="delete-key"]').click()
+        assert del_info.value.status == 200, "delete should succeed"
 
-        # Backend confirms the key is gone.
+        # Backend confirms the key is gone; custom-secret cards are removed
+        # from the DOM entirely on delete (fixed providers stay, "not set").
         env_after_delete = _read_env_keys(env_path)
         assert (
             key_name not in env_after_delete
-        ), f"key {key_name} should be removed from .env after delete+save"
+        ), f"key {key_name} should be removed from .env after delete"
+        assert (
+            page.locator(f'.api-key-card[data-key-name="{key_name}"]').count() == 0
+        ), "custom-secret card should be removed from the DOM immediately on delete"
         rc.assert_no_errors(name="api_keys_after_delete")
 
         # ---- Step 13+14: reload; the key must stay gone (no resurrection). ----
         rc = navigate_and_wait(page, live_server, "/settings/api-keys")
-        listed_keys = page.locator(".apikey-row[data-existing='true'] .apikey-key")
-        listed_values = [
-            listed_keys.nth(i).input_value() for i in range(listed_keys.count())
-        ]
         assert (
-            key_name not in listed_values
+            page.locator(f'.api-key-card[data-key-name="{key_name}"]').count() == 0
         ), "deletion must not resurrect the key after reload"
         assert _read_env_keys(env_path).get(key_name) is None
         rc.assert_no_errors(name="api_keys_after_delete_reload")
 
     finally:
         # Teardown: make sure the test key is gone even if an assertion above
-        # raised. We always write a .env that omits the test key; other keys
-        # present in the .env are preserved by filtering them through.
+        # raised. /settings/delete_api_key removes just this one key without
+        # touching any others, unlike the old /api-keys/save's replace-
+        # everything semantics — no need to reconstruct the rest of .env.
         try:
-            remaining = {
-                k: v for k, v in _read_env_keys(env_path).items() if k != key_name
-            }
-            entries = [{"key": k, "value": v} for k, v in remaining.items()]
-            client.post("/api-keys/save", json={"entries": entries})
+            client.post("/settings/delete_api_key", data={"key": key_name})
         except Exception:
             # Teardown best-effort; don't mask the original assertion failure.
             pass

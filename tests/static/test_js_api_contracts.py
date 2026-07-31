@@ -433,8 +433,14 @@ def test_api_keys_page_js_dirty_tracking_present(client):
     # saveKeys must guard against no-op clicks
     assert "No changes to save" in js
 
-    # Structural mutations (addRow, deleteRow, clearField) must call markDirty
-    assert js.count("markDirty()") >= 4
+    # Structural mutations (adding a custom-secret draft) and ordinary typing
+    # (a single delegated input listener, replacing the old per-field calls
+    # in addRow/deleteRow/clearField) must both call markDirty.
+    assert "markDirty();" in js
+    add_secret_start = js.index("function addCustomSecretCard()")
+    assert "markDirty();" in js[add_secret_start : add_secret_start + 600]
+    assert 'event.target.closest(".api-keys-frame")' in js
+    assert "markDirty();" in js[js.index('.addEventListener("input"') :]
 
     # After a successful save, markClean must be called
     assert js.count("markClean()") >= 2

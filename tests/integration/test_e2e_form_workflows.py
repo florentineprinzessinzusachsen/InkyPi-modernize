@@ -185,7 +185,9 @@ def test_api_keys_page_has_save_button(live_server, tmp_path):
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             _stub_leaflet(page)
             page.goto(
-                f"{live_server}/api-keys", wait_until="domcontentloaded", timeout=30000
+                f"{live_server}/settings/api-keys",
+                wait_until="domcontentloaded",
+                timeout=30000,
             )
             page.wait_for_selector("[data-page-shell]", timeout=10000)
 

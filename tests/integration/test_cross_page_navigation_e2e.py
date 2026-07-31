@@ -33,22 +33,28 @@ def test_nav_links_work(live_server, browser_page):
     page = browser_page
     navigate_and_wait(page, live_server, "/")
 
+    # Both the desktop sidebar and the mobile "Menu" disclosure render an
+    # `a[href=...]` for each destination (the mobile copy lives inside a
+    # collapsed <details> and is only shown once opened). `.first` alone
+    # picks DOM order, not visibility, and the mobile copy comes first in
+    # the DOM — scope to `:visible` so this works regardless of viewport.
+
     # Navigate to settings
-    settings_link = page.locator("a[href='/settings']").first
+    settings_link = page.locator("a[href='/settings']:visible").first
     settings_link.click()
     page.wait_for_selector("[data-page-shell]", timeout=10000)
     assert "/settings" in page.url
 
     # Go back to dashboard to find playlist link
     navigate_and_wait(page, live_server, "/")
-    playlist_link = page.locator("a[href='/playlist']").first
+    playlist_link = page.locator("a[href='/playlist']:visible").first
     playlist_link.click()
     page.wait_for_selector("[data-page-shell]", timeout=10000)
     assert "/playlist" in page.url
 
     # Go back to dashboard to find history link
     navigate_and_wait(page, live_server, "/")
-    history_link = page.locator("a[href='/history']").first
+    history_link = page.locator("a[href='/history']:visible").first
     history_link.click()
     page.wait_for_selector("[data-page-shell]", timeout=10000)
     assert "/history" in page.url

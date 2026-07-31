@@ -1,5 +1,8 @@
 def test_delete_api_key_invalid(client):
-    resp = client.post("/settings/delete_api_key", data={"key": "NOT_A_REAL_KEY"})
+    # A well-formed but unregistered name is a legitimate custom-secret
+    # delete target and returns 200 - only malformed names or reserved
+    # internal keys are rejected with 400.
+    resp = client.post("/settings/delete_api_key", data={"key": "not a valid key!"})
     assert resp.status_code == 400
 
 

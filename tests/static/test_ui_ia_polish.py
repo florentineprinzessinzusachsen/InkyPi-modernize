@@ -171,7 +171,11 @@ def test_second_validation_mobile_and_feedback_polish_contracts():
         and "grid-template-columns: minmax(0, 1fr)" in css
     )
     assert '#playlistModal input[type="time"]' in css
-    assert 'setToggleLabel(button, "Editing")' in api_js
+    # setToggleLabel(button, "Editing") described a since-removed toggle
+    # state; setToggleLabel itself was inlined into _updateKeyToggle, which
+    # only ever sets "Add key"/"Change key" now — no "Editing" state exists
+    # in the current unified custom-secrets card UI.
+    assert "function _updateKeyToggle(card, configured)" in api_js
 
 
 def test_image_url_schema_has_inline_url_validation(client):

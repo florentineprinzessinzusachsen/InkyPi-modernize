@@ -99,12 +99,20 @@ class TestRequirementsLockfile:
         )
 
     def test_types_requests_pin_preserved(self) -> None:
-        """types-requests must stay pinned at 2.32.0.20241016 (PR #301 / JTN-525)."""
+        """types-requests must remain pinned (PR #301 / JTN-525, mypy strict mode).
+
+        Checks presence rather than an exact version: this stub-only package
+        gets bumped periodically by dependabot like any other dev dependency,
+        and the real invariant (strict mypy passing on the modules in
+        mypy.ini's strict subset) is enforced directly by scripts/lint.sh /
+        CI — not by freezing this test to whatever patch version was current
+        when it was written.
+        """
         content = REQUIREMENTS_DEV_TXT.read_text()
-        assert "types-requests==2.32.0.20241016" in content, (
-            "types-requests==2.32.0.20241016 is missing from requirements-dev.txt. "
-            "This pin was added in PR #301 (JTN-525) for mypy strict-mode compatibility. "
-            "Ensure requirements-dev.in specifies: types-requests==2.32.0.20241016"
+        assert re.search(r"^types-requests==\S+", content, re.MULTILINE), (
+            "types-requests pin is missing from requirements-dev.txt. "
+            "This was added in PR #301 (JTN-525) — mypy strict mode needs its "
+            "stubs. Ensure requirements-dev.in specifies a types-requests pin."
         )
 
     def test_requirements_in_exists(self) -> None:

@@ -1560,11 +1560,21 @@ class TestPiImageBuildWorkflow:
 
     def test_workflow_uses_pinned_action_versions(self):
         # Supply-chain: every external action must be pinned by major version.
-        # (SHA pinning is stronger but the rest of the repo uses @v4/@v2.)
-        assert "actions/checkout@v4" in self.content
-        assert "softprops/action-gh-release@v2" in self.content
-        assert "actions/upload-artifact@v4" in self.content
-        assert "actions/download-artifact@v4" in self.content
+        # (SHA pinning is stronger but the rest of the repo uses @vN.) Checks
+        # for a major-version pin rather than a specific number — dependabot
+        # bumps these routinely (actions/checkout v4->v7, action-gh-release
+        # v2->v3 have already happened), and hardcoding the exact version
+        # here just means this test goes stale on every legitimate bump
+        # without actually re-verifying the real invariant.
+        for action in (
+            "actions/checkout",
+            "softprops/action-gh-release",
+            "actions/upload-artifact",
+            "actions/download-artifact",
+        ):
+            assert re.search(rf"{re.escape(action)}@v\d+", self.content), (
+                f"{action} is not pinned to a major version in the workflow"
+            )
 
     def test_workflow_uploads_release_asset(self):
         assert "softprops/action-gh-release" in self.content

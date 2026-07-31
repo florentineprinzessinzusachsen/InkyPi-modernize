@@ -146,11 +146,12 @@ def test_api_key_toggle_buttons_keep_accessible_names(client, device_config_dev)
     body = resp.data.decode("utf-8")
     assert '<span data-role="toggle-label">Change key</span>' in body
     assert '<span data-role="toggle-label">Add key</span>' in body
-    assert '<span class="sr-only" data-role="toggle-context"> for OpenAI</span>' in body
-    assert '<span class="sr-only" data-role="toggle-context"> for GitHub</span>' in body
-    assert (
-        '<span class="sr-only" data-role="toggle-context"> for Google AI</span>' in body
-    )
+    # The sr-only context span no longer carries a data-role attribute (it's
+    # not looked up by JS - _labelForCard reads .key-svc instead) but the
+    # accessible-name text itself is unchanged.
+    assert '<span class="sr-only"> for OpenAI</span>' in body
+    assert '<span class="sr-only"> for GitHub</span>' in body
+    assert '<span class="sr-only"> for Google AI</span>' in body
 
 
 def test_save_api_keys_whitespace_padded_bullets_are_rejected(

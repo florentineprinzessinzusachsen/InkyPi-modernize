@@ -221,8 +221,8 @@ def test_add_plugin_rejects_bad_interval(
 def test_api_keys_page_js_addrow_uses_password_type():
     """JS-built API key rows must use type=password for value inputs."""
     js = _read_js_asset("api_keys_page.js")
-    assert 'valInput.type = "password"' in js
-    assert 'valInput.type = "text"' not in js
+    assert 'valueInput.type = "password"' in js
+    assert 'valueInput.type = "text"' not in js
 
 
 # ---------------------------------------------------------------------------
