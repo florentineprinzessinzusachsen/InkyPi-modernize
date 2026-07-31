@@ -8,23 +8,23 @@ flask>=3.1,<4
 python-dotenv>=1.0,<2
 # inky display driver — only needed on Pi hardware
 inky>=2.3,<3; sys_platform == "linux"
-requests>=2.32,<3
+requests>=2.34.2,<3
 urllib3>=2.0,<3
 werkzeug>=3.1,<4
-pillow>=11.0,<13
+pillow>=12.3.0,<13
 # pi-heif has wheels for all major platforms (Linux, macOS, Windows) — no platform guard.
-pi-heif==1.2.0
-tzdata>=2024.1
-openai>=2.0,<3
+pi-heif==1.4.0
+tzdata>=2026.3
+openai>=2.49.0,<3
 google-genai>=1.14,<2
-numpy>=2.0,<3
+numpy>=2.5.1,<3
 icalendar>=6.0,<7
-recurring-ical-events>=3.0,<4
+recurring-ical-events>=3.8.2,<4
 psutil>=7.0,<8
 # cysystemd — only available on Linux; provides journald integration
 cysystemd>=2.0,<3; sys_platform == "linux"
 waitress>=3.0,<4
-feedparser>=6.0,<7
+feedparser>=6.0.13,<7
 jsonschema>=4.0,<5
 astral>=3.0,<4
-prometheus-client>=0.21,<1
+prometheus-client>=0.26.0,<1
