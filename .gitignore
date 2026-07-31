@@ -183,6 +183,7 @@ src/config/plugin_history/
 
 # Local-only device configuration used during development
 src/config/device.local.json
+src/config/device_dev.json
 
 # But keep static asset PNGs (icons, plugin assets) tracked
 !src/static/icons/*.png
