@@ -105,7 +105,7 @@ jobs:
 
       - name: Checkout
         if: steps.skip.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Assert debian-requirements.txt resolves on this OS
         id: apt_check
@@ -216,7 +216,7 @@ jobs:
         codename: [trixie, bookworm, bullseye]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Skip leg if not selected (workflow_dispatch)
         id: skip
@@ -273,7 +273,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download drift artifacts
         uses: actions/download-artifact@v4
