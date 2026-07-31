@@ -1590,6 +1590,16 @@ main[data-page-shell="workflow"] .frame {
     flex-shrink: 0;
   }
 
+  /* Closed by default: an unscoped `display: grid` on .mobile-site-nav-panel
+   * overrides the browser's native "hide non-summary children of a closed
+   * <details>" behaviour (author `display` beats the UA stylesheet), so the
+   * panel would render — absolutely positioned right over the page's own
+   * header buttons — even collapsed. Higher-specificity :not([open]) rule
+   * below wins regardless of declaration order. */
+  .mobile-site-nav:not([open]) .mobile-site-nav-panel {
+    display: none;
+  }
+
   .mobile-site-nav-panel {
     position: absolute;
     top: calc(100% + 8px);
