@@ -75,7 +75,7 @@ GitPython>=3.1.47,<4
 pip-licenses>=5.0,<6
 
 # Mutation testing (optional — slow; run with: mutmut run)
-mutmut>=2.5,<3
+mutmut>=3.6.0,<4
 
 # Memory profiling for the per-PR memory diff comment (JTN-610). Linux-only
 # wheels; tracemalloc fallback is used on other platforms. Pinned to 1.x to
