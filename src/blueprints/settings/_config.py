@@ -1,11 +1,13 @@
 """Settings pages, save, import/export, API keys, isolation, and safe-reset route handlers."""
 
+import os
 import unicodedata
 from typing import Any
 from zoneinfo import available_timezones
 
 from flask import current_app, redirect, render_template, request
 
+import blueprints.apikeys as _apikeys_mod
 import blueprints.settings as _mod
 from app_setup.logging_setup import configure_log_timezone
 from utils.backend_errors import ClientInputError, route_error_boundary
@@ -322,10 +324,26 @@ def api_keys_page() -> Any:
         "GITHUB_SECRET": ["GitHub"],
         "GOOGLE_AI_SECRET": ["AI Image", "AI Text"],
     }
+
+    # Custom secrets: any .env entry that isn't one of the fixed providers
+    # above or an internal app secret. This is the free-form mechanism
+    # plugins like calendar_auth rely on for per-instance credentials
+    # (e.g. CALENDAR_AUTH_PASSWORD_<LABEL>) that can't be declared as a
+    # single static provider key. Reuses blueprints.apikeys' env-file
+    # helpers rather than duplicating them.
+    env_path = _apikeys_mod.get_env_path()
+    all_entries = _apikeys_mod.parse_env_file(env_path)
+    fixed_keys = set(keys)
+    custom_entries = [
+        {"key": key, "masked": _apikeys_mod.mask_value(value)}
+        for key, value in all_entries
+        if key not in fixed_keys and key not in _apikeys_mod._INTERNAL_KEYS
+    ]
+
     return render_template(
         "api_keys.html",
-        api_keys_mode="managed",
-        entries=[],
+        entries=custom_entries,
+        env_exists=os.path.exists(env_path),
         masked=masked,
         api_key_plugins=api_key_plugins,
         active_nav="api-keys",
@@ -520,6 +538,35 @@ def _validate_image_settings(form_data: dict[str, str]) -> Any | None:
     return None
 
 
+def _validate_history_retention(form_data: dict[str, str]) -> Any | None:
+    """Validate the history auto-cleanup retention value/unit, when enabled."""
+    if form_data.get("historyCleanupEnabled") != "on":
+        return None
+
+    unit = form_data.get("historyRetentionUnit")
+    if unit not in ("hours", "days"):
+        return _field_error(
+            "History retention unit must be hours or days", "historyRetentionUnit"
+        )
+
+    raw_value = form_data.get("historyRetentionValue")
+    if not raw_value or not raw_value.strip():
+        return _field_error(
+            "History retention value is required", "historyRetentionValue"
+        )
+    try:
+        value = int(raw_value)
+    except (ValueError, TypeError):
+        return _field_error(
+            "History retention value must be a whole number", "historyRetentionValue"
+        )
+    if value < 1:
+        return _field_error(
+            "History retention value must be at least 1", "historyRetentionValue"
+        )
+    return None
+
+
 def _validate_settings_form(form_data: dict[str, str]) -> tuple[Any | None, str | None]:
     """Validate settings form data and return any error plus normalized fields."""
     normalized_device_name, err = _validate_device_name(form_data)
@@ -558,11 +605,17 @@ def _validate_settings_form(form_data: dict[str, str]) -> tuple[Any | None, str 
     if err:
         return err, None
 
+    err = _validate_history_retention(form_data)
+    if err:
+        return err, None
+
     return _validate_image_settings(form_data), normalized_device_name
 
 
 def _build_settings_dict(
-    form_data: dict[str, str], normalized_device_name: str
+    form_data: dict[str, str],
+    normalized_device_name: str,
+    device_config: Any,
 ) -> tuple[dict[str, Any], int]:
     """Build the persisted settings payload from validated form data."""
     unit = form_data.get("unit")
@@ -577,6 +630,23 @@ def _build_settings_dict(
         "sharpness": float(form_data.get("sharpness", "1.0")),
         "contrast": float(form_data.get("contrast", "1.0")),
     }
+    # Preserve any existing max_count/min_free_bytes overrides (not exposed
+    # in this form) rather than dropping them on every settings save.
+    existing_history_cleanup = device_config.get_config("history_cleanup")
+    history_cleanup: dict[str, Any] = (
+        dict(existing_history_cleanup)
+        if isinstance(existing_history_cleanup, dict)
+        else {}
+    )
+    history_cleanup["enabled"] = form_data.get("historyCleanupEnabled") == "on"
+    history_cleanup["retention_unit"] = form_data.get("historyRetentionUnit", "days")
+    try:
+        history_cleanup["retention_value"] = int(
+            form_data.get("historyRetentionValue", "30")
+        )
+    except (TypeError, ValueError):
+        history_cleanup["retention_value"] = 30
+
     settings: dict[str, Any] = {
         "name": normalized_device_name,
         "orientation": form_data.get("orientation"),
@@ -587,6 +657,8 @@ def _build_settings_dict(
         "plugin_cycle_interval_seconds": plugin_cycle_interval_seconds,
         "image_settings": image_settings,
         "preview_size_mode": form_data.get("previewSizeMode", "native"),
+        "history_enabled": form_data.get("historyEnabled") == "on",
+        "history_cleanup": history_cleanup,
     }
     if "inky_saturation" in form_data:
         image_settings["inky_saturation"] = float(
@@ -615,7 +687,7 @@ def save_settings() -> Any:
             "plugin_cycle_interval_seconds"
         )
         settings, plugin_cycle_interval_seconds = _build_settings_dict(
-            form_data, normalized_device_name
+            form_data, normalized_device_name, device_config
         )
         device_config.update_config(settings)
         configure_log_timezone(settings.get("timezone"))

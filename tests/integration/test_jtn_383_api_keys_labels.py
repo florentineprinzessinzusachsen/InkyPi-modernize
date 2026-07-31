@@ -13,13 +13,20 @@ from pathlib import Path
 def test_server_rendered_api_keys_rows_have_id_name_and_aria_label(
     client, tmp_path, monkeypatch
 ):
-    """Each row in the server-rendered /api-keys response must have id, name,
-    and aria-label on both the key input and the value input."""
+    """Each custom-secret row in the /settings/api-keys response must have
+    id, name, and aria-label on both the key input and the value input.
+
+    Uses custom (non-fixed-provider) key names since fixed provider keys
+    like OPEN_AI_SECRET/NASA_SECRET now render as managed cards, not rows
+    in this list.
+    """
     env_file = tmp_path / ".env"
-    env_file.write_text("OPEN_AI_SECRET=openai-123\nNASA_SECRET=nasa-456\n")
+    env_file.write_text(
+        "CALENDAR_AUTH_PASSWORD_HOME=secret-123\nCALENDAR_AUTH_PASSWORD_WORK=secret-456\n"
+    )
     monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_file))
 
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -32,9 +39,9 @@ def test_server_rendered_api_keys_rows_have_id_name_and_aria_label(
     assert 'id="apikey-value-1"' in html
 
     # Existing aria-labels preserved (no regression from JTN-309/382 work).
-    assert 'aria-label="OPEN_AI_SECRET key name"' in html
-    assert 'aria-label="OPEN_AI_SECRET value, hidden"' in html
-    assert 'aria-label="NASA_SECRET key name"' in html
+    assert 'aria-label="CALENDAR_AUTH_PASSWORD_HOME key name"' in html
+    assert 'aria-label="CALENDAR_AUTH_PASSWORD_HOME value, hidden"' in html
+    assert 'aria-label="CALENDAR_AUTH_PASSWORD_WORK key name"' in html
 
 
 # --- JS-built rows (api_keys_page.js addRow) ---

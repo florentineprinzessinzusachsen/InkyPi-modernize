@@ -58,9 +58,9 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
     env_path = os.path.join(project_dir, ".env")
 
     try:
-        # ---- Step 1: navigate to /api-keys (generic mode) ----
+        # ---- Step 1: navigate to /settings/api-keys ----
         page = browser_page
-        rc = navigate_and_wait(page, live_server, "/api-keys")
+        rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         # Stub window.alert/confirm so JS `confirm()` in deleteRow doesn't hang.
         page.evaluate("window.confirm = () => true;" "window.alert = () => undefined;")
         # Prevent the post-save reload from racing Playwright — we'll reload
@@ -90,7 +90,7 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         rc.assert_no_errors(name="api_keys_after_add")
 
         # ---- Step 4+5: reload and confirm the new row is still listed. ----
-        rc = navigate_and_wait(page, live_server, "/api-keys")
+        rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         page.evaluate(
             "window.confirm = () => true;" "window.location.reload = () => {};"
         )
@@ -131,7 +131,7 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         ), f"editing must not create a duplicate key; found {key_lines_after_edit!r}"
 
         # ---- Step 9+10: reload and verify the edit persisted visually. ----
-        rc = navigate_and_wait(page, live_server, "/api-keys")
+        rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         page.evaluate(
             "window.confirm = () => true;" "window.location.reload = () => {};"
         )
@@ -166,7 +166,7 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         rc.assert_no_errors(name="api_keys_after_delete")
 
         # ---- Step 13+14: reload; the key must stay gone (no resurrection). ----
-        rc = navigate_and_wait(page, live_server, "/api-keys")
+        rc = navigate_and_wait(page, live_server, "/settings/api-keys")
         listed_keys = page.locator(".apikey-row[data-existing='true'] .apikey-key")
         listed_values = [
             listed_keys.nth(i).input_value() for i in range(listed_keys.count())

@@ -26,6 +26,18 @@
         "contrast": { "type": "number" }
       }
     },
+    "history_enabled": { "type": "boolean" },
+    "history_cleanup": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "retention_value": { "type": "integer", "minimum": 1 },
+        "retention_unit": { "type": "string", "enum": ["hours", "days"] },
+        "max_count": { "type": "integer", "minimum": 0 },
+        "min_free_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
     "playlist_config": {
       "type": "object",
       "properties": {

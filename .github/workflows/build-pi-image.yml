@@ -80,7 +80,7 @@ jobs:
       version: ${{ steps.tag.outputs.version }}
     steps:
       - name: Checkout InkyPi repo (workflow + pishrink.sh)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve release tag
         id: tag
@@ -348,7 +348,7 @@ jobs:
       verified: ${{ steps.verify.outputs.verified }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install qemu
         run: |
@@ -435,7 +435,7 @@ jobs:
           path: build
 
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |

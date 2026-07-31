@@ -5,12 +5,16 @@ Extends :mod:`tests.integration.test_plugin_preview_smoke` (JTN-691). That
 smoke test proves Update Preview flips ``#previewImage`` src. This journey
 proves the *full* edit-preview-save-return cycle persists the user's input:
 
-1. Navigate to ``/plugin/<id>``.
+0. Create a named playlist instance for the plugin directly via the model
+   (the "Save instance" path needs an existing instance to target, unlike
+   the old draft-save button which created one on first save).
+1. Navigate to ``/plugin/<id>?instance=<name>``.
 2. Fill the per-plugin form from :data:`PLUGIN_FORM_INPUTS`.
 3. Click Update Preview -> assert ``#previewImage`` src changes.
-4. Click Save Settings -> assert ``pluginSettingsSaved`` HX-Trigger fired.
+4. Click Save instance -> assert the PUT /update_plugin_instance/<name>
+   response is ok.
 5. Navigate AWAY to ``/``.
-6. Navigate BACK to ``/plugin/<id>``.
+6. Navigate BACK to ``/plugin/<id>?instance=<name>``.
 7. Assert every configured field re-populates with the value submitted.
 8. Click Update Preview again -> preview re-renders cleanly (no 5xx,
    no console errors) -- deterministic-input stability check.
@@ -20,10 +24,8 @@ can't mask a clock break). Scope is the set of plugins that render
 offline today (clock, year_progress, todo_list, countdown) -- see
 ``tests/integration/fixtures/plugin_inputs.py`` for the input dicts.
 
-**Teardown:** the saved plugin instance lives on the Default playlist as
-``<plugin_id>_saved_settings`` (see :func:`blueprints.plugin._save_plugin_settings_common`).
-We delete it after the test to avoid leaking state into sibling tests
-that assume a clean Default playlist.
+**Teardown:** the instance created in step 0 is deleted after the test to
+avoid leaking state into sibling tests that assume a clean playlist.
 
 Relation to sibling tests
 -------------------------
@@ -145,56 +147,70 @@ def _click_update_preview(page, plugin_id: str) -> str:
     return after_src
 
 
-def _click_save_settings(page, plugin_id: str) -> None:
-    """Click Save Settings and wait for the HX-Trigger success event.
+def _create_instance(flask_app, plugin_id: str) -> tuple[str, str]:
+    """Create a named playlist instance for ``plugin_id`` with empty settings.
 
-    The save path is HTMX-driven (see ``plugin.html`` savePluginSettingsBtn
-    and ``_render_plugin_form_success``). On 200 the server emits an
-    ``HX-Trigger: {"pluginSettingsSaved": {...}}`` header, which fires a
-    DOM ``pluginSettingsSaved`` CustomEvent on ``document``. We listen for
-    that event (not the response modal) so the assertion is independent of
-    modal rendering timing.
+    The removed "Save Settings" draft button used to give every plugin an
+    anonymous ``<plugin_id>_saved_settings`` instance to save into. Now the
+    only save path is "Save instance" (PUT /update_plugin_instance/<name>),
+    which requires a real, already-playlisted instance to target -- so the
+    journey has to create one up front rather than relying on the save step
+    itself to create it. Returns ``(playlist_name, instance_name)``.
     """
-    # Install a one-shot listener *before* clicking so we can't miss the event.
-    page.evaluate("""
-        () => {
-          window.__jtn723_saved = false;
-          document.addEventListener(
-            'pluginSettingsSaved',
-            () => { window.__jtn723_saved = true; },
-            { once: true }
-          );
-        }
-        """)
-    save_btn = page.locator("#savePluginSettingsBtn").first
+    device_config = flask_app.config["DEVICE_CONFIG"]
+    playlist_manager = device_config.get_playlist_manager()
+    playlist_name = playlist_manager.get_playlist_names()[0]
+    instance_name = f"{plugin_id}_journey_instance"
+    added = playlist_manager.add_plugin_to_playlist(
+        playlist_name,
+        {
+            "plugin_id": plugin_id,
+            "name": instance_name,
+            "plugin_settings": {},
+            "refresh": {"interval": 300},
+        },
+    )
+    assert added, f"{plugin_id}: failed to create journey instance for round-trip test"
+    device_config.update_atomic(
+        lambda cfg: cfg.__setitem__("playlist_config", playlist_manager.to_dict())
+    )
+    return playlist_name, instance_name
+
+
+def _click_save_instance(page, plugin_id: str) -> None:
+    """Click Save instance and wait for the PUT /update_plugin_instance response.
+
+    Unlike the removed draft-save button, this path is a plain fetch (see
+    ``sendForm`` in plugin_form.js) that resolves via its JSON response, not
+    an HX-Trigger DOM event -- so we wait on the network response itself.
+    """
+    save_btn = page.locator('[data-plugin-action="update_instance"]').first
     assert (
         save_btn.count() > 0
-    ), f"{plugin_id}: #savePluginSettingsBtn not present on /plugin/{plugin_id}"
+    ), f"{plugin_id}: no Save instance button on /plugin/{plugin_id}"
     save_btn.wait_for(state="visible", timeout=5000)
-    save_btn.click(timeout=5000, force=True)
 
-    page.wait_for_function(
-        "() => window.__jtn723_saved === true",
+    with page.expect_response(
+        lambda r: "/update_plugin_instance/" in r.url and r.request.method == "PUT",
         timeout=_SAVE_TIMEOUT_MS,
+    ) as resp_info:
+        save_btn.click(timeout=5000, force=True)
+    response = resp_info.value
+    assert response.ok, (
+        f"{plugin_id}: update_plugin_instance PUT failed with "
+        f"{response.status}"
     )
 
 
-def _purge_saved_instance(flask_app, plugin_id: str) -> None:
-    """Remove ``<plugin_id>_saved_settings`` from the Default playlist.
-
-    The save path writes an instance named ``<plugin_id>_saved_settings``
-    onto the Default playlist (see ``_save_plugin_settings_common``). Tests
-    that assume a clean Default would see contamination, so we delete it
-    post-test even when the test itself passed.
-    """
+def _purge_instance(flask_app, plugin_id: str, playlist_name: str, instance_name: str) -> None:
+    """Remove the journey's playlist instance so it doesn't leak into sibling tests."""
     device_config = flask_app.config.get("DEVICE_CONFIG")
     if device_config is None:
         return
     playlist_manager = device_config.get_playlist_manager()
-    playlist = playlist_manager.get_playlist("Default")
+    playlist = playlist_manager.get_playlist(playlist_name)
     if not playlist:
         return
-    instance_name = f"{plugin_id}_saved_settings"
     if playlist.find_plugin(plugin_id, instance_name):
         playlist.delete_plugin(plugin_id, instance_name)
         # Persist the mutation so a subsequent reader sees the clean state.
@@ -235,13 +251,15 @@ def test_plugin_preview_save_roundtrip(
     collector = RuntimeCollector(page, live_server)
     inputs = PLUGIN_FORM_INPUTS[plugin_id]
 
+    # "Save instance" (the only remaining save path) requires an existing
+    # named instance to target, unlike the removed draft-save button which
+    # created its own anonymous instance on first save.
+    playlist_name, instance_name = _create_instance(flask_app, plugin_id)
+    instance_url = f"{live_server}/plugin/{plugin_id}?instance={instance_name}"
+
     try:
         # --- Step 1: land on the plugin page --------------------------------
-        page.goto(
-            f"{live_server}/plugin/{plugin_id}",
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
+        page.goto(instance_url, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_selector("#settingsForm", timeout=10000)
         page.wait_for_selector("#previewImage", timeout=10000)
 
@@ -258,16 +276,12 @@ def test_plugin_preview_save_roundtrip(
         # --- Step 3: Update Preview ----------------------------------------
         _click_update_preview(page, plugin_id)
 
-        # --- Step 4: Save Settings -----------------------------------------
-        _click_save_settings(page, plugin_id)
+        # --- Step 4: Save instance -------------------------------------------
+        _click_save_instance(page, plugin_id)
 
         # --- Step 5/6: navigate away, then back ----------------------------
         page.goto(f"{live_server}/", wait_until="domcontentloaded", timeout=30000)
-        page.goto(
-            f"{live_server}/plugin/{plugin_id}",
-            wait_until="domcontentloaded",
-            timeout=30000,
-        )
+        page.goto(instance_url, wait_until="domcontentloaded", timeout=30000)
         page.wait_for_selector("#settingsForm", timeout=10000)
         page.wait_for_selector("#previewImage", timeout=10000)
 
@@ -309,6 +323,6 @@ def test_plugin_preview_save_roundtrip(
             f"{server_5xx[:3]}"
         )
     finally:
-        # Always clean up the saved instance, even on failure, so a broken
-        # test does not pollute sibling tests that read the Default playlist.
-        _purge_saved_instance(flask_app, plugin_id)
+        # Always clean up the journey instance, even on failure, so a broken
+        # test does not pollute sibling tests that read the same playlist.
+        _purge_instance(flask_app, plugin_id, playlist_name, instance_name)

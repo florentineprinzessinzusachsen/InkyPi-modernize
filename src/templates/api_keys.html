@@ -11,24 +11,19 @@
     {% from 'macros/pageheader.html' import pageheader %}
     <div class="frame api-keys-frame"
          data-delete-managed-url="{{ url_for('settings.delete_api_key') }}"
-         data-mode="{{ api_keys_mode | default('managed') }}"
          data-save-generic-url="{{ url_for('apikeys.save_apikeys') }}"
          data-save-managed-url="{{ url_for('settings.save_api_keys') }}"
     >
         <main id="main-content" role="main" tabindex="-1" class="page-shell page-shell-management" data-page-shell="management">
         {{ breadcrumb([{'label': 'Home', 'url': url_for('main.main_page')}, {'label': 'Settings', 'url': url_for('settings.settings_page')}, {'label': 'API Keys'}]) }}
-        {% set key_summary = namespace(provider_count=(entries|length if entries is defined else 0), configured_count=0) %}
-        {% if api_keys_mode == 'managed' %}
-            {% set key_summary.provider_count = 6 %}
-            {% if masked.OPEN_AI_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-            {% if masked.OPEN_WEATHER_MAP_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-            {% if masked.NASA_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-            {% if masked.UNSPLASH_ACCESS_KEY %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-            {% if masked.GITHUB_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-            {% if masked.GOOGLE_AI_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
-        {% else %}
-            {% set key_summary.configured_count = entries|length if entries is defined else 0 %}
-        {% endif %}
+        {% set custom_count = entries|length if entries is defined else 0 %}
+        {% set key_summary = namespace(provider_count=6 + custom_count, configured_count=custom_count) %}
+        {% if masked.OPEN_AI_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
+        {% if masked.OPEN_WEATHER_MAP_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
+        {% if masked.NASA_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
+        {% if masked.UNSPLASH_ACCESS_KEY %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
+        {% if masked.GITHUB_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
+        {% if masked.GOOGLE_AI_SECRET %}{% set key_summary.configured_count = key_summary.configured_count + 1 %}{% endif %}
         {% call pageheader(
             title='API keys',
             eyebrow='System',
@@ -42,7 +37,7 @@
             <span id="configuredCountSummary" class="status-chip success">{{ key_summary.configured_count }} configured</span>
         </div>
 
-        {% if api_keys_mode == 'managed' %}
+        <h2 class="card-title">Providers</h2>
         <form id="apiKeysForm" class="settings-form">
             <div class="settings-container api-keys-grid">
                 {{ api_key_card('OpenWeather', 'OPEN_WEATHER_MAP_SECRET', 'openweather-input', 'openweather-status', 'Enter OpenWeather API key', masked, api_key_plugins) }}
@@ -58,7 +53,11 @@
                 </details>
             </div>
         </form>
-        {% else %}
+
+        <h2 class="card-title">Custom secrets</h2>
+        <p class="api-keys-note">
+            For credentials that aren't one of the providers above — e.g. a per-calendar login for Calendar with Login (<code>CALENDAR_AUTH_PASSWORD_&lt;LABEL&gt;</code>).
+        </p>
         <div class="api-keys-panel">
             <div id="apikeys-list">
                 {% if entries %}
@@ -72,22 +71,14 @@
                     {% endfor %}
                 {% else %}
                     <div id="empty-state">
-                    {{ empty_state('key', 'No API keys configured yet.', 'Add keys below to enable plugin features.') }}
+                    {{ empty_state('key', 'No custom secrets configured yet.', 'Add one below for plugins that need a credential outside the providers above.') }}
                     </div>
                 {% endif %}
             </div>
             <div class="add-buttons-grid">
                 <button type="button" id="addApiKeyBtn" class="btn-add" data-api-action="add-row"><span>+</span> Add API Key</button>
-                {# data-test-skip-click: preset chips are repetitive low-signal click-sweep targets; add-row/save/delete coverage already exercises the page handlers. #}
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="OPEN_WEATHER_MAP_SECRET" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('OPEN_WEATHER_MAP_SECRET', []) | join(', ') }}">OPEN_WEATHER_MAP_SECRET</button>
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="OPEN_AI_SECRET" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('OPEN_AI_SECRET', []) | join(', ') }}">OPEN_AI_SECRET</button>
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="NASA_SECRET" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('NASA_SECRET', []) | join(', ') }}">NASA_SECRET</button>
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="UNSPLASH_ACCESS_KEY" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('UNSPLASH_ACCESS_KEY', []) | join(', ') }}">UNSPLASH_ACCESS_KEY</button>
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="GITHUB_SECRET" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('GITHUB_SECRET', []) | join(', ') }}">GITHUB_SECRET</button>
-                <button type="button" class="btn-preset" data-api-action="add-preset" data-key="GOOGLE_AI_SECRET" data-test-skip-click="true" title="Used by: {{ api_key_plugins.get('GOOGLE_AI_SECRET', []) | join(', ') }}">GOOGLE_AI_SECRET</button>
             </div>
         </div>
-        {% endif %}
 
         <p class="api-keys-note">
             API keys are stored in the device <code>.env</code> file. Leave an input blank to keep the existing key; some plugins may require a restart after changes.

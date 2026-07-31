@@ -68,7 +68,7 @@ jobs:
       INKYPI_TOKEN: ${{ secrets.INKYPI_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve duration + interval
         id: params

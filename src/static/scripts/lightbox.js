@@ -157,6 +157,19 @@
           closeBtn.innerHTML = closeSpan.innerHTML;
           closeBtn.addEventListener('click', closeLightbox);
           closeSpan.replaceWith(closeBtn);
+        } else {
+          // Server-rendered modal (modal() macro) already has a real
+          // <button class="close-button" data-close-modal="...">. That
+          // attribute wires it to the generic per-page closeModal() handler
+          // (plugin_page.js), which is enough to hide the modal, but knows
+          // nothing about lightbox.js's own state (image src/native-size
+          // reset, triggerElement tracking) - bind closeLightbox directly
+          // too so both stay in sync, same as ESC/outside-click already do.
+          const existingCloseBtn = content.querySelector('.close-button');
+          if (existingCloseBtn && !existingCloseBtn._lbCloseBound) {
+            existingCloseBtn.addEventListener('click', closeLightbox);
+            existingCloseBtn._lbCloseBound = true;
+          }
         }
 
         addFocusTrap(modal);
@@ -200,11 +213,6 @@
     modal.classList.add('is-open');
     syncModalOpen();
 
-    // Make background inert for accessibility
-    Array.from(document.body.children).forEach(function(el) {
-      if (el !== modal && el.nodeType === 1) el.inert = true;
-    });
-
     // If already cached, trigger load immediately
     if (img.complete && img.naturalWidth > 0) {
       if (loader) loader.style.display = 'none';
@@ -223,10 +231,6 @@
       modal.setAttribute('hidden', '');
       modal.classList.remove('is-open');
     }
-    // Remove inert from background
-    Array.from(document.body.children).forEach(function(el) {
-      if (el.nodeType === 1) el.inert = false;
-    });
     syncModalOpen();
     // Restore focus to the element that opened the lightbox
     if (triggerElement && typeof triggerElement.focus === 'function') {

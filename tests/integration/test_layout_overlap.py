@@ -60,7 +60,7 @@ PAGES_TO_CHECK: tuple[OverlapPage, ...] = (
     OverlapPage("history", "/history", "#storage-block"),
     OverlapPage("playlist", "/playlist", "#newPlaylistBtn"),
     OverlapPage("plugin_clock", "/plugin/clock", "#settingsForm"),
-    OverlapPage("api_keys", "/api-keys", "#saveApiKeysBtn"),
+    OverlapPage("api_keys", "/settings/api-keys", "#saveApiKeysBtn"),
 )
 
 VIEWPORTS: tuple[Viewport, ...] = (

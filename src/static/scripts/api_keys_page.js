@@ -232,15 +232,18 @@
     }
 
     // Recompute the "X providers" / "Y configured" badges from the current
-    // DOM. In generic mode the page-load template sets both counts equal to
-    // entries|length; once the user adds a preset row (key set, value still
-    // empty) the counts must diverge, otherwise the badges are stale and
-    // the pair is also redundantly identical (ISSUE-003 / ISSUE-004).
-    //  - "providers" = rows with a non-empty key in the editor
-    //  - "configured" = rows that already have a saved value (existing rows
-    //    or new rows whose value field is filled)
+    // DOM. The page always shows the 6 fixed providers plus however many
+    // custom-secret rows exist; once the user adds a row (key set, value
+    // still empty) the counts must diverge, otherwise the badges are stale
+    // and the pair is also redundantly identical (ISSUE-003 / ISSUE-004).
+    //  - "providers" = 6 fixed + custom rows with a non-empty key
+    //  - "configured" = fixed providers with a saved value + custom rows
+    //    that already have a saved value (existing rows or new rows whose
+    //    value field is filled)
     function refreshKeyCounts() {
-      if (config.mode !== "generic") return;
+      const managedConfigured = document.querySelectorAll(
+        '[data-key-card][data-configured="true"]'
+      ).length;
       const rows = Array.from(document.querySelectorAll(".apikey-row"));
       let providers = 0;
       let configured = 0;
@@ -249,20 +252,22 @@
         if (!key) continue;
         providers += 1;
         // Use the trimmed value so a whitespace-only field does NOT bump
-        // the "saved" badge — `saveGenericKeys` rejects whitespace-only
+        // the "configured" badge — `saveGenericKeys` rejects whitespace-only
         // entries the same way; keeping all three in sync (badge,
         // input-listener clear, validator) avoids false reassurance.
         const value = row.querySelector(".apikey-value")?.value.trim() || "";
         const wasSaved = row.dataset.existing === "true";
         if (wasSaved || value.length > 0) configured += 1;
       }
+      const totalProviders = 6 + providers;
+      const totalConfigured = managedConfigured + configured;
       const providersChip = document.getElementById("providerCountSummary");
       if (providersChip) {
-        providersChip.textContent = `${providers} provider${providers === 1 ? "" : "s"}`;
+        providersChip.textContent = `${totalProviders} provider${totalProviders === 1 ? "" : "s"}`;
       }
       const configuredChip = document.getElementById("configuredCountSummary");
       if (configuredChip) {
-        configuredChip.textContent = `${configured} saved`;
+        configuredChip.textContent = `${totalConfigured} configured`;
       }
     }
 
@@ -437,35 +442,6 @@
       (key ? row.querySelector(".apikey-value") : row.querySelector(".apikey-key")).focus();
     }
 
-    function addPreset(button) {
-      const key = button.dataset.key;
-      if (!key) return;
-      const existingRow = Array.from(document.querySelectorAll(".apikey-row")).find(
-        (row) => row.querySelector(".apikey-key")?.value.trim() === key
-      );
-      if (existingRow) {
-        const valueInput = existingRow.querySelector(".apikey-value");
-        (valueInput || existingRow.querySelector(".apikey-key"))?.focus();
-        showResponseModal("info", `${key} is already added.`);
-        return;
-      }
-      addRow(key, "");
-      button.style.display = "none";
-    }
-
-    function hideExistingPresets() {
-      const existingKeys = new Set(
-        Array.from(document.querySelectorAll(".apikey-key")).map((input) =>
-          input.value.trim()
-        )
-      );
-      document.querySelectorAll(".btn-preset").forEach((btn) => {
-        if (existingKeys.has(btn.dataset.key)) {
-          btn.style.display = "none";
-        }
-      });
-    }
-
     function deleteRow(rowOrButton) {
       const row = rowOrButton.closest ? rowOrButton.closest(".apikey-row") : rowOrButton;
       const keyInput = row?.querySelector(".apikey-key");
@@ -476,12 +452,6 @@
       markDirty();
       row?.remove();
       refreshKeyCounts();
-      if (deletedKey) {
-        const presetBtn = document.querySelector(
-          `.btn-preset[data-key="${deletedKey}"]`
-        );
-        if (presetBtn) presetBtn.style.display = "";
-      }
       const list = document.getElementById("apikeys-list");
       if (list && list.children.length === 0) {
         const empty = document.createElement("div");
@@ -508,9 +478,9 @@
         iconWrap.appendChild(svg);
         empty.appendChild(iconWrap);
         const p1 = document.createElement("p");
-        p1.textContent = "No API keys configured yet.";
+        p1.textContent = "No custom secrets configured yet.";
         const p2 = document.createElement("p");
-        p2.textContent = "Add keys below to enable plugin features.";
+        p2.textContent = "Add one below for plugins that need a credential outside the providers above.";
         empty.appendChild(p1);
         empty.appendChild(p2);
         list.appendChild(empty);
@@ -601,15 +571,18 @@
       }
     }
 
-    function saveKeys() {
+    async function saveKeys() {
       if (!_isDirty) {
         showResponseModal("info", "No changes to save.");
         return;
       }
-      if (config.mode === "managed") {
-        return saveManagedKeys();
-      }
-      return saveGenericKeys();
+      // Both sections (fixed providers + custom secrets) live on this one
+      // page now and share a single Save button, but each still POSTs to
+      // its own endpoint with its own validation/error handling below -
+      // run them one after another rather than merging the two request
+      // shapes together.
+      await saveManagedKeys();
+      await saveGenericKeys();
     }
 
     function togglePasswordVisibility(button) {
@@ -623,15 +596,9 @@
     }
 
     function init() {
-      if (config.mode === "generic") {
-        hideExistingPresets();
-        // Sync the badge labels with the JS-rendered form once on load. The
-        // server-side template renders provider/configured counts as
-        // "X providers" / "Y configured", but the JS now uses
-        // "X provider(s)" / "Y saved" — keep terminology consistent on first
-        // paint instead of waiting until the user edits a row.
-        refreshKeyCounts();
-      }
+      // Sync the badge labels with the current DOM once on load, combining
+      // the fixed-provider cards with any custom-secret rows.
+      refreshKeyCounts();
       // Add show/hide toggle buttons next to password inputs
       document.querySelectorAll('input[type="password"].form-input').forEach((input) => {
         if (!input.value) return; // Skip unconfigured providers (empty input has no key to reveal)
@@ -651,7 +618,7 @@
       if (saveBtn) saveBtn.disabled = true;
       if (addBtn) {
         addBtn.addEventListener("click", () => addRow());
-      } else if (config.mode === "generic") {
+      } else {
         console.warn("api_keys_page: #addApiKeyBtn not found in DOM");
       }
       if (saveBtn) {
@@ -678,8 +645,6 @@
           deleteKey(actionEl.dataset.keyName);
         } else if (action === "delete-row") {
           deleteRow(actionEl);
-        } else if (action === "add-preset") {
-          addPreset(actionEl);
         } else if (action === "toggle-password") {
           togglePasswordVisibility(actionEl);
         } else if (action === "reveal-input") {
@@ -689,7 +654,6 @@
     }
 
     Object.assign(globalThis, {
-      addPreset,
       addRow,
       deleteKey,
       deleteRow,
@@ -709,7 +673,6 @@
     if (!frame) return;
     const config = {
       deleteManagedUrl: frame.dataset.deleteManagedUrl || "",
-      mode: frame.dataset.mode || "managed",
       saveGenericUrl: frame.dataset.saveGenericUrl || "",
       saveManagedUrl: frame.dataset.saveManagedUrl || "",
     };

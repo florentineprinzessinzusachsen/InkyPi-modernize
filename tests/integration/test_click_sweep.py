@@ -92,14 +92,14 @@ PAGES_TO_SWEEP: tuple[SweepPage, ...] = (
     SweepPage("history", "/history", "#storage-block"),
     SweepPage("playlist", "/playlist", "#newPlaylistBtn"),
     SweepPage("plugin_clock", "/plugin/clock", "#settingsForm"),
-    SweepPage("api_keys", "/api-keys", "#saveApiKeysBtn"),
+    SweepPage("api_keys", "/settings/api-keys", "#saveApiKeysBtn"),
 )
 
 # Time (ms) to wait after each click for DOM / network to settle. Keep
 # deliberately short — the sweep fires dozens of clicks per page.
 _CLICK_SETTLE_MS = 250
 
-# Max clickable candidates to exercise per page. Pages like ``/api-keys`` can
+# Max clickable candidates to exercise per page. Pages like ``/settings/api-keys`` can
 # list dozens of preset buttons; once the first batch has proven handlers
 # fire, testing every one wastes wall-time for no extra signal.
 _MAX_CLICKS_PER_PAGE = 25

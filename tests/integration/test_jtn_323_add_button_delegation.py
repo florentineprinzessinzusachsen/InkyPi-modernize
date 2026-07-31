@@ -3,7 +3,7 @@
 
 def test_add_button_has_data_api_action_attribute(client):
     """JTN-323: the + Add API Key button must have data-api-action='add-row'."""
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -24,7 +24,7 @@ def test_js_delegation_handler_covers_add_row_action(client):
 
 def test_add_button_has_both_id_and_data_action(client):
     """JTN-323: the button should have both id and data-api-action for robustness."""
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 

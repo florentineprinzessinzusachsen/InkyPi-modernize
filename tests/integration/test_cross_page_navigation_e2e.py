@@ -19,7 +19,7 @@ pytestmark = pytest.mark.skipif(
         ("/settings", "settings"),
         ("/history", "history"),
         ("/playlist", "playlist"),
-        ("/api-keys", "api_keys"),
+        ("/settings/api-keys", "api_keys"),
     ],
 )
 def test_all_pages_load_without_js_errors(live_server, browser_page, path, label):

@@ -115,7 +115,7 @@ def _collect_png_files(
 
 def cleanup_history(
     history_dir: str,
-    max_age_days: int = 30,
+    max_age_days: float = 30,
     max_count: int = 500,
     min_free_bytes: int = 500_000_000,
 ) -> CleanupResult:
@@ -126,8 +126,9 @@ def cleanup_history(
     history_dir:
         Absolute path to the directory that holds history PNG files.
     max_age_days:
-        Delete files whose mtime is older than this many days.  ``0`` disables
-        the age check.
+        Delete files whose mtime is older than this many days. Accepts
+        fractional values for hour-level granularity (e.g. ``0.5`` for 12
+        hours). ``0`` disables the age check.
     max_count:
         Keep at most this many PNG files (newest first).  ``0`` disables the
         count cap.

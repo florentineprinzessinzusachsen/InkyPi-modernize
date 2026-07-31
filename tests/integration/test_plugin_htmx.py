@@ -148,17 +148,3 @@ def test_save_plugin_settings_htmx_internal_error_has_fallback_content_type(
     )
     assert resp.status_code == 500
     assert "text/html" in resp.headers.get("Content-Type", "")
-
-
-def test_plugin_page_renders_htmx_save_button(client):
-    """The plugin page ships hx-* attributes on the Save Settings button."""
-    resp = client.get("/plugin/ai_text")
-    assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert 'id="savePluginSettingsBtn"' in body
-    assert 'hx-post="/save_plugin_settings"' in body
-    assert 'hx-target="#plugin-form-errors"' in body
-    assert 'hx-include="#settingsForm"' in body
-    # Progressive enhancement: form has action/method for no-JS fallback
-    assert 'action="/save_plugin_settings"' in body
-    assert 'id="plugin-form-errors"' in body

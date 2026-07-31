@@ -39,7 +39,7 @@ def test_plugin_page_structure(client):
 
 def test_api_keys_page_structure(client):
     """API keys page contains save button and key management elements."""
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -65,7 +65,7 @@ def test_home_page_structure(client):
         ("/settings", "data-page-shell"),
         ("/playlist", "data-page-shell"),
         ("/plugin/clock", "data-page-shell"),
-        ("/api-keys", "data-page-shell"),
+        ("/settings/api-keys", "data-page-shell"),
     ],
 )
 def test_all_pages_include_shell(client, path, shell_attr):
@@ -83,7 +83,7 @@ def test_all_pages_include_shell(client, path, shell_attr):
         "/settings",
         "/playlist",
         "/plugin/clock",
-        "/api-keys",
+        "/settings/api-keys",
     ],
 )
 def test_all_pages_include_theme_toggle(client, path):
@@ -101,7 +101,7 @@ def test_all_pages_include_theme_toggle(client, path):
         "/settings",
         "/playlist",
         "/plugin/clock",
-        "/api-keys",
+        "/settings/api-keys",
     ],
 )
 def test_all_pages_include_sidebar_system_footer(client, monkeypatch, path):
@@ -137,7 +137,7 @@ def test_plugin_page_keeps_progress_timer_contract(client):
         "/settings",
         "/playlist",
         "/plugin/clock",
-        "/api-keys",
+        "/settings/api-keys",
     ],
 )
 def test_all_pages_include_navigation(client, path):
@@ -209,7 +209,7 @@ def test_api_keys_existing_row_uses_password_input(client):
     fake_entries = [("MY_API_KEY", "supersecret")]
 
     with patch("blueprints.apikeys.parse_env_file", return_value=fake_entries):
-        resp = client.get("/api-keys")
+        resp = client.get("/settings/api-keys")
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)

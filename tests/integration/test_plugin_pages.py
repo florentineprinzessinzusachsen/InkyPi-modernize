@@ -308,22 +308,12 @@ def test_action_buttons_disabled_when_api_key_missing(client, device_config_dev)
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
 
-    # "Update Preview" should be disabled
+    # "Preview" should be disabled
     assert 'disabled title="Configure Unsplash API key first"' in body
-    # "Save settings" should NOT be disabled.  JTN-506 added HTMX attributes
-    # between aria-describedby and the button closing tag; assert on the
-    # button id + content rather than a rigid substring so the test covers
-    # intent instead of attribute ordering.
-    assert 'id="savePluginSettingsBtn"' in body
-    assert ">Save settings</button>" in body
-    # Between the save-settings-help anchor and "Save settings" text, the
-    # bare ``disabled`` HTML attribute must not appear (the button must
-    # remain enabled).  Use a regex to avoid matching substrings like
-    # ``hx-disabled-elt`` which is an HTMX hint, not an HTML attribute.
-    import re
-
-    save_segment = body.split("Save settings")[0].split("save-settings-help")[1]
-    assert not re.search(r"(?:^|\s)disabled(?:=|\s|>)", save_segment)
+    # "Add to playlist" (shown instead of "Save instance" since this is a
+    # never-saved draft) triggers generation too, so it must also be disabled.
+    assert ">Add to playlist</button>" in body
+    assert body.count('disabled title="Configure Unsplash API key first"') == 2
 
 
 def test_action_buttons_enabled_when_api_key_present(client, device_config_dev):

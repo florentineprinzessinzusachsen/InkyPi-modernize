@@ -114,13 +114,25 @@ def _get_mp_context() -> multiprocessing.context.BaseContext:
     default when neither is available.  ``forkserver`` requires all arguments
     to be picklable, which is satisfied by the worker call site.
 
-    Returns:
-        A ``multiprocessing.context.BaseContext`` instance.
+    On macOS, ``fork`` is avoided in favor of ``spawn``: forking a
+    multi-threaded parent (waitress worker threads + the refresh_task
+    background thread are always running here) inherits a snapshot of
+    whatever lock state other threads held at fork time. If a plugin's
+    first post-fork action touches a non-fork-safe macOS framework -
+    e.g. any ``requests``/``urllib`` call triggers proxy autodetection via
+    ``_scproxy``, which calls into CoreFoundation/SystemConfiguration -
+    the child can inherit an unrecoverable lock and crash with SIGSEGV
+    (EXC_BAD_ACCESS in ``_CFXPreferences``/``SCDynamicStoreCopyProxiesWithOptions``).
+    This is non-deterministic (depends on exact thread timing at fork), so it
+    doesn't always reproduce, but any plugin doing network I/O can hit it.
+    ``spawn`` starts a fresh interpreter instead of forking, sidestepping the
+    hazard entirely - it has the same picklable-arguments requirement as
+    ``forkserver``, already satisfied here.
     """
     # forkserver spawns children from a lean server process, reducing memory
     # on constrained devices like Pi Zero 2W. It requires picklable arguments,
     # so we only prefer it on Linux where the production target runs.
-    prefer = ("forkserver", "fork") if sys.platform == "linux" else ("fork",)
+    prefer = ("forkserver", "fork") if sys.platform == "linux" else ("spawn",)
     for method in prefer:
         try:
             return multiprocessing.get_context(method)

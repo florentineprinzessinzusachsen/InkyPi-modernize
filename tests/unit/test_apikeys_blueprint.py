@@ -139,15 +139,6 @@ def test_get_env_path_default(monkeypatch):
 # ---- Route tests ----
 
 
-def test_apikeys_page_renders(client, tmp_path, monkeypatch):
-    env_path = str(tmp_path / ".env")
-    Path(env_path).write_text("TEST_KEY=hidden\n")
-    monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: env_path)
-
-    resp = client.get("/api-keys")
-    assert resp.status_code == 200
-
-
 def test_save_apikeys_success(client, tmp_path, monkeypatch):
     env_path = str(tmp_path / ".env")
     monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: env_path)

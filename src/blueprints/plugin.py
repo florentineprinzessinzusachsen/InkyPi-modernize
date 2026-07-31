@@ -218,14 +218,25 @@ def plugin_page(plugin_id: str) -> Any:
         if plugin_latest_refresh:
             template_params["plugin_latest_refresh"] = plugin_latest_refresh
 
-    return render_template(
-        "plugin.html",
-        plugin=plugin_config,
-        resolution=device_config.get_resolution(),
-        config=device_config.get_config(),
-        active_nav="plugins",
-        **template_params,
+    response = make_response(
+        render_template(
+            "plugin.html",
+            plugin=plugin_config,
+            resolution=device_config.get_resolution(),
+            config=device_config.get_config(),
+            active_nav="plugins",
+            **template_params,
+        )
     )
+    # Loosen the app-wide "no-referrer" default for this page only: settings
+    # pages can embed the Leaflet/OSM "weather-map" location-picker widget,
+    # and OpenStreetMap's tile usage policy rejects tile requests that carry
+    # no Referer header at all (403 "Access Blocked", operations.osmfoundation.org
+    # /policies/tiles/). Sending just the origin on cross-origin requests
+    # satisfies that policy without leaking the full page path/query the way
+    # an unrestricted Referrer-Policy would.
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 @plugin_bp.route("/plugin/ai_image/random_prompt", methods=["POST"])  # type: ignore[untyped-decorator]

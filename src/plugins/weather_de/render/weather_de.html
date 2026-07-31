@@ -9,9 +9,11 @@
   <div class="last-refresh">{{ last_refresh_label }}: {{ last_refresh_time }}</div>
   {% endif %}
   <!-- Current Date -->
-  <div class="header">
+  <div class="header{% if plugin_settings.displayDate == "false" %} no-date{% endif %}">
     <div class="title">{{ title }}</div>
+    {% if plugin_settings.displayDate != "false" %}
     <div class="current-date">{{ current_date }}</div>
+    {% endif %}
   </div>
 
   <div class="today-container">
@@ -28,12 +30,14 @@
 
     <!-- Data Points Grid (Sunset, Wind, UV, etc.) -->
     {% if plugin_settings.displayMetrics and  plugin_settings.displayMetrics == "true" %}
-    <div class="data-points">
+    <div class="data-points{% if plugin_settings.displayMetricIcons == 'false' %} no-icons{% endif %}">
       {% for dp in data_points %}
         <div class="data-point column-container">
+          {% if plugin_settings.displayMetricIcons != "false" %}
           <div class="data-point-img-container">
             <img class="data-point-icon" src="{{dp.icon}}" alt="{{ dp.label }}">
           </div>
+          {% endif %}
           <div class="data-point-data">
             <div class="data-point-label">{{ dp.label }}</div>
             <div class="data-point-measurement">
@@ -59,7 +63,7 @@
   <!-- Forecast Row -->
   {% if plugin_settings.displayForecast and plugin_settings.displayForecast == "true" %}
   <div class="forecast">
-    {% for day in forecast[1:(plugin_settings.forecastDays | int) + 1] %}
+    {% for day in forecast[1:(plugin_settings.forecastDays | default(7) | int) + 1] %}
       <div class="forecast-day">
         <div class="forecast-day-name">{{ day.day }}</div>
         <img class="forecast-icon" src="{{day.icon}}" alt="{{ day.day }} Weather Icon">

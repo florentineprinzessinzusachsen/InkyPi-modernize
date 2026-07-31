@@ -1,5 +1,5 @@
 def test_generic_api_keys_page_uses_canonical_template(client):
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -16,7 +16,7 @@ def test_generic_api_keys_list_delete_button_has_aria_label(
     env_file = tmp_path / ".env"
     env_file.write_text("MY_TEST_KEY=somevalue\n")
 
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -29,7 +29,7 @@ def test_generic_api_keys_list_inputs_have_aria_labels(client, monkeypatch, tmp_
     env_file = tmp_path / ".env"
     env_file.write_text("ANOTHER_KEY=secretvalue\n")
 
-    resp = client.get("/api-keys")
+    resp = client.get("/settings/api-keys")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 

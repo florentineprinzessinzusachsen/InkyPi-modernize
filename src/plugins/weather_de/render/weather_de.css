@@ -6,6 +6,21 @@
 }
 
 .weather-dashboard {
+  /* height:100% matches the built-in weather plugin's own dashboard rule.
+     It now resolves correctly because base_plugin/render/plugin.html's
+     <body> gets an explicit height (viewport height minus margins), which
+     .container (plugin.css) and this element's height:100% both cascade
+     from - previously nothing in that chain had a definite height, so it
+     silently fell back to auto (content-sized) instead. That's fixed at
+     the shared template level, not per-plugin.
+
+     .header and .chart-container both have fixed dvh heights;
+     .today-container/.forecast get explicit flex weights below so they
+     share whatever's actually left after those two, instead of each
+     claiming their full natural content size - with every optional
+     section enabled at once (graph, rain, moon phase), natural content
+     height exceeds what's available, so without this they'd still
+     overflow even inside a correctly-bounded container. */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -23,6 +38,14 @@
   flex-direction: column;
   justify-content: end;
   container-type: size;
+}
+
+/* Hiding the date (displayDate setting) only removes that one line, so
+   shrink the header itself too - otherwise the freed line just becomes
+   dead space instead of actually going back to today-container/forecast
+   (which share whatever's left over via their flex weights). */
+.header.no-date {
+  height: 7dvh;
 }
 
 .last-refresh {
@@ -62,6 +85,8 @@
   flex-direction: row;
   justify-content: center;
   width: 100%;
+  flex: 3 1 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -141,6 +166,12 @@
 
 }
 
+/* When icons are hidden (displayMetricIcons setting), let the label/value
+   column use the full row width instead of leaving the icon's 25% blank. */
+.data-points.no-icons .data-point-data {
+  width: 100%;
+}
+
 .data-point-label {
   font-size: min(32cqh, 15cqi);
   text-align: center;
@@ -174,6 +205,8 @@
   justify-content: space-evenly;
   align-items: center;
   width: 100%;
+  flex: 2 1 0;
+  min-height: 0;
   gap: 1.5dvw;
   overflow: hidden;
 }

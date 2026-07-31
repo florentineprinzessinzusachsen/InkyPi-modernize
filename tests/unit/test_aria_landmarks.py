@@ -24,7 +24,7 @@ MAIN_PAGES = [
     "/settings",
     "/playlist",
     "/plugin/clock",
-    "/api-keys",
+    "/settings/api-keys",
     "/history",
 ]
 

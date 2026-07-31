@@ -348,7 +348,10 @@
         const input = document.getElementById(key);
         if (!input || value == null || value === "") return;
         if (input.type === "checkbox") {
-          input.checked = !!value;
+          // value is always a string here (settings are serialized as
+          // "true"/"false"), and !!"false" is true in JS - a bare truthiness
+          // check force-checks every checkbox whose saved value is "false".
+          input.checked = value === true || value === "true";
         } else {
           input.value = value;
         }
