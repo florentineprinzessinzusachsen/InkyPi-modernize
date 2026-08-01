@@ -2,6 +2,65 @@ import io
 import json
 
 
+def test_import_restores_plugins_in_playlist(client, device_config_dev):
+    """Bug: import_settings applied playlist_config to Config.config, but
+    write_config() unconditionally re-derives playlist_config from the
+    in-memory (stale) PlaylistManager, silently discarding imported plugins
+    before they ever reach disk."""
+    backup_playlist_config = {
+        "playlists": [
+            {
+                "name": "Default",
+                "start_time": "00:00",
+                "end_time": "24:00",
+                "plugins": [
+                    {
+                        "plugin_id": "clock",
+                        "name": "My Clock",
+                        "plugin_settings": {"foo": "bar"},
+                    }
+                ],
+                "current_plugin_index": 0,
+            }
+        ],
+        "active_playlist": "Default",
+    }
+    payload = {"config": {"playlist_config": backup_playlist_config}}
+
+    resp = client.post(
+        "/settings/import",
+        data={"file": (io.BytesIO(json.dumps(payload).encode("utf-8")), "backup.json")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+
+    # The live playlist manager (what refresh_task/dashboard actually use)
+    # must reflect the restored plugin...
+    manager = device_config_dev.get_playlist_manager()
+    restored = manager.find_plugin("clock", "My Clock")
+    assert restored is not None
+    assert restored.settings == {"foo": "bar"}
+
+    # ...and it must actually be persisted to disk, not just held in memory.
+    with open(device_config_dev.config_file) as f:
+        on_disk = json.load(f)
+    disk_plugins = on_disk["playlist_config"]["playlists"][0]["plugins"]
+    assert any(p["plugin_id"] == "clock" for p in disk_plugins)
+
+
+def test_import_rejects_malformed_playlist_config(client, device_config_dev):
+    payload = {"config": {"playlist_config": {"playlists": "not-a-list"}}}
+
+    resp = client.post(
+        "/settings/import",
+        data={"file": (io.BytesIO(json.dumps(payload).encode("utf-8")), "backup.json")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["success"] is False
+
+
 def test_export_excludes_api_keys_by_default(client, device_config_dev, monkeypatch):
     """Bug 1: Export should NOT include API keys unless explicitly requested."""
     device_config_dev.set_env_key("OPEN_AI_SECRET", "sk-test")

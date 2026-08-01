@@ -521,9 +521,28 @@ class Config:
         return (int(width), int(height))
 
     def update_config(self, config: dict[str, Any]) -> None:
-        """Updates the config with the new values provided and writes to the config file."""
+        """Updates the config with the new values provided and writes to the config file.
+
+        ``write_config`` always re-derives ``playlist_config``/``refresh_info``
+        from the in-memory ``playlist_manager``/``refresh_info`` model objects
+        (they are the source of truth for normal mutations, which go through
+        those objects directly). If a caller — e.g. settings import — hands us
+        raw ``playlist_config``/``refresh_info`` dicts here instead, we must
+        rebuild the corresponding model objects first, or ``write_config``
+        would silently overwrite the incoming data with the stale in-memory
+        state before it ever reaches disk.
+        """
         with self._config_lock:
             self.config.update(config)
+            if "playlist_config" in config:
+                self.playlist_manager = PlaylistManager.from_dict(
+                    config["playlist_config"]
+                )
+                if not self.playlist_manager.playlists:
+                    self.playlist_manager.add_default_playlist()
+            if "refresh_info" in config:
+                self._refresh_info_repo = RefreshInfoRepository(config["refresh_info"])
+                self.refresh_info = self._refresh_info_repo.get()
             self.write_config()
 
     def update_value(self, key: str, value: Any, write: bool = False) -> None:
