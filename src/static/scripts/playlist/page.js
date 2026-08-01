@@ -27,28 +27,10 @@
     }
   }
 
-  function initThumbnailPreviewHandlers() {
-    document.querySelectorAll(".plugin-thumbnail-container").forEach((box) => {
-      if (box.dataset.playlistPreviewBound === "1") return;
-      box.addEventListener("click", (event) => {
-        const target = event.currentTarget;
-        ns.showThumbnailPreview(
-          target.dataset.thumbnailPlaylist,
-          target.dataset.thumbnailPlugin,
-          target.dataset.thumbnailDisplayName,
-          target.dataset.thumbnailInstance,
-          target.dataset.thumbnailInstanceLabel
-        );
-      });
-
-      box.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        box.click();
-      });
-      box.dataset.playlistPreviewBound = "1";
-    });
-
+  // Skeleton-loader/broken-image handling for playlist row thumbnails.
+  // Opening the enlarged preview itself is initLightboxThumbs()'s job,
+  // below — this only owns the small inline thumbnail's own load state.
+  function initThumbnailLoadHandlers() {
     document.querySelectorAll(".plugin-thumbnail").forEach((img) => {
       if (img.dataset.playlistPreviewBound === "1") return;
       img.addEventListener("load", () => {
@@ -64,15 +46,22 @@
     });
   }
 
+  // Enlarged preview on click — uses the shared Lightbox module (same
+  // #imagePreviewModal the plugin page's preview zoom uses) instead of a
+  // bespoke <dialog>, so both surfaces look and behave identically and
+  // share its loading/error states. Reads the URL straight off the
+  // thumbnail <img> (already correctly rendered server-side) rather than
+  // rebuilding it from data attributes, which previously drifted out of
+  // sync with the real /instance_image/<plugin_id>/<instance_name> route.
   function initLightboxThumbs() {
-    document.querySelectorAll(".plugin-thumb").forEach((box) => {
+    document.querySelectorAll(".plugin-thumbnail-container").forEach((box) => {
       box.style.cursor = "zoom-in";
       box.setAttribute("role", "button");
       box.setAttribute("tabindex", "0");
     });
     if (!global.Lightbox) return;
 
-    global.Lightbox.bind(".plugin-thumb", {
+    global.Lightbox.bind(".plugin-thumbnail-container", {
       getUrl: (el) => {
         const img = el.querySelector("img");
         return img?.src && img.style.display !== "none" ? img.src : null;
@@ -142,7 +131,7 @@
 
   function initPageEnhancements() {
     if (ns.runtime.pageEnhancementsBound) return;
-    initThumbnailPreviewHandlers();
+    initThumbnailLoadHandlers();
     initLightboxThumbs();
     initLazyThumbnails();
     initDeviceClock();
@@ -155,7 +144,7 @@
     initLazyThumbnails,
     initLightboxThumbs,
     initPageEnhancements,
-    initThumbnailPreviewHandlers,
+    initThumbnailLoadHandlers,
     loadThumb,
   });
 })(globalThis);

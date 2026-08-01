@@ -52,12 +52,14 @@ def test_plugin_page_contains_status_chips_and_unique_schedule_ids(client):
 
     assert "plugin-mode-row" in html
     assert "status-chip" in html
-    assert 'data-plugin-subtab-target="schedule"' in html
+    # The header "Add to playlist" button both reveals the Schedule tab and
+    # (on a second click, once it's visible) submits it — one control, no
+    # separate submit button inside the schedule form anymore.
+    assert 'data-plugin-action="add_to_playlist"' in html
     assert 'id="scheduleForm"' in html
     assert 'id="scheduleInterval"' in html
     assert 'id="scheduleUnit"' in html
     assert 'id="scheduleTime"' in html
-    assert "data-schedule-submit" in html
     schedule_time = re.search(r"<input[^>]*id=\"scheduleTime\"[^>]*>", html)
     assert schedule_time is not None
     schedule_time_tag = schedule_time.group(0)

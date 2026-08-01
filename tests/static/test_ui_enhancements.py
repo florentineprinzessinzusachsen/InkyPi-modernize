@@ -425,9 +425,6 @@ def test_main_css_contains_top_level_theme_normalization_helpers(client):
     assert ".storage-meter" in css_content
     assert ".storage-meter-fill" in css_content
     assert ".logs-icon" in css_content
-    assert ".playlist-thumbnail-modal" in css_content
-    assert ".playlist-thumbnail-content" in css_content
-    assert ".playlist-thumbnail-info" in css_content
 
 
 def test_main_css_contains_operation_status_styles(client):

@@ -88,7 +88,7 @@
   }
 
   function syncModalOpenState() {
-    var open = document.querySelector('.modal.is-open, .thumbnail-preview-modal.is-open');
+    var open = document.querySelector('.modal.is-open');
     document.body.classList.toggle('modal-open', !!open);
   }
 

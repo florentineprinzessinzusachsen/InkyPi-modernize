@@ -10,7 +10,7 @@
     const open =
       typeof delegatedState === "boolean"
         ? delegatedState
-        : document.querySelector(".modal.is-open, .thumbnail-preview-modal.is-open");
+        : document.querySelector(".modal.is-open");
     if (typeof ui?.syncModalOpenState !== "function")
       document.body.classList.toggle("modal-open", !!open);
     const pageContent = document.getElementById("playlist-page-content");
@@ -79,7 +79,6 @@
       "deleteInstanceModal",
       "deletePlaylistModal",
       "displayNextConfirmModal",
-      "thumbnailPreviewModal",
       "refreshSettingsModal",
       "deviceCycleModal",
       "playlistModal",
@@ -103,9 +102,6 @@
       case "displayNextConfirmModal":
         ns.closeDisplayNextConfirmModal();
         return;
-      case "thumbnailPreviewModal":
-        ns.closeThumbnailPreview();
-        return;
       case "refreshSettingsModal":
         ns.closeRefreshModal();
         return;
@@ -118,32 +114,6 @@
       default:
         return;
     }
-  }
-
-  function showThumbnailPreview(
-    playlistName,
-    pluginId,
-    pluginName,
-    instanceName,
-    instanceLabel
-  ) {
-    const img = document.getElementById("thumbnailPreviewImage");
-    const info = document.getElementById("thumbnailPreviewInfo");
-    if (!img || !info) return;
-    img.src = `/plugin_instance_image/${encodeURIComponent(
-      playlistName
-    )}/${encodeURIComponent(pluginId)}/${encodeURIComponent(instanceName)}`;
-    const label = instanceLabel || instanceName;
-    if (label && label !== pluginName) {
-      info.textContent = `Plugin: ${pluginName} | Instance: ${label}`;
-    } else {
-      info.textContent = `Plugin: ${pluginName}`;
-    }
-    setModalOpen("thumbnailPreviewModal", true);
-  }
-
-  function closeThumbnailPreview() {
-    setModalOpen("thumbnailPreviewModal", false);
   }
 
   function openRefreshModal(
@@ -358,9 +328,6 @@
       .getElementById("closeRefreshModalBtn")
       ?.addEventListener("click", closeRefreshModal);
     document
-      .getElementById("closeThumbnailPreviewBtn")
-      ?.addEventListener("click", closeThumbnailPreview);
-    document
       .getElementById("cancelDeletePlaylistBtn")
       ?.addEventListener("click", closeDeletePlaylistModal);
     document
@@ -373,7 +340,6 @@
     global.addEventListener("click", (event) => {
       if (event.target?.id === "playlistModal") closeModal();
       if (event.target?.id === "refreshSettingsModal") closeRefreshModal();
-      if (event.target?.id === "thumbnailPreviewModal") closeThumbnailPreview();
       if (event.target?.id === "deviceCycleModal") closeDeviceCycleModal();
       if (event.target?.id === "deletePlaylistModal") closeDeletePlaylistModal();
       if (event.target?.id === "deleteInstanceModal") closeDeleteInstanceModal();
@@ -398,7 +364,6 @@
     closeModal,
     closeModalById,
     closeRefreshModal,
-    closeThumbnailPreview,
     getOpenModalId,
     initModalLifecycle,
     openCreateModal,
@@ -410,7 +375,6 @@
     openModal,
     openRefreshModal,
     setModalOpen,
-    showThumbnailPreview,
     syncModalOpenState,
     closeDeviceCycleModal,
   });

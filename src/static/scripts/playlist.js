@@ -5,7 +5,6 @@
     "closeDeviceCycleModal": "closeDeviceCycleModal",
     "closeModal": "closeModal",
     "closeRefreshModal": "closeRefreshModal",
-    "closeThumbnailPreview": "closeThumbnailPreview",
     "createPlaylist": "createPlaylist",
     "deletePlaylist": "deletePlaylist",
     "deletePluginInstance": "deletePluginInstance",
@@ -21,7 +20,6 @@
     "saveDeviceCycle": "saveDeviceCycle",
     "saveRefreshSettings": "saveRefreshSettings",
     "showLastProgressGlobal": "showLastProgressGlobal",
-    "showThumbnailPreview": "showThumbnailPreview",
     "updatePlaylist": "updatePlaylist",
   };
 
