@@ -18,6 +18,22 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
+# Temp directory: avoid a small RAM-backed /tmp
+#
+# Some Raspberry Pi OS setups (especially on low-RAM boards, where zram/tmpfs
+# tuning is common) mount /tmp as tmpfs sized to a fraction of total RAM —
+# e.g. 208M on a ~416-490M-RAM Pi Zero 2 W. mktemp, pip, and uv all default
+# their scratch/extraction space to $TMPDIR (or /tmp if unset), never
+# touching the root filesystem. The wheelhouse download (fetch_wheelhouse)
+# plus uv's own in-place unpacking of large wheels (numpy's .so files alone
+# can be tens of MB) can overflow that cap with a confusing
+# "No space left on device" — even though the SD card (root fs) has gigabytes
+# free. Route temp/extraction I/O to /var/tmp instead, which is part of the
+# root filesystem (disk-backed) on a standard Raspberry Pi OS install, unless
+# the caller already set a custom TMPDIR.
+export TMPDIR="${TMPDIR:-/var/tmp}"
+
+# ---------------------------------------------------------------------------
 # Terminal formatting (requires tput; safe to call in non-interactive shells)
 # ---------------------------------------------------------------------------
 bold=$(tput bold 2>/dev/null || true)
