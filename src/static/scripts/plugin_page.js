@@ -121,39 +121,64 @@
       return false;
     }
 
-    async function handleAction(action, triggerButton) {
-      if (
-        action === "add_to_playlist" &&
-        triggerButton?.dataset.apiKeyMissing === "true"
-      ) {
-        const reasonId = triggerButton.getAttribute("aria-describedby");
-        const reason = reasonId ? document.getElementById(reasonId)?.textContent : "";
-        showResponseModal(
-          "failure",
-          (reason || "Configure the required API key first.").trim()
+    // Live re-check of one or more env-var keys, right before an action that
+    // needs one of them — the page-load `api_key.present` snapshot goes
+    // stale the moment the key is added (or removed) from a different tab.
+    // Returns true/false when the check ran, or null if it couldn't (so the
+    // caller can fail open rather than block on an unreliable answer).
+    async function checkApiKeyPresence(keys) {
+      if (!keys || !keys.length || !config.urls?.api_keys_status) return true;
+      try {
+        const resp = await fetch(
+          `${config.urls.api_keys_status}?keys=${encodeURIComponent(keys.join(","))}`
         );
-        return;
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        const status = result?.data || {};
+        return keys.some((key) => status[key] === true);
+      } catch (e) {
+        return null;
       }
+    }
+
+    async function handleAction(action, triggerButton) {
+      // Checked first, before anything else (including the schedule-tab
+      // switch below) so a click never sends the user off to fill in a
+      // schedule form that a still-missing key would only block at the end.
+      if (triggerButton?.dataset.apiKeyCheck) {
+        const keys = triggerButton.dataset.apiKeyCheck.split(",").filter(Boolean);
+        const present = await checkApiKeyPresence(keys);
+        if (present === false) {
+          const service = triggerButton.dataset.apiKeyService || "the required";
+          showResponseModal(
+            "failure",
+            `Add your ${service} API key to continue.`
+          );
+          openModal("pluginApiKeyModal", triggerButton);
+          return;
+        }
+        // present === true, or null (status check itself failed/unreachable)
+        // — either way, don't block on a snapshot we can't trust; let the
+        // real submit below be the source of truth.
+      }
+
       if (action === "add_to_playlist") {
-        // If the schedule panel is already visible (e.g. the user clicked the
-        // inline "Add to Playlist" button that lives at the bottom of
-        // scheduleForm), a side-effect-free existence check avoids the smooth
-        // scroll that would yank the user back to the top of the form
-        // mid-submit. Only switch/scroll the subtab when it isn't already
-        // active or is missing entirely.
+        // The header "Add to playlist" button does double duty: the first
+        // click (from the Configure tab) just reveals the Schedule tab so
+        // the user can fill in the destination/cadence fields; only a
+        // second click, made once that panel is already visible, actually
+        // validates and submits. This is what lets one button replace the
+        // old pair (a header "jump to Schedule" button plus a separate
+        // "Add to Playlist" button at the bottom of the schedule form).
         const schedulePanel = document.querySelector(
           '[data-plugin-subpanel="schedule"]'
         );
-        if (!schedulePanel) {
-          // Panel missing — fall through to the full showPluginSubtab call so
-          // the "refresh the page" modal still surfaces via reportMissing.
-          showPluginSubtab("schedule", { reportMissing: true });
+        if (!schedulePanel || schedulePanel.hidden) {
+          showPluginSubtab("schedule", { focus: true, reportMissing: true });
           return;
         }
-        if (schedulePanel.hidden) {
-          if (!showPluginSubtab("schedule", { reportMissing: true })) return;
-        }
       }
+
       if (!validateAddToPlaylistAction(action)) return;
 
       // Validate settingsForm required fields. Use validateAllInputsDetailed so
@@ -561,75 +586,97 @@
       }, 100);
     }
 
-    // JTN-629: Capture a snapshot of the settings form on load so we can
-    // detect unsaved changes. `formDirty` compares each input value to its
-    // initial value. Files/passwords are omitted — just string values from
-    // inputs/textareas/selects are enough to catch the common case (a typed
-    // prompt in AI Image) without false positives from checkbox serialization.
-    function getSettingsFormSnapshot() {
-      const form = document.getElementById("settingsForm");
-      if (!form) return null;
-      const snapshot = {};
-      form.querySelectorAll("input, textarea, select").forEach((el) => {
-        if (!el.name && !el.id) return;
-        const key = el.name || el.id;
-        if (el.type === "file") return;
-        if (el.type === "checkbox" || el.type === "radio") {
-          snapshot[`${key}:${el.value}`] = el.checked ? "1" : "0";
-        } else {
-          snapshot[key] = el.value == null ? "" : String(el.value);
-        }
-      });
-      return snapshot;
-    }
-
-    let _settingsFormSnapshot = null;
-
-    function isSettingsFormDirty() {
-      const current = getSettingsFormSnapshot();
-      if (!_settingsFormSnapshot || !current) return false;
-      const keys = new Set([
-        ...Object.keys(_settingsFormSnapshot),
-        ...Object.keys(current),
-      ]);
-      for (const key of keys) {
-        if (_settingsFormSnapshot[key] !== current[key]) return true;
+    // After a successful inline key save, patch the affected UI in place —
+    // no reload, so nothing typed into settingsForm/scheduleForm is lost.
+    // Deliberately conservative: flips the chip(s)/copy that are cheap and
+    // unambiguous to update, and clears the buttons' stale-check markers so
+    // the next click's live check (checkApiKeyPresence) simply confirms
+    // "present" instead of tripping the modal again.
+    function markApiKeyConfigured(savedKeyNames) {
+      const headerChipWrap = document.querySelector("[data-api-key-header-chip]");
+      const headerChip = headerChipWrap?.querySelector(".status-chip");
+      if (headerChip) {
+        headerChip.classList.remove("warning");
+        headerChip.classList.add("success");
       }
-      return false;
+
+      const card = document.querySelector("[data-api-key-card]");
+      if (card) {
+        const copy = card.querySelector("[data-api-key-copy]");
+        const serviceNames = (config.apiKeyServices || [])
+          .filter((svc) => savedKeyNames.includes(svc.env_var))
+          .map((svc) => svc.name);
+        if (copy) {
+          copy.textContent = serviceNames.length
+            ? `${serviceNames.join(", ")} configured and ready for fresh previews.`
+            : "Configured and ready for fresh previews.";
+        }
+        const chipsWrap = card.querySelector("[data-api-key-chips]");
+        const requiredChip = Array.from(
+          chipsWrap?.querySelectorAll(".status-chip") || []
+        ).find((el) => el.textContent.trim() === "Required");
+        if (requiredChip) {
+          if (serviceNames.length) {
+            requiredChip.textContent = serviceNames.join(", ");
+          } else {
+            requiredChip.textContent = "Configured";
+          }
+          requiredChip.classList.remove("warning");
+          requiredChip.classList.add("success");
+        }
+      }
+
+      document.querySelectorAll("[data-api-key-check]").forEach((btn) => {
+        btn.removeAttribute("data-api-key-check");
+        btn.removeAttribute("data-api-key-service");
+      });
     }
 
-    // Extracted to keep the links.forEach callback from nesting
-    // addEventListener 5 levels deep (SonarCloud javascript:S2004). Uses
-    // event.currentTarget to recover the link reference without closing
-    // over it.
-    function handleApiKeysLinkClick(event) {
-      if (!isSettingsFormDirty()) return; // fall through to normal navigation
-      event.preventDefault();
-      const link = event.currentTarget;
-      const confirmBtn = document.getElementById("confirmApiKeysLeaveBtn");
-      if (confirmBtn && link.href) confirmBtn.href = link.href;
-      openModal("apiKeysLeaveConfirmModal", link);
+    async function saveApiKeyFromModal() {
+      const modal = document.getElementById("pluginApiKeyModal");
+      const statusEl = document.getElementById("pluginApiKeyModalStatus");
+      const saveBtn = document.getElementById("pluginApiKeySaveBtn");
+      if (!modal) return;
+      const inputs = Array.from(
+        modal.querySelectorAll("[data-api-key-modal-input]")
+      ).filter((input) => input.value.trim());
+      if (!inputs.length) {
+        if (statusEl) statusEl.textContent = "Enter a key to save.";
+        return;
+      }
+      const formData = new FormData();
+      inputs.forEach((input) => formData.append(input.dataset.keyName, input.value.trim()));
+
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+      if (statusEl) statusEl.textContent = "";
+      try {
+        const resp = await fetch(config.urls.save_api_keys, {
+          method: "POST",
+          body: formData,
+        });
+        const result = await resp.json();
+        if (!resp.ok || !result?.success) {
+          throw new Error(result?.error || "Failed to save key.");
+        }
+        const savedKeyNames = inputs.map((input) => input.dataset.keyName);
+        inputs.forEach((input) => { input.value = ""; });
+        markApiKeyConfigured(savedKeyNames);
+        closeModal("pluginApiKeyModal");
+        showResponseModal("success", "API key saved. You're all set to continue.");
+      } catch (e) {
+        if (statusEl) statusEl.textContent = e?.message || "Failed to save key. Please try again.";
+      } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save key"; }
+      }
     }
 
-    function initApiKeysLeaveGuard() {
-      const links = Array.from(document.querySelectorAll("[data-api-keys-link]"));
-      const modal = document.getElementById("apiKeysLeaveConfirmModal");
-      if (links.length === 0 || !modal) return;
-      // Snapshot AFTER the rest of init runs so schema-populated defaults are
-      // captured as the baseline, not flagged as "dirty" on first click.
-      setTimeout(() => {
-        _settingsFormSnapshot = getSettingsFormSnapshot();
-      }, 0);
-      links.forEach((link) => link.addEventListener("click", handleApiKeysLinkClick));
-      document.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape") return;
-        if (modal.hidden) return;
-        event.preventDefault();
-        closeModal("apiKeysLeaveConfirmModal");
-      });
-      globalThis.addEventListener("click", (event) => {
-        if (event.target === modal) closeModal("apiKeysLeaveConfirmModal");
-      });
+    function initApiKeyModal() {
+      const modal = document.getElementById("pluginApiKeyModal");
+      if (!modal) return;
+      document.getElementById("pluginApiKeySaveBtn")?.addEventListener(
+        "click",
+        saveApiKeyFromModal
+      );
     }
 
     function bindModalClose() {
@@ -785,13 +832,13 @@
         const opener = event.target.closest("[data-open-modal]");
         if (opener) openModal(opener.dataset.openModal, opener);
       });
-      // JTN-633: the DRAFT-state "Add to Playlist" button routes into the
-      // inline Schedule tab. The preceding loop (line 790) already matches
-      // `[data-plugin-subtab-target]` — which `[data-plugin-draft="true"]`
-      // buttons satisfy — and its `reportMissing: true` path already raises
-      // the missing-panel modal, so we intentionally don't bind a second
-      // handler here (it would double-fire setPluginSubtab, scrollIntoView,
-      // and the focus timeout on every draft click).
+      // JTN-633/[header Add-to-playlist unification]: the DRAFT-state "Add
+      // to Playlist" button carries `data-plugin-action="add_to_playlist"`
+      // (bound above, not `data-plugin-subtab-target`) so a single click
+      // handler — handleAction — owns both revealing the Schedule tab on
+      // the first click and validating/submitting on a second click made
+      // once that tab is already visible. `data-plugin-draft` is now just a
+      // styling/selector hook, not part of the click-wiring contract.
       document.querySelectorAll("[data-close-modal]").forEach((button) => {
         button.addEventListener("click", () => closeModal(button.dataset.closeModal));
       });
@@ -866,7 +913,7 @@
       initStatusBar();
       initPreviewInteractions();
       initApiIndicator();
-      initApiKeysLeaveGuard();
+      initApiKeyModal();
       initColorPreviews();
       bindModalClose();
       if (mobileQuery && typeof mobileQuery.addEventListener === "function") {

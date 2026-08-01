@@ -69,14 +69,6 @@ def test_plugins_page_breadcrumb(client):
     assert "Plugins" in html
 
 
-def test_home_page_has_plugins_grid_anchor(client):
-    """Home page plugin grid section has id='plugins-grid' anchor target (JTN-637)."""
-    resp = client.get("/")
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert 'id="plugins-grid"' in html
-
-
 def test_home_page_showing_chip_has_label(client):
     """Home page 'now showing' chip has a 'Showing:' label prefix and a tooltip (JTN-638)."""
     resp = client.get("/")

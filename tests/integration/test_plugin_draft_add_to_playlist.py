@@ -27,15 +27,18 @@ def test_draft_add_to_playlist_button_renders_with_schedule_target(client):
     html = _render_clock_draft(client)
     # DRAFT chip present
     assert "Draft" in html
-    # Button exposes a Schedule target so a click is never silently absorbed. JTN-633.
-    assert 'data-plugin-subtab-target="schedule"' in html
-    # DRAFT-state marker is present so JS can attach the defensive handler.
+    # Button drives handleAction("add_to_playlist"), which reveals Schedule
+    # on the first click and validates/submits on a second — so a click is
+    # never silently absorbed. JTN-633.
+    assert 'data-plugin-action="add_to_playlist"' in html
+    # DRAFT-state marker is present (styling hook; no longer part of the
+    # click-wiring contract, see plugin_page.js).
     assert 'data-plugin-draft="true"' in html
     # The inline schedule UI exists.
     assert 'id="pluginSchedulePanel"' in html
     assert 'id="scheduleForm"' in html
-    # Help text explains that current settings seed the playlist entry.
-    assert "current settings" in html
+    # Help text explains how to finish adding the plugin to a playlist.
+    assert "Add to playlist" in html
 
 
 def test_draft_add_to_playlist_button_reveals_schedule_tab_with_real_handlers(client):
@@ -96,13 +99,12 @@ def test_draft_add_to_playlist_button_reveals_schedule_tab_with_real_handlers(cl
             window.InkyPiPluginPage.create(window.__INKYPI_PLUGIN_BOOT__).init();
             """)
 
-        # Click the DRAFT-state "Add to Playlist" button.
-        # Target the DRAFT-marked Add-to-Playlist trigger specifically. The
-        # Schedule subtab button itself also matches
-        # `[data-plugin-subtab-target="schedule"]`, so without the draft
-        # marker this test could pass without exercising the DRAFT click path.
+        # Click the DRAFT-state "Add to Playlist" button. This is now the
+        # single header button (data-plugin-action="add_to_playlist") — its
+        # first click just reveals the Schedule tab; handleAction only
+        # validates/submits on a second click made once that tab is visible.
         page.click(
-            'button[data-plugin-draft="true"][data-plugin-subtab-target="schedule"]'
+            'button[data-plugin-draft="true"][data-plugin-action="add_to_playlist"]'
         )
 
         # Poll for the observable schedule-active state instead of sleeping a
@@ -169,12 +171,10 @@ def test_draft_add_to_playlist_click_surfaces_failure_if_schedule_panel_missing(
             window.InkyPiPluginPage.create(window.__INKYPI_PLUGIN_BOOT__).init();
             """)
 
-        # Target the DRAFT-marked Add-to-Playlist trigger specifically. The
-        # Schedule subtab button itself also matches
-        # `[data-plugin-subtab-target="schedule"]`, so without the draft
-        # marker this test could pass without exercising the DRAFT click path.
+        # Same single header button as above — its first click (panel
+        # missing/hidden) is the one that must surface the fallback error.
         page.click(
-            'button[data-plugin-draft="true"][data-plugin-subtab-target="schedule"]'
+            'button[data-plugin-draft="true"][data-plugin-action="add_to_playlist"]'
         )
 
         # Poll for the observable failure feedback rather than sleeping a

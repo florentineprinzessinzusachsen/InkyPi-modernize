@@ -104,12 +104,16 @@ def test_jtn_720_first_run_setup_add_schedule_refresh_history(
     )
 
     navigate_and_wait(page, live_server, "/plugin/clock")
-    page.locator('button[data-plugin-subtab-target="schedule"]').click()
+    # The single header "Add to playlist" button reveals the Schedule tab on
+    # its first click, then validates/submits on a second click made once
+    # that tab is visible.
+    add_to_playlist_btn = page.locator('button[data-plugin-action="add_to_playlist"]')
+    add_to_playlist_btn.click()
     page.locator("#scheduleForm").wait_for(state="visible", timeout=5000)
     page.locator("#playlist").select_option("Default")
     page.locator("#instance").fill("First Clock")
     page.locator("#scheduleInterval").fill("5")
-    page.locator('button[data-plugin-action="add_to_playlist"]').click()
+    add_to_playlist_btn.click()
     page.wait_for_timeout(1000)
 
     navigate_and_wait(page, live_server, "/playlist")

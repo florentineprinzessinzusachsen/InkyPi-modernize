@@ -177,79 +177,6 @@ a.quick-row-link:hover {
   cursor: wait;
 }
 
-/* Visual parity pass: tighter dashboard rhythm, grouped header actions, and a
-   compact empty-state note so the aside no longer creates a dead panel. */
-.dashboard-pageheader-actions {
-  align-items: center;
-  gap: 8px;
-  padding-top: 0;
-}
-
-.dashboard-header-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  width: auto;
-  min-height: 32px;
-  padding: 7px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  line-height: 1;
-  box-shadow: none;
-}
-
-.dashboard-header-button .btn-leading-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.dashboard-header-button.is-secondary {
-  background: transparent;
-  color: var(--text-2);
-  border-color: transparent;
-}
-
-.dashboard-header-button.is-secondary:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.dashboard-header-button.is-secondary .btn-leading-icon {
-  color: var(--text-3);
-}
-
-.dashboard-header-button.is-secondary:hover .btn-leading-icon {
-  color: var(--text);
-}
-
-.dashboard-header-button.primary {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 1px solid var(--accent);
-  box-shadow: var(--shadow-xs);
-}
-
-.dashboard-header-button.primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-
-/* Loading state: spin the leading icon (e.g. History refresh) until the
-   action completes. @keyframes spin lives in _validation.css. */
-.dashboard-header-button.loading {
-  pointer-events: none;
-  opacity: 0.85;
-}
-
-.dashboard-header-button.loading .btn-leading-icon {
-  display: inline-flex;
-  animation: spin 0.9s linear infinite;
-}
-
 /* The compact empty-state variant is used where the overview banner sits
    inline with a live card rather than as its own card. */
 .dashboard-overview-empty.is-compact {
@@ -270,15 +197,3 @@ a.quick-row-link:hover {
   font-size: 0.78rem;
 }
 
-#plugins-grid {
-  margin-top: 0;
-}
-
-#plugins-grid .section-head {
-  margin-bottom: 8px;
-}
-
-#plugins-grid .plugins-container.plugin-tile-grid {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 8px;
-}

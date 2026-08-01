@@ -307,12 +307,14 @@ def test_api_key_indicator_shows_configured_when_key_present(client, device_conf
     assert "API Key is configured" in body or "✓" in body
 
 
-def test_action_buttons_disabled_when_api_key_missing(client, device_config_dev):
-    """Buttons that need an API key are disabled when the key is absent.
+def test_action_buttons_live_check_when_api_key_missing(client, device_config_dev):
+    """Buttons that need an API key stay enabled but carry a live-check hook.
 
-    Regression test for JTN-162: action buttons should be disabled when the
-    required API key is not configured, preventing users from triggering
-    actions that will inevitably fail.
+    Superseded JTN-162 (hard `disabled` on the page-load snapshot): that
+    version went stale the moment the key was added from a different tab,
+    leaving the button permanently greyed out with no way to recover short
+    of a reload. Buttons now stay clickable and re-verify the key's presence
+    live (GET /settings/api-keys/status) right before the action runs.
     """
     # Ensure no Unsplash key is present
     device_config_dev.unset_env_key("UNSPLASH_ACCESS_KEY")
@@ -321,12 +323,15 @@ def test_action_buttons_disabled_when_api_key_missing(client, device_config_dev)
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
 
-    # "Preview" should be disabled
-    assert 'disabled title="Configure Unsplash API key first"' in body
+    # Neither button is hard-disabled...
+    assert "disabled title=\"Configure" not in body
+    # ...both instead carry a live-check hook naming the missing key and
+    # service, for plugin_page.js to re-verify before acting.
+    assert 'data-api-key-check="UNSPLASH_ACCESS_KEY"' in body
+    assert body.count('data-api-key-service="Unsplash"') == 2
     # "Add to playlist" (shown instead of "Save instance" since this is a
-    # never-saved draft) triggers generation too, so it must also be disabled.
+    # never-saved draft) is the one still rendered in this state.
     assert ">Add to playlist</button>" in body
-    assert body.count('disabled title="Configure Unsplash API key first"') == 2
 
 
 def test_action_buttons_enabled_when_api_key_present(client, device_config_dev):

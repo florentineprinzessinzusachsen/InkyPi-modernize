@@ -12,6 +12,7 @@ import blueprints.apikeys as _apikeys_mod
 import blueprints.settings as _mod
 from app_setup.logging_setup import configure_log_timezone
 from utils.backend_errors import ClientInputError, route_error_boundary
+from utils.config_schema import ConfigValidationError, validate_device_config
 from utils.http_utils import json_error, json_success
 from utils.time_utils import calculate_seconds
 
@@ -273,6 +274,17 @@ def import_settings() -> Any:
                 k: v for k, v in cfg.items() if k in _mod._ALLOWED_IMPORT_CONFIG_KEYS
             }
             if filtered_cfg:
+                # playlist_config/refresh_info get deserialized into live
+                # PlaylistManager/RefreshInfo model objects (see
+                # Config.update_config) — validate shape against the device
+                # config schema first so a malformed backup fails cleanly
+                # with a 400 instead of raising deep inside model parsing.
+                try:
+                    validate_device_config(filtered_cfg)
+                except ConfigValidationError as exc:
+                    raise ClientInputError(
+                        f"Invalid backup contents: {exc}", status=400
+                    ) from exc
                 device_config.update_config(filtered_cfg)
                 cfg_keys_applied = len(filtered_cfg)
 
@@ -370,6 +382,27 @@ def api_keys_page() -> Any:
         api_key_plugins=api_key_plugins,
         active_nav="api-keys",
     )
+
+
+@_mod.settings_bp.route("/settings/api-keys/status", methods=["GET"])  # type: ignore[untyped-decorator]
+def api_keys_status() -> Any:
+    """Live presence check for one or more env-var keys, by name.
+
+    Pages that render an API key's presence at load time (e.g. the plugin
+    editor's action buttons) go stale the moment the key is added or removed
+    from a *different* tab. This lets them re-check freshly, right before an
+    action that needs the key, instead of trusting a page-load snapshot.
+    Booleans only — never returns key values.
+    """
+    device_config = current_app.config["DEVICE_CONFIG"]
+    requested = request.args.get("keys", "")
+    names = [k.strip() for k in requested.split(",") if k.strip()]
+    status: dict[str, bool] = {}
+    for name in names:
+        if not _CUSTOM_KEY_NAME_RE.match(name) or name in _apikeys_mod._INTERNAL_KEYS:
+            continue
+        status[name] = device_config.load_env_key(name) is not None
+    return json_success(data=status)
 
 
 def _resolve_key_value_for_save(key: str, value: str) -> tuple[str | None, bool]:

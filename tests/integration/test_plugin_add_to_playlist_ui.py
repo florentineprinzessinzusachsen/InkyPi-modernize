@@ -68,12 +68,16 @@ def test_plugin_add_to_playlist_flow(client):
             window.InkyPiPluginPage.create(window.__INKYPI_PLUGIN_BOOT__).init();
         """)
 
-        page.click('button[data-plugin-subtab-target="schedule"]')
+        # A single header button now does double duty: the first click
+        # reveals the Schedule tab, and a second click (once it's visible)
+        # validates and submits — replacing the old pair of separate buttons.
+        add_to_playlist_btn = 'button[data-plugin-action="add_to_playlist"]'
+        page.click(add_to_playlist_btn)
         page.wait_for_timeout(200)
         page.fill("#instance", "My Instance")
         page.fill("#scheduleInterval", "15")
         page.select_option("#scheduleUnit", "minute")
-        page.click('button[data-plugin-action="add_to_playlist"]')
+        page.click(add_to_playlist_btn)
 
         # Small wait for async fetch stub to fire
         page.wait_for_timeout(500)

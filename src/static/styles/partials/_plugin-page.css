@@ -28,7 +28,9 @@
   font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .plugin-subtab:hover {
@@ -56,17 +58,6 @@
   flex-wrap: wrap;
 }
 
-/* Plugin pageheader buttons use tighter horizontal padding than the base
-   `.header-button` (10px 16px) so the eyebrow row fits Save/Display/Schedule
-   together on narrow desktop viewports. We intentionally avoid `min-height`
-   here because the 36px touch-target height is reserved for mobile media
-   queries (see tests/static/test_mobile_touch_targets.py). Default padding
-   already lands around 34-35px tall on desktop, which matches the handoff. */
-.pageheader-plugin .pageheader-actions .header-button,
-.pageheader-plugin .pageheader-actions .action-button {
-  padding-inline: 12px;
-}
-
 .pageheader-plugin .plugin-mode-row .api-key-indicator,
 .pageheader-plugin .plugin-mode-row .api-key-indicator.collapsed,
 .pageheader-plugin .plugin-mode-row .api-key-indicator.auto-collapse {
@@ -76,55 +67,6 @@
   letter-spacing: 0.01em;
   font-weight: 600;
   font-size: 0.76rem;
-}
-
-.plugin-editor-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.9fr);
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.plugin-editor-card {
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--border-radius-lg);
-  background: var(--surface);
-}
-
-.plugin-editor-card-label {
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-family: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.plugin-editor-card h3 {
-  margin: 0;
-  color: var(--text);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-.plugin-editor-card p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.92rem;
-  line-height: 1.5;
-}
-
-.plugin-editor-summary-meta {
-  color: var(--text-secondary);
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
-
-.plugin-editor-summary-meta strong {
-  color: var(--text);
 }
 
 .plugin-inline-api-row {
@@ -150,35 +92,30 @@
   white-space: nowrap;
 }
 
-/* Schedule sub-panel summary card */
-.schedule-summary-card {
-  padding: 14px 16px;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--border-radius-lg);
-  background: var(--surface-2, var(--surface));
+/* Inline "Add API key" modal (plugin page) — stacked label-above-input
+   fields read better than .form-group's inline row at the modal's ~400px
+   width, especially for longer provider names. */
+.plugin-api-key-modal-fields {
   display: grid;
-  gap: 6px;
+  gap: 12px;
+  margin: 12px 0;
 }
 
-.schedule-summary-line {
+.plugin-api-key-modal-fields .form-group {
+  display: grid;
+  gap: 4px;
   margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
 }
 
-.schedule-summary-line strong {
-  color: var(--text);
+.plugin-api-key-modal-alt {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  text-align: center;
 }
 
 .plugin-schedule-panel {
   display: grid;
   gap: 14px;
-}
-
-.schedule-summary-card-accent {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--surface-border));
 }
 
 .schedule-summary-actions {
@@ -187,13 +124,14 @@
   gap: 10px;
 }
 
+/* Layout-only wrapper for the draft-schedule form — no border/background of
+   its own, since its two `.settings-card` sections (Destination, Cadence)
+   are already the visible cards. Mirrors `.settings-schema`'s role for the
+   Configure tab's schema-driven fields: a plain grid container, not a card
+   nested around other cards. */
 .schedule-form-card {
   display: grid;
   gap: 16px;
-  padding: 18px;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--border-radius-lg);
-  background: var(--panel-bg);
   box-sizing: border-box;
   min-width: 0;
   width: 100%;
@@ -203,23 +141,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-}
-
-.schedule-fieldset {
-  display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--border-radius-md);
-  background: var(--surface);
-}
-
-.schedule-fieldset-title {
-  color: var(--text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .schedule-inline-group {
@@ -243,14 +164,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.schedule-panel-note {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
-  max-width: 38rem;
 }
 
 .workflow-layout {
@@ -326,7 +239,7 @@
 .workflow-preview-card .status-title {
   color: var(--text-secondary);
   font-size: 0.71rem;
-  font-family: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
+  font-family: var(--font-mono, "JetBrains Mono"), ui-monospace, monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -353,6 +266,7 @@
 .workflow-section-header {
   display: grid;
   gap: 4px;
+  margin-bottom: 8px;
 }
 
 .workflow-section-header h2 {
@@ -421,10 +335,6 @@ body[data-page="plugin"] .workflow-help p {
 }
 
 @media (max-width: 768px) {
-  .plugin-editor-overview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .plugin-inline-api-row {
     flex-direction: column;
   }
@@ -433,7 +343,7 @@ body[data-page="plugin"] .workflow-help p {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .schedule-fieldset,
+  .schedule-form-grid .settings-card,
   .schedule-inline-group,
   .schedule-inline-group .form-input,
   .schedule-form-card select,

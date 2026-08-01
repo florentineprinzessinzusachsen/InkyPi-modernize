@@ -120,45 +120,23 @@
   function initScheduleFormState() {
     const form = document.getElementById("scheduleForm");
     if (!form) return;
-    const button = form.querySelector("[data-schedule-submit]");
-    const instanceInput = document.getElementById("instance");
-    const intervalRadio = document.getElementById("refreshTypeInterval");
     const scheduledRadio = document.getElementById("refreshTypeScheduled");
     const intervalInput = document.getElementById("scheduleInterval");
     const unitInput = document.getElementById("scheduleUnit");
     const timeInput = document.getElementById("scheduleTime");
-    const apiKeyMissing = button?.dataset.apiKeyMissing === "true";
 
-    function isInstanceValid() {
-      const value = (instanceInput?.value || "").trim();
-      return !!value && /^[A-Za-z0-9 _-]+$/.test(value);
-    }
-
-    function isCadenceValid() {
-      if (scheduledRadio?.checked) return !!timeInput?.value;
-      const min = Number(intervalInput?.min || 1);
-      return Number(intervalInput?.value) >= min;
-    }
-
+    // Submission and its validation now live entirely in handleAction
+    // (plugin_page.js), triggered by the single header "Add to playlist"
+    // button. This function only owns the interval/scheduled-time toggle.
     function sync() {
       const scheduled = !!scheduledRadio?.checked;
       if (intervalInput) intervalInput.disabled = scheduled;
       if (unitInput) unitInput.disabled = scheduled;
       if (timeInput) timeInput.disabled = !scheduled;
-      if (!button || apiKeyMissing) return;
-      const valid = isInstanceValid() && isCadenceValid();
-      button.disabled = !valid;
-      button.setAttribute("aria-disabled", valid ? "false" : "true");
-      button.title = valid ? "" : "Complete the schedule fields first";
     }
 
-    [instanceInput, intervalInput, unitInput, timeInput].forEach((input) => {
-      input?.addEventListener("input", sync);
-      input?.addEventListener("change", sync);
-    });
-    [intervalRadio, scheduledRadio].forEach((input) => {
-      input?.addEventListener("change", sync);
-    });
+    document.getElementById("refreshTypeInterval")?.addEventListener("change", sync);
+    scheduledRadio?.addEventListener("change", sync);
     sync();
   }
 

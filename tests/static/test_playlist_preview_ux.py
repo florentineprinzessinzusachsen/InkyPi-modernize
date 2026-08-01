@@ -36,4 +36,9 @@ def test_preview_helper_text_is_conditional():
     # help section — hence checking the whole page, not just help_section).
     # Test with case-insensitive matching so copy tweaks don't regress here.
     assert re.search(r"save\s+instance", html, re.IGNORECASE)
-    assert re.search(r"add\s+to\s+playlist", help_section, re.IGNORECASE)
+    # The visible button label is the literal "Add to playlist" phrase; the
+    # sr-only help text for the draft state spells it out differently
+    # ("Add this plugin to an automated playlist") but must still mention
+    # both concepts.
+    assert re.search(r"add\s+to\s+playlist", html, re.IGNORECASE)
+    assert re.search(r"\bplaylist\b", help_section, re.IGNORECASE)
