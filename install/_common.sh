@@ -49,6 +49,7 @@ show_loader() {
   local message="$1"
   local delay=0.1
   local spinstr="|/-\\"
+  local job_status
   printf "%s [%s] " "$message" "${spinstr:0:1}"
   while kill -0 "$pid" 2>/dev/null; do
     local temp=${spinstr#?}
@@ -56,11 +57,20 @@ show_loader() {
     spinstr=${temp}${spinstr%"${temp}"}
     sleep "${delay}"
   done
+  # Capture the backgrounded job's real exit status and return it. Previously
+  # this function's own exit status was always 0 (the last command run was
+  # always one of the two printfs below, which themselves always succeed) —
+  # so a failed background job (e.g. a pip/uv dependency install) was
+  # silently swallowed and every caller saw "success" regardless. Callers
+  # that need to abort on failure must check `if ! show_loader ...; then`.
   if wait "$pid"; then
+    job_status=0
     printf "\r%s [\e[32m\xE2\x9C\x94\e[0m]\n" "$message"
   else
+    job_status=$?
     printf "\r%s [\e[31m\xE2\x9C\x98\e[0m]\n" "$message"
   fi
+  return "$job_status"
 }
 
 # ---------------------------------------------------------------------------

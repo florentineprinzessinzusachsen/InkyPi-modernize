@@ -436,7 +436,10 @@ install_debian_dependencies() {
     show_loader "Fetch available system dependencies updates. "
 
     xargs -a "$APT_REQUIREMENTS_FILE" sudo apt-get install -y > /dev/null &
-    show_loader "Installing system dependencies. "
+    if ! show_loader "Installing system dependencies. "; then
+      echo_error "ERROR: Failed to install system dependencies (apt-get install). Check network connectivity and re-run install.sh."
+      exit 1
+    fi
   else
     echo "ERROR: System dependencies file $APT_REQUIREMENTS_FILE not found!"
     exit 1
@@ -536,12 +539,20 @@ create_venv(){
       "${uv_extra_args[@]}" \
       --require-hashes \
       -r "$PIP_REQUIREMENTS_FILE" > /dev/null &
-    show_loader "\tInstalling python dependencies (uv). "
+    if ! show_loader "\tInstalling python dependencies (uv). "; then
+      cleanup_wheelhouse
+      echo_error "ERROR: Failed to install Python dependencies via uv. Check network connectivity and re-run install.sh."
+      exit 1
+    fi
   else
     "$VENV_PATH/bin/python" -m pip install --retries 5 --timeout 60 --no-cache-dir \
       "${pip_extra_args[@]}" \
       --require-hashes -r "$PIP_REQUIREMENTS_FILE" -qq > /dev/null &
-    show_loader "\tInstalling python dependencies (pip fallback). "
+    if ! show_loader "\tInstalling python dependencies (pip fallback). "; then
+      cleanup_wheelhouse
+      echo_error "ERROR: Failed to install Python dependencies via pip. Check network connectivity and re-run install.sh."
+      exit 1
+    fi
   fi
 
   # do additional dependencies for Waveshare support.
@@ -553,12 +564,20 @@ create_venv(){
         --no-cache \
         "${uv_extra_args[@]}" \
         -r "$WS_REQUIREMENTS_FILE" > ws_pip_install.log &
-      show_loader "\tInstalling additional Waveshare python dependencies (uv). "
+      if ! show_loader "\tInstalling additional Waveshare python dependencies (uv). "; then
+        cleanup_wheelhouse
+        echo_error "ERROR: Failed to install Waveshare Python dependencies via uv. See ws_pip_install.log for details."
+        exit 1
+      fi
     else
       "$VENV_PATH/bin/python" -m pip install --retries 5 --timeout 60 --no-cache-dir \
         "${pip_extra_args[@]}" \
         -r "$WS_REQUIREMENTS_FILE" > ws_pip_install.log &
-      show_loader "\tInstalling additional Waveshare python dependencies (pip fallback). "
+      if ! show_loader "\tInstalling additional Waveshare python dependencies (pip fallback). "; then
+        cleanup_wheelhouse
+        echo_error "ERROR: Failed to install Waveshare Python dependencies via pip. See ws_pip_install.log for details."
+        exit 1
+      fi
     fi
   fi
 
@@ -843,6 +862,17 @@ disable_wifi_powersave
 install_src
 install_cli
 create_venv
+
+# Post-install assertion: the venv must actually contain the app's core
+# dependency before we proceed. Belt-and-suspenders alongside the exit-code
+# checks inside create_venv() — catches any other class of silent dependency-
+# install failure (e.g. a future refactor that re-introduces the same bug).
+if ! "$VENV_PATH/bin/python" -c "import flask" >/dev/null 2>&1; then
+  echo_error "ERROR: Python dependency install did not complete — 'flask' is not importable in $VENV_PATH."
+  echo_error "Re-run install.sh; if this persists, check network connectivity and try INKYPI_SKIP_WHEELHOUSE=1 sudo bash install.sh."
+  exit 1
+fi
+
 install_executable
 install_config
 # update the config file with additional WS if defined.
