@@ -5110,34 +5110,50 @@ a.quick-row-link:hover {
   text-align: center;
 }
 
+/* `.settings-container` (_form.css) sets `justify-content: center`, meant
+   for its base `display: flex; flex-direction: column` (centers content
+   *vertically*, the flex main axis). Configure/Style stay flex, so that's
+   harmless there. This panel overrides to `display: grid`, which reads
+   `justify-content` on the *inline* (horizontal) axis instead — the
+   inherited `center` then shrink-wraps and centers the whole panel's
+   content horizontally, making Schedule visibly narrower and off-center
+   compared to the other two tabs. Reset it back to fill width like they do. */
 .plugin-schedule-panel {
   display: grid;
   gap: 14px;
+  justify-content: normal;
 }
 
+/* Directly override .action-button's own `width:100%` so "Open playlists"
+   keeps its natural content width instead of stretching to fill the card
+   with its label centered inside — visibly different from every other
+   secondary action-button on this page otherwise. A `justify-items:start`
+   wrapper (the trick `.plugin-inline-api-actions`/"Manage keys" uses) does
+   *not* reliably shrink a percentage-width item when it's the only grid
+   item — the implicit track sizes to the container instead of the item's
+   content in that single-item case, so this overrides the button directly. */
 .schedule-summary-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+}
+
+.schedule-summary-actions .action-button {
+  width: auto;
+  flex: 0 0 auto;
 }
 
 /* Layout-only wrapper for the draft-schedule form — no border/background of
-   its own, since its two `.settings-card` sections (Destination, Cadence)
-   are already the visible cards. Mirrors `.settings-schema`'s role for the
-   Configure tab's schema-driven fields: a plain grid container, not a card
-   nested around other cards. */
+   its own, since its `.settings-card` sections (Destination, Cadence) are
+   already the visible cards, stacked via `.settings-schema` (plugin.html)
+   exactly like Configure/Style's cards — not a 2-up grid, so this tab's
+   cards are full-width and consistent with the other two. Mirrors
+   `.settings-schema`'s own role: a plain grid container, not a card nested
+   around other cards. */
 .schedule-form-card {
   display: grid;
   gap: 16px;
   box-sizing: border-box;
   min-width: 0;
   width: 100%;
-}
-
-.schedule-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
 }
 
 .schedule-inline-group {
@@ -5336,11 +5352,7 @@ body[data-page="plugin"] .workflow-help p {
     flex-direction: column;
   }
 
-  .schedule-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .schedule-form-grid .settings-card,
+  .schedule-form-card .settings-card,
   .schedule-inline-group,
   .schedule-inline-group .form-input,
   .schedule-form-card select,
