@@ -14,7 +14,12 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Anchored to repo root: an unanchored `lib/` here previously matched (and
+# silently excluded from git) src/plugins/regenalarm/lib/, the plugin's own
+# implementation package — worked fine locally (files still on disk) but a
+# fresh clone was missing the whole subpackage, breaking the plugin with
+# "No module named 'plugins.regenalarm.lib'" in production.
+/lib/
 lib64/
 parts/
 sdist/
