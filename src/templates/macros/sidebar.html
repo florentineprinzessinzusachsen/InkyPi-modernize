@@ -9,10 +9,12 @@
     {% set now_label = now_showing.label if now_showing.label is defined else none %}
     {% set now_meta = now_showing.meta if now_showing.meta is defined else 'live' %}
     {% set now_state = now_showing.state if now_showing.state is defined else ('idle' if not now_label else 'live') %}
+    {% set now_has_preview = now_showing.has_preview if now_showing.has_preview is defined else false %}
 {% else %}
     {% set now_label = now_showing %}
     {% set now_meta = 'live' %}
     {% set now_state = 'idle' if not now_label else 'live' %}
+    {% set now_has_preview = false %}
 {% endif %}
 {% set system_online = sidebar_system.online_label if sidebar_system is mapping and sidebar_system.online_label is defined else 'online' %}
 {% set system_load = sidebar_system.load_label if sidebar_system is mapping and sidebar_system.load_label is defined else none %}
@@ -150,6 +152,17 @@
                     <span>{{ now_meta if now_label else 'Idle' }}</span>
                 </div>
             </div>
+            {% if now_has_preview %}
+            {#- Zoomable thumbnail of the currently displayed image, using the
+                same shared Lightbox module (lightbox.js) as the dashboard's
+                own big preview and the playlist row thumbnails — click or
+                Enter/Space opens the full-size, centered lightbox. Wired up
+                by sidebar_preview.js via the data-sidebar-preview hook,
+                since the sidebar itself renders on every page. -#}
+            <div class="now-preview" data-sidebar-preview role="button" tabindex="0" aria-label="View current display preview, larger">
+                <img src="{{ url_for('main.preview_image') }}" alt="{{ now_label or 'Current display' }} preview" loading="lazy" decoding="async">
+            </div>
+            {% endif %}
         </div>
         <div class="sys-row">
             <div class="sys-stats">

@@ -269,6 +269,44 @@
   gap: 6px;
 }
 
+/* Zoomable thumbnail of the currently displayed image — same visual
+   language (border, hover lift) as the playlist row thumbnails and the
+   plugin catalog tiles, scaled to the card's width. Height is whatever the
+   image's natural aspect ratio gives it (no fixed aspect-ratio box), since
+   the display resolution isn't known at this shared-sidebar scope. */
+.now-preview {
+  display: block;
+  /* .now-card is a grid container; grid items default to min-width: auto,
+     which lets this element's content (the full device-resolution image)
+     win over `width: 100%` below and overflow the sidebar instead of
+     scaling down to it. min-width: 0 lets it actually shrink to the
+     card's width. */
+  min-width: 0;
+  margin-top: 2px;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+  background: var(--preview-bg);
+  cursor: zoom-in;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.now-preview:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px var(--shadow-medium, rgba(0, 0, 0, 0.1));
+}
+
+.now-preview:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.now-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .live-dot {
   width: 7px;
   height: 7px;
