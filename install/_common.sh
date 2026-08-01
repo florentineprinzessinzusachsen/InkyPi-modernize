@@ -50,10 +50,13 @@ show_loader() {
   local delay=0.1
   local spinstr="|/-\\"
   local job_status
-  printf "%s [%s] " "$message" "${spinstr:0:1}"
+  # %b (not %s) for $message so backslash escapes like \t are interpreted,
+  # matching echo_success/echo_error's `echo -e` — otherwise callers passing
+  # "\tSome message" get a literal backslash-t instead of an indent.
+  printf "%b [%s] " "$message" "${spinstr:0:1}"
   while kill -0 "$pid" 2>/dev/null; do
     local temp=${spinstr#?}
-    printf "\r%s [%s] " "$message" "${temp:0:1}"
+    printf "\r%b [%s] " "$message" "${temp:0:1}"
     spinstr=${temp}${spinstr%"${temp}"}
     sleep "${delay}"
   done
@@ -65,10 +68,10 @@ show_loader() {
   # that need to abort on failure must check `if ! show_loader ...; then`.
   if wait "$pid"; then
     job_status=0
-    printf "\r%s [\e[32m\xE2\x9C\x94\e[0m]\n" "$message"
+    printf "\r%b [\e[32m\xE2\x9C\x94\e[0m]\n" "$message"
   else
     job_status=$?
-    printf "\r%s [\e[31m\xE2\x9C\x98\e[0m]\n" "$message"
+    printf "\r%b [\e[31m\xE2\x9C\x98\e[0m]\n" "$message"
   fi
   return "$job_status"
 }
