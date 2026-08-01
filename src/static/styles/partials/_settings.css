@@ -19,11 +19,31 @@
   min-width: 12rem;
 }
 
+/* display:grid + gap (not block-flow margins) so every consumer gets the
+   same, non-collapsing title-to-content spacing regardless of what the
+   first content element is (a <p>, a .form-group, a widget, ...). Block-flow
+   margin-collapsing was giving standalone cards a visibly tighter gap than
+   cards inside a multi-field `.settings-schema` section. */
 .settings-card {
+  display: grid;
+  gap: 12px;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--border-radius-md);
   padding: 14px;
+}
+
+/* `.form-group`'s own `margin: 6px 0` (_form.css) is meant for block-flow
+   contexts where it collapses with siblings. As a *direct* grid item of
+   `.settings-card` that margin doesn't collapse — grid items don't collapse
+   margins at all — so it silently stacks on top of the grid `gap`, making
+   plain field cards (Style, Schedule) render a visibly larger title gap
+   than schema-driven cards (where `.form-group` sits one level deeper,
+   inside `.schema-field`, and never touches the outer grid). Zeroing it
+   here means the grid `gap` is the only thing spacing any `.settings-card`'s
+   direct children, everywhere it's used. */
+.settings-card > .form-group {
+  margin: 0;
 }
 
 .settings-card-title {
@@ -111,11 +131,6 @@
 .settings-schema {
   display: grid;
   gap: 14px;
-}
-
-.schema-section {
-  display: grid;
-  gap: 12px;
 }
 
 .schema-section-body {

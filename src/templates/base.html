@@ -73,7 +73,7 @@
     <div class="shell" data-density="balanced">
         {{ sidebar(active=(active_nav if active_nav is defined else None),
                     host=(request.host if request is defined else None),
-                    device_name=(config.name if config is defined and config.name is defined else None),
+                    device_name=(device_name if device_name is defined else None),
                     now_showing=(now_showing if now_showing is defined else None),
                     sidebar_system=(sidebar_system if sidebar_system is defined else None)) }}
         <div class="shell-main">

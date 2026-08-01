@@ -48,13 +48,16 @@ def test_api_keys_page_structure(client):
 
 
 def test_home_page_structure(client):
-    """Home page contains preview image and plugin grid."""
+    """Home page contains the current-display preview.
+
+    The dashboard no longer inlines a plugin catalog grid (that content now
+    lives solely on /plugins), so this only checks the preview + page shell.
+    """
     resp = client.get("/")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
     assert "previewImage" in html
-    assert "plugins-container" in html
     assert "data-page-shell" in html
 
 

@@ -12,15 +12,22 @@ def test_main_page(client):
     assert b"/preview" in resp.data
 
 
-def test_dashboard_header_actions_use_compact_handoff_button_pattern(client):
+def test_dashboard_header_actions_match_app_wide_button_pattern(client):
+    """Dashboard pageheader buttons use the same plain header-button sizing
+    (no page-specific size override, no icon) as every other page's
+    pageheader-actions — Refresh/Display Next previously had a bespoke
+    compact `.dashboard-header-button` variant that made them visibly
+    smaller than e.g. playlist.html's "New playlist" button.
+    """
     resp = client.get("/")
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
     assert 'id="dashboardRefreshBtn"' in html
     assert 'id="displayNextBtn"' in html
-    assert 'class="header-button is-secondary dashboard-header-button"' in html
-    assert 'class="header-button primary dashboard-header-button"' in html
+    assert 'class="header-button is-secondary"' in html
+    assert 'class="header-button primary"' in html
+    assert "dashboard-header-button" not in html
     assert 'class="action-button is-secondary dashboard-header-button"' not in html
     assert 'class="action-button primary dashboard-header-button"' not in html
 
@@ -135,38 +142,25 @@ def test_dashboard_refresh_cell_renders_forward_eta(
     assert "ETA 8:00 AM" in html
 
 
-def test_dashboard_plugin_cards_have_valid_hrefs(client, device_config_dev):
-    """JTN-214: Plugin cards must render with valid href attributes."""
+def test_dashboard_has_no_plugin_catalog(client):
+    """The plugin catalog grid was removed from the dashboard — it now only
+    lives on the dedicated /plugins library page. Regression guard against
+    it creeping back onto the dashboard."""
     resp = client.get("/")
     assert resp.status_code == 200
-    # Each plugin should have a link to its plugin page
-    # The test client's config should have at least one plugin registered.
-    # The card class is `plugin-item` (optionally with additional modifier
-    # classes like `plugin-tile` from the tile-based redesign).
-    assert b'class="plugin-item' in resp.data
-    assert b'href="/plugin/' in resp.data
-
-
-def test_dashboard_plugin_catalog_exposes_library_link(client):
-    resp = client.get("/")
     html = resp.get_data(as_text=True)
-
-    assert resp.status_code == 200
-    assert 'id="todayKpiSub"' in html
-    assert "Plugins" in html
-    assert 'href="/plugins"' in html
-    assert "Open library" in html
+    assert 'id="plugins-grid"' not in html
+    assert "Open library" not in html
 
 
-def test_plugin_page_accessible_from_dashboard_links(client, device_config_dev):
-    """JTN-214: Links from dashboard plugin cards should serve plugin pages."""
+def test_plugin_page_accessible_from_plugins_library_links(client, device_config_dev):
+    """JTN-214: Links from the /plugins library cards should serve plugin pages."""
     import re
 
-    resp = client.get("/")
+    resp = client.get("/plugins")
     assert resp.status_code == 200
-    # Extract plugin hrefs from the response
     hrefs = re.findall(rb'href="(/plugin/[^"]+)"', resp.data)
-    assert len(hrefs) > 0, "Dashboard should have at least one plugin link"
+    assert len(hrefs) > 0, "Plugins library should have at least one plugin link"
     for href in hrefs:
         plugin_resp = client.get(href.decode())
         assert (

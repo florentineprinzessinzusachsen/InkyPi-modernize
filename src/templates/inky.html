@@ -1,44 +1,28 @@
 {% extends "base.html" %}
 {% block title %}{{ config.name }} - InkyPi{% endblock %}
 {% block head %}
-    <script src="{{ url_for('static', filename='scripts/lightbox.js') }}" defer></script>
     <script src="{{ url_for('static', filename='scripts/dashboard_page.js') }}" defer></script>
 {% endblock %}
 {% block body_attrs %} data-page="dashboard"{% endblock %}
 {% block body %}
-    {# pageheader macro is intentionally hand-rolled on this page (see the
-       <header class="pageheader"> block below) because the dashboard wraps
-       the action buttons in an extra container class that the shared macro
-       does not emit. If that drifts, consider migrating to `{% call
-       pageheader(...) %}` for consistency with the other pages in this PR. #}
-    {% from 'macros/plugin_catalog.html' import plugin_catalog %}
     {% set plugin_names = {} %}
     {% for p in plugins %}{% if p.display_name %}{% set _ = plugin_names.update({p.id: p.display_name}) %}{% endif %}{% endfor %}
     <!-- Subtle frame container -->
     <div class="frame">
         {% from 'macros/icons.html' import icon, theme_toggle, empty_state %}
-        <header class="pageheader" role="banner">
-            <div class="pageheader-main">
-                <div class="eyebrow">Dashboard</div>
-                {# JTN-340: keep the `title` attribute on the H1 so the full
-                   device name still surfaces via hover/AT when it's shown as
-                   a chip below; useful when the chip itself is truncated. #}
-                <h1 class="app-title" title="{{ config.name }}">Current display</h1>
-            </div>
-            <div class="pageheader-actions dashboard-pageheader-actions">
-                {# Buttons drop their aria-label attributes so the visible
-                   `.button-text` span IS the accessible name — Sonar S7927
-                   flags aria-labels that don't share the visible label. #}
-                <button id="dashboardRefreshBtn" type="button" class="header-button is-secondary dashboard-header-button" data-test-skip-click="true">
-                    {{ icon('arrow-clockwise', 'btn-leading-icon') | safe }}
-                    <span class="button-text">Refresh</span>
-                </button>
-                <button id="displayNextBtn" type="button" class="header-button primary dashboard-header-button" data-default-label="Display Next" data-test-skip-click="true">
-                    {{ icon('skip-forward', 'btn-leading-icon') | safe }}
-                    <span class="button-text">Display Next</span>
-                </button>
-            </div>
-        </header>
+        {% from 'macros/pageheader.html' import pageheader %}
+        {# JTN-340: keep the `title` attribute on the H1 so the full device
+           name still surfaces via hover/AT when it's shown as a chip below;
+           useful when the chip itself is truncated. #}
+        {% call pageheader(title='Current display', eyebrow='Dashboard', title_class='app-title', title_attr=config.name) %}
+            <button id="dashboardRefreshBtn" type="button" class="header-button is-secondary" data-test-skip-click="true">Refresh</button>
+            {# displayNextBtn keeps a .button-text span (unlike other pageheader
+               buttons) because dashboard_page.js swaps its label to "Displaying…"
+               and .loading hides that span while showing the spinner overlay. #}
+            <button id="displayNextBtn" type="button" class="header-button primary" data-default-label="Display Next" data-test-skip-click="true">
+                <span class="button-text">Display Next</span>
+            </button>
+        {% endcall %}
         <!-- Main content area -->
         <main id="main-content" role="main" tabindex="-1" class="page-shell page-shell-dashboard" data-page-shell="dashboard">
             <div class="dashboard-hero">
@@ -202,13 +186,6 @@
                     {% endif %}
                 </aside>
             </div>
-            {{ plugin_catalog(
-                plugins=plugins,
-                heading='Plugins',
-                count_label=(plugins|length ~ ' installed'),
-                action_href=url_for('plugin.plugins_page'),
-                action_label='Open library'
-            ) }}
         </main>
     </div>
     {% include 'response_modal.html' %}

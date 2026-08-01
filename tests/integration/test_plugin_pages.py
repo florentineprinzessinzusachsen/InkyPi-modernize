@@ -285,7 +285,8 @@ def test_plugin_page_renders_inline_api_management_card(client, device_config_de
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
 
-    assert 'class="plugin-editor-card-label">API key' in body
+    assert "data-api-key-card" in body
+    assert 'class="settings-card-title" id="pluginApiCardHeading"' in body
     assert "Manage keys" in body
     assert "workflow-preview-card" in body
 

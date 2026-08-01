@@ -39,7 +39,7 @@
             eyebrow='Playlists',
             description='Group plugin instances into time-based rotations. The device plays the active playlist on cycle.'
         ) %}
-            <button id="newPlaylistBtn" class="action-button primary" type="button">New playlist</button>
+            <button id="newPlaylistBtn" class="header-button primary" type="button">New playlist</button>
         {% endcall %}
 
         {% set playlist_count = playlist_config.playlists | length %}
@@ -277,15 +277,9 @@
     <!-- Success/Error Modal -->
     {% include 'response_modal.html' %}
 
-    <!-- Thumbnail Preview Modal -->
-    <dialog id="thumbnailPreviewModal" class="thumbnail-preview-modal playlist-thumbnail-modal" aria-labelledby="thumbnailPreviewTitle" hidden>
-        <div class="thumbnail-preview-content playlist-thumbnail-content">
-            <h2 id="thumbnailPreviewTitle" class="sr-only">Image Preview</h2>
-            <button class="thumbnail-preview-close" type="button" id="closeThumbnailPreviewBtn" aria-label="Close">{{ icon('x', 'close-icon') | safe }}</button>
-            <img id="thumbnailPreviewImage" src="" alt="Plugin Instance Preview">
-            <div class="thumbnail-preview-info playlist-thumbnail-info" id="thumbnailPreviewInfo"></div>
-        </div>
-    </dialog>
+    {# Thumbnail preview now uses the shared Lightbox module (lightbox.js) —
+       the same #imagePreviewModal used on the plugin page — instead of a
+       bespoke <dialog>. See playlist/page.js's initLightboxThumbs(). #}
     </div>
     </main>
 {% endblock %}

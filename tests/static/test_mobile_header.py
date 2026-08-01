@@ -26,6 +26,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _STYLES_DIR = _REPO_ROOT / "src" / "static" / "styles"
 _INKY_TEMPLATE = _REPO_ROOT / "src" / "templates" / "inky.html"
+_PAGEHEADER_MACRO = _REPO_ROOT / "src" / "templates" / "macros" / "pageheader.html"
 
 
 def _read_all_css() -> str:
@@ -113,15 +114,36 @@ def test_title_container_allows_shrink():
 
 
 def test_dashboard_header_exposes_full_name_via_title_attr():
-    """Full device name must remain accessible when truncated (JTN-340)."""
-    html = _INKY_TEMPLATE.read_text(encoding="utf-8")
-    assert 'class="app-title"' in html, "app-title element missing from inky.html"
-    # The h1 should carry a title attribute so hover/a11y still surfaces
-    # the full device name even when CSS truncates it with ellipsis.
-    pattern = re.compile(
-        r"<h1[^>]*class=\"app-title\"[^>]*title=\"\{\{\s*config\.name\s*\}\}\"",
+    """Full device name must remain accessible when truncated (JTN-340).
+
+    The dashboard header is rendered via the shared `pageheader()` macro
+    (macros/pageheader.html) rather than a hand-rolled <h1>, so this checks
+    both halves: inky.html passes `title_class='app-title'` /
+    `title_attr=config.name` into the macro call, and the macro itself
+    renders those into a `class` (alongside its own `page-title`) and
+    `title` attribute on the <h1>.
+    """
+    inky_html = _INKY_TEMPLATE.read_text(encoding="utf-8")
+    call_pattern = re.compile(
+        r"pageheader\([^)]*title_class='app-title'[^)]*title_attr=config\.name",
     )
-    assert pattern.search(html), (
-        "`.app-title` <h1> must expose the full `config.name` via a "
-        "`title` attribute so truncated names remain discoverable (JTN-340)."
+    assert call_pattern.search(inky_html), (
+        "inky.html's pageheader() call must pass title_class='app-title' "
+        "and title_attr=config.name so the shared macro renders the "
+        "device name discoverably (JTN-340)."
+    )
+
+    macro_html = _PAGEHEADER_MACRO.read_text(encoding="utf-8")
+    # The h1 should carry a title attribute so hover/a11y still surfaces
+    # the full device name even when CSS truncates it with ellipsis, and
+    # the class list must include the caller-supplied title_class so
+    # `.app-title` still matches.
+    macro_pattern = re.compile(
+        r'<h1 class="page-title\{% if title_class %\} \{\{ title_class \}\}'
+        r'\{% endif %\}"\{% if title_attr %\} title="\{\{ title_attr \}\}"',
+    )
+    assert macro_pattern.search(macro_html), (
+        "`pageheader()` macro's <h1> must expose the caller's title_class "
+        "(so `.app-title` still matches) and a `title` attribute sourced "
+        "from title_attr so truncated names remain discoverable (JTN-340)."
     )

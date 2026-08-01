@@ -448,6 +448,19 @@ def _lookup_static_version_factory(
     return _lookup_static_version
 
 
+def _has_preview_image(device_config: Config) -> bool:
+    """Whether a currently-displayed image exists on disk to preview.
+
+    Mirrors the check ``main_page()`` already does for the dashboard's own
+    big preview (processed image preferred, current image as fallback) —
+    shared here so the sidebar's now-playing thumbnail (rendered on every
+    page, not just the dashboard) can gate on the same signal.
+    """
+    return os.path.exists(device_config.processed_image_file) or os.path.exists(
+        device_config.current_image_file
+    )
+
+
 def _compute_now_showing(device_config: Config) -> dict[str, object] | None:
     """Build the ``now_showing`` dict consumed by the shell footer.
 
@@ -462,6 +475,7 @@ def _compute_now_showing(device_config: Config) -> dict[str, object] | None:
     except Exception:
         return None
 
+    has_preview = _has_preview_image(device_config)
     plugin_id = info.get("plugin_id") or ""
     try:
         refreshed = _format_sidebar_refresh_time(
@@ -478,6 +492,7 @@ def _compute_now_showing(device_config: Config) -> dict[str, object] | None:
                 f"refreshed {refreshed}" if refreshed and has_last_display else "Idle"
             ),
             "state": "idle",
+            "has_preview": has_preview,
         }
 
     # Resolve the display name from the plugin registry when possible.
@@ -508,6 +523,7 @@ def _compute_now_showing(device_config: Config) -> dict[str, object] | None:
         "label": label,
         "meta": " · ".join(meta_parts) if meta_parts else "live",
         "state": "live",
+        "has_preview": has_preview,
     }
 
 
@@ -557,6 +573,19 @@ def _register_context_processors(app: Flask) -> None:
                 "load_label": _format_sidebar_load_average(),
             }
         }
+
+    @app.context_processor
+    def _inject_device_name():  # type: ignore[no-untyped-def]
+        """Expose the configured device name for the sidebar brand row.
+
+        Independent of whatever else a given route passes to its own
+        template (some pass `config=`, some `device_settings=`, some
+        neither) so the sidebar is consistent on every page.
+        """
+        device_config = app.config.get("DEVICE_CONFIG")
+        if device_config is None:
+            return {"device_name": None}
+        return {"device_name": device_config.get_config("name")}
 
 
 def create_app() -> Flask:

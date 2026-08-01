@@ -22,8 +22,10 @@
             chips=hist_chips
         ) %}
             <a href="{{ url_for('history.history_export_csv') }}" class="header-button is-secondary" download>Export CSV</a>
-            <button id="historyRefreshBtn" class="header-button dashboard-header-button" type="button" data-test-skip-click="true">
-                {{ icon('arrows-clockwise', 'btn-leading-icon') | safe }}
+            {# historyRefreshBtn keeps a .button-text span (unlike other
+               pageheader buttons) because history_page.js adds .loading on
+               click, which hides that span while showing the spinner overlay. #}
+            <button id="historyRefreshBtn" class="header-button is-secondary" type="button" data-test-skip-click="true">
                 <span class="button-text">Refresh</span>
             </button>
         {% endcall %}

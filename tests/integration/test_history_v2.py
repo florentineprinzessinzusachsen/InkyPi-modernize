@@ -10,6 +10,7 @@ Covers the polish-and-improve handoff (History v2.dc.html):
 
 import json
 import os
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -196,11 +197,33 @@ def test_history_thumbs_carry_lightbox_data(
     assert "Playlist • weather • Daily" in body
 
 
-def test_history_page_no_longer_uses_generic_lightbox(client: Any) -> None:
+def test_history_thumbs_not_wired_to_generic_lightbox(
+    client: Any, device_config_dev: Any
+) -> None:
+    """History thumbnails must keep using their own bespoke lightboxModal /
+    data-lightbox-* wiring (see test_history_thumbs_carry_lightbox_data),
+    not the shared Lightbox module's Lightbox.bind() convention.
+
+    lightbox.js itself is loaded globally now (base.html), for the
+    sidebar's now-playing preview thumbnail — so the page as a whole
+    legitimately contains `data-sidebar-preview` (in the sidebar, which
+    renders on every page). This instead asserts the precise invariant:
+    the `.history-thumb` element *itself* doesn't carry any of the hooks
+    Lightbox.bind() is wired to elsewhere in the app, so it can't get
+    double-bound to the generic modal.
+    """
+    d = device_config_dev.history_image_dir
+    _clear_history(d)
+    _save_png(d, "display_v2_no_generic_lightbox.png")
+
     resp = client.get("/history")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "scripts/lightbox.js" not in body
+    match = re.search(r'<a class="history-thumb"[^>]*>', body)
+    assert match, "Expected a rendered .history-thumb element"
+    thumb_tag = match.group(0)
+    assert "data-sidebar-preview" not in thumb_tag
+    assert "plugin-thumbnail-container" not in thumb_tag
 
 
 # ---------------------------------------------------------------------------
@@ -208,15 +231,19 @@ def test_history_page_no_longer_uses_generic_lightbox(client: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_history_refresh_button_has_icon_and_label(client: Any) -> None:
+def test_history_refresh_button_matches_app_wide_button_pattern(client: Any) -> None:
+    """No icon, no page-specific size class — same plain header-button
+    sizing as every other page's pageheader-actions. The .button-text span
+    is kept (unlike static-label buttons elsewhere) because history_page.js
+    toggles .loading on click, which hides that span for the spinner overlay.
+    """
     resp = client.get("/history")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     idx = body.index('id="historyRefreshBtn"')
-    # Wide window: the inline arrows-clockwise SVG is over 600 chars long.
-    button_html = body[idx : idx + 2500]
-    assert "dashboard-header-button" in body[idx - 200 : idx + 200]
-    assert "btn-leading-icon" in button_html
+    button_html = body[idx : idx + 300]
+    assert "dashboard-header-button" not in button_html
+    assert "btn-leading-icon" not in button_html
     assert '<span class="button-text">Refresh</span>' in button_html
 
 

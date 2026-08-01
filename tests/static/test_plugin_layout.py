@@ -70,7 +70,15 @@ def test_header_api_indicator_still_present():
 
 
 def test_plugin_template_uses_overview_and_preview_cards():
-    """The plugin page should keep the handoff-style overview + preview framing."""
+    """The plugin page should keep the handoff-style overview + preview framing.
+
+    The API-key box previously sat in its own `.plugin-editor-overview` grid
+    wrapper (a leftover from when it shared that grid with a second "Content"
+    summary card, since removed). It now renders as a plain `.settings-card`
+    — the same card primitive every plugin's schema-driven fields use — so
+    Configure no longer mixes two different card systems.
+    """
     template = (_TEMPLATES_DIR / "plugin.html").read_text(encoding="utf-8")
-    assert "plugin-editor-overview" in template
+    assert "data-api-key-card" in template
+    assert "settings-card" in template
     assert "workflow-preview-card" in template
