@@ -861,8 +861,12 @@ class WeatherDe(BasePlugin):
                 # This map column is far smaller than the standalone
                 # Regenalarm plugin's own panel - the "+Nh" trajectory
                 # labels shrink past legible at this size, so skip them
-                # here (the standalone plugin still gets them).
+                # here (the standalone plugin still gets them), and scale
+                # up the trajectory/crossbar lines themselves (emphasis)
+                # so they're still visible at this column's much smaller
+                # rendered size instead of thinning down to near-invisible.
                 show_labels=False,
+                emphasis=3.0,
             )
             return True
         except Exception as e:

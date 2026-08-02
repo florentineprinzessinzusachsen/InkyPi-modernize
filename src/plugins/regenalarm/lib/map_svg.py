@@ -84,7 +84,7 @@ def _label_badge_svg(cx: float, cy: float, text: str) -> str:
 
 def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
                            scale_x: float, scale_y: float, hours: int = 4, unit_scale: float = 4.0,
-                           show_labels: bool = True) -> str:
+                           show_labels: bool = True, emphasis: float = 1.0) -> str:
     """Backward wind trajectory: where the air at (loc_x, loc_y) was N hours
     ago, per hour, drawn as a line from the oldest position to the location
     with the arrowhead at the location. Formula unchanged from the original
@@ -95,13 +95,19 @@ def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
     show_labels=False keeps the perpendicular hour-tick crossbars but skips
     the "+Nh" text badges - for callers that composite this map much
     smaller than the standalone Regenalarm plugin's own panel (e.g.
-    weather_de's map column), where the badge text shrinks past legible."""
+    weather_de's map column), where the badge text shrinks past legible.
+
+    emphasis scales the trajectory/crossbar stroke width AND length -
+    both are computed in this module's fixed 936x1026 viewBox space, so a
+    caller that renders that same viewBox much smaller on screen (again,
+    weather_de's map column) needs a proportionally bigger emphasis to
+    keep them visible at all, not just thicker at the same tiny length."""
     dx_per_hour = u * unit_scale * scale_x
     dy_per_hour = -v * unit_scale * scale_y
     far_x = loc_x - dx_per_hour * hours
     far_y = loc_y - dy_per_hour * hours
 
-    parts = [_arrowhead_svg((far_x, far_y), (loc_x, loc_y))]
+    parts = [_arrowhead_svg((far_x, far_y), (loc_x, loc_y), width=3.0 * emphasis, head_len=14.0 * emphasis)]
 
     line_len = math.hypot(dx_per_hour, dy_per_hour)
     if line_len > 1e-6:
@@ -123,11 +129,11 @@ def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
         ty = loc_y - dy_per_hour * k
 
         dist_from_loc = line_len * k
-        half_len = max(dist_from_loc * 0.23, k * 2.5 * avg_scale)
+        half_len = max(dist_from_loc * 0.23, k * 2.5 * avg_scale) * emphasis
         cx1, cy1 = tx + perp_x * half_len, ty + perp_y * half_len
         cx2, cy2 = tx - perp_x * half_len, ty - perp_y * half_len
         parts.append(f'<line x1="{cx1:.1f}" y1="{cy1:.1f}" x2="{cx2:.1f}" y2="{cy2:.1f}" '
-                     f'stroke="{TRAJECTORY_COLOR}" stroke-width="3"/>')
+                     f'stroke="{TRAJECTORY_COLOR}" stroke-width="{3 * emphasis:.1f}"/>')
 
         if show_labels:
             label_offset = half_len + 16
@@ -138,11 +144,12 @@ def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
 
 
 def render_marker_and_trajectory(location_xy: tuple | None, location_uv: tuple | None,
-                                  rain_native_size: tuple | None, show_labels: bool = True) -> str:
+                                  rain_native_size: tuple | None, show_labels: bool = True,
+                                  emphasis: float = 1.0) -> str:
     """Scales location_xy/location_uv (native to the rain PNG's own pixel
     space) into this module's fixed MAP_VIEWBOX_W/H space, and returns the
     combined marker + trajectory SVG markup. Returns "" if there's nothing
-    to draw (no location data). show_labels is forwarded to
+    to draw (no location data). show_labels/emphasis are forwarded to
     render_trajectory_svg - see its docstring."""
     if location_xy is None or not rain_native_size:
         return ""
@@ -158,6 +165,6 @@ def render_marker_and_trajectory(location_xy: tuple | None, location_uv: tuple |
 
     if location_uv is not None:
         parts.append(render_trajectory_svg(loc_x, loc_y, location_uv[0], location_uv[1], scale_x, scale_y,
-                                            show_labels=show_labels))
+                                            show_labels=show_labels, emphasis=emphasis))
 
     return "\n".join(parts)
