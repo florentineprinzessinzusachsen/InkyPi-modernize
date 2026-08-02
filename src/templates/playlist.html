@@ -105,7 +105,11 @@
                                 {% if pi_icon %}
                                 {{ icon(pi_icon, 'icon-image') | safe }}
                                 {% else %}
-                                <img src="{{ url_for('plugin.image', plugin_id=plugin_instance.plugin_id, filename='icon.png') }}" alt="" class="plugin-icon">
+                                <img
+                                    src="{{ url_for('plugin.image', plugin_id=plugin_instance.plugin_id, filename='icon.png') }}"
+                                    alt=""
+                                    class="icon-image"
+                                    loading="lazy">
                                 {% endif %}
                             </span>
                             <div class="pl-item-main plugin-info" id="{{plugin_instance.name}}">
