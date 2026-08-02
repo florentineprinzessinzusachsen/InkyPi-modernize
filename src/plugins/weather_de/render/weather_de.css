@@ -173,15 +173,6 @@
 
 .today-container.with-map .current-weather {
   margin-left: -13%;
-  /* justify-content:center (base rule) centers the temp/feels-like/
-     min-max block as a whole, but "23°C" is the visually dominant
-     line and it sits in the top half of that block (feels-like/min-max
-     hang below it) - so centering the block's bounding box still reads
-     as the number sitting above the icon's own center. flex-end shifts
-     the whole group down (measured: closes about 2/3 of that gap,
-     using up all the block's free space) without touching font
-     sizes or overflowing. */
-  justify-content: flex-end;
 }
 
 .current-temp {
