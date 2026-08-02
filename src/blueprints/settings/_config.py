@@ -213,22 +213,18 @@ def export_settings() -> Any:
             "config": device_config.get_config(),
         }
         if include_keys:
-            # Include known API keys and possibly other keys
-            keys = {}
-            for k in (
-                "OPEN_AI_SECRET",
-                "OPEN_WEATHER_MAP_SECRET",
-                "NASA_SECRET",
-                "UNSPLASH_ACCESS_KEY",
-                "GITHUB_SECRET",
-                "GOOGLE_AI_SECRET",
-            ):
-                try:
-                    v = device_config.load_env_key(k)
-                except Exception:
-                    v = None
-                if v:
-                    keys[k] = v
+            # Export every provider/custom secret in .env, not just the fixed
+            # provider cards - otherwise plugins that rely on free-form custom
+            # secrets (e.g. calendar_auth's CALENDAR_AUTH_PASSWORD_<LABEL>,
+            # set via /settings/api-keys' "Custom secrets" section) silently
+            # never round-trip through a backup. Internal app secrets
+            # (SECRET_KEY, etc.) are still excluded.
+            env_path = _apikeys_mod.get_env_path()
+            keys = {
+                key: value
+                for key, value in _apikeys_mod.parse_env_file(env_path)
+                if value and key not in _apikeys_mod._INTERNAL_KEYS
+            }
             data["env_keys"] = keys
 
         # JSON response for now; a file download route can be added if needed
@@ -292,7 +288,18 @@ def import_settings() -> Any:
         env_keys = payload.get("env_keys") or {}
         if isinstance(env_keys, dict):
             for k, v in env_keys.items():
-                if k not in _mod._ALLOWED_IMPORT_ENV_KEYS or v is None:
+                # Same validation as /settings/save_api_keys' custom-secret
+                # path: any safe-looking env-var name that isn't an internal
+                # app secret is importable, not just the 6 fixed providers -
+                # otherwise a correctly-exported custom secret (e.g.
+                # calendar_auth's CALENDAR_AUTH_PASSWORD_<LABEL>) would still
+                # get silently dropped on restore.
+                if (
+                    not isinstance(k, str)
+                    or not _CUSTOM_KEY_NAME_RE.match(k)
+                    or k in _apikeys_mod._INTERNAL_KEYS
+                    or v is None
+                ):
                     continue
                 str_v = str(v)
                 if _apikeys_mod._has_invalid_control_chars(str_v):

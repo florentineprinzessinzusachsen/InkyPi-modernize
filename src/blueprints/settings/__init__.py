@@ -904,7 +904,11 @@ def _check_latest_version(force_refresh: bool = False) -> str | None:
     return None
 
 
-# Import allowlists for settings import
+# Import allowlist for settings import. Keep this in sync with the top-level
+# keys Config actually reads/writes (see config.py, device_dev.json) - a key
+# missing here round-trips through export (which just dumps get_config())
+# but then silently vanishes on import, which is indistinguishable from data
+# loss to the user.
 _ALLOWED_IMPORT_CONFIG_KEYS = frozenset(
     {
         "name",
@@ -915,6 +919,7 @@ _ALLOWED_IMPORT_CONFIG_KEYS = frozenset(
         "playlist_config",
         "refresh_info",
         "plugins",
+        "plugin_order",
         "plugin_cycle_interval_seconds",
         "time_format",
         "image_settings",
@@ -923,19 +928,16 @@ _ALLOWED_IMPORT_CONFIG_KEYS = frozenset(
         "saved_settings",
         "inverted_image",
         "log_system_stats",
+        "isolated_plugins",
+        "history_enabled",
+        "history_cleanup",
     }
 )
 
-_ALLOWED_IMPORT_ENV_KEYS = frozenset(
-    {
-        "OPEN_AI_SECRET",
-        "OPEN_WEATHER_MAP_SECRET",
-        "NASA_SECRET",
-        "UNSPLASH_ACCESS_KEY",
-        "GITHUB_SECRET",
-        "GOOGLE_AI_SECRET",
-    }
-)
+# Env-key import validation reuses save_api_keys' custom-secret rules
+# (_CUSTOM_KEY_NAME_RE + _INTERNAL_KEYS in _config.py) rather than a fixed
+# allowlist, so any legitimately-exported custom secret (e.g. calendar_auth's
+# CALENDAR_AUTH_PASSWORD_<LABEL>) round-trips through a backup too.
 
 # Shutdown rate limiting
 _shutdown_limiter = CooldownLimiter(30)

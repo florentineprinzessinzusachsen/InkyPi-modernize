@@ -49,13 +49,32 @@ class TestImportSettings:
         # Pair a disallowed env key with at least one allowed config key so
         # the request still has *something* to apply; otherwise it would 400
         # (see test_import_rejects_payload_with_no_recognized_keys below).
+        # SECRET_KEY is an internal app secret (not a provider/custom secret)
+        # and must never be settable via import - unlike an arbitrary custom
+        # secret name (e.g. CALENDAR_AUTH_PASSWORD_FOO), which import must
+        # accept (see test_import_accepts_custom_secret_env_keys).
         payload = {
             "config": {"name": "Filters Test"},
-            "env_keys": {"EVIL_KEY": "hacked"},
+            "env_keys": {"SECRET_KEY": "hacked"},
         }
         resp = client.post("/settings/import", json=payload)
         assert resp.status_code == 200
-        # EVIL_KEY should not have been set
+        assert device_config_dev.load_env_key("SECRET_KEY") != "hacked"
+
+    def test_import_accepts_custom_secret_env_keys(self, client, device_config_dev):
+        """Custom secrets (e.g. calendar_auth's per-label password keys) are
+        not one of the 6 fixed provider keys, but must still round-trip
+        through a backup - they're the mechanism plugins like calendar_auth
+        rely on for per-instance credentials."""
+        payload = {
+            "config": {"name": "Custom Secret Test"},
+            "env_keys": {"CALENDAR_AUTH_PASSWORD_WORK": "s3cret"},
+        }
+        resp = client.post("/settings/import", json=payload)
+        assert resp.status_code == 200
+        assert (
+            device_config_dev.load_env_key("CALENDAR_AUTH_PASSWORD_WORK") == "s3cret"
+        )
 
     def test_import_invalid_payload(self, client):
         resp = client.post(
@@ -104,7 +123,7 @@ class TestImportSettings:
         original_name = device_config_dev.get_config("name")
         payload = {
             "config": {"dangerous_key": "ignored"},
-            "env_keys": {"EVIL_KEY": "ignored"},
+            "env_keys": {"SECRET_KEY": "ignored"},
         }
         resp = client.post("/settings/import", json=payload)
         assert resp.status_code == 400

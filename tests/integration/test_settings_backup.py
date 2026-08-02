@@ -89,6 +89,46 @@ def test_export_includes_api_keys_when_opted_in(client, device_config_dev, monke
     assert env_keys.get("OPEN_WEATHER_MAP_SECRET") == "owm"
 
 
+def test_export_includes_custom_secrets_when_opted_in(client, device_config_dev):
+    """Custom secrets (anything in .env that isn't one of the 6 fixed
+    providers or an internal app secret - e.g. calendar_auth's per-instance
+    CALENDAR_AUTH_PASSWORD_<LABEL> credentials) must be exported too, not
+    just the fixed provider cards."""
+    device_config_dev.set_env_key("CALENDAR_AUTH_PASSWORD_WORK", "custom-secret")
+    device_config_dev.set_env_key("SECRET_KEY", "internal-should-not-export")
+
+    resp = client.post("/settings/export", json={"include_keys": True})
+    assert resp.status_code == 200
+    env_keys = resp.get_json()["data"]["env_keys"]
+    assert env_keys.get("CALENDAR_AUTH_PASSWORD_WORK") == "custom-secret"
+    assert "SECRET_KEY" not in env_keys
+
+
+def test_import_restores_plugin_order_and_isolation(client, device_config_dev):
+    """plugin_order/isolated_plugins/history settings are real, active
+    top-level config keys (see config.py::get_plugins, refresh_task/task.py,
+    display/display_manager.py) - a backup that silently drops them on
+    restore reads as data loss even though the response reports success."""
+    payload = {
+        "config": {
+            "plugin_order": ["clock", "weather"],
+            "isolated_plugins": ["ai_image"],
+            "history_enabled": False,
+            "history_cleanup": {"enabled": True, "retention_value": 10},
+        }
+    }
+    resp = client.post("/settings/import", json=payload)
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+    assert device_config_dev.get_config("plugin_order") == ["clock", "weather"]
+    assert device_config_dev.get_config("isolated_plugins") == ["ai_image"]
+    assert device_config_dev.get_config("history_enabled") is False
+    assert device_config_dev.get_config("history_cleanup") == {
+        "enabled": True,
+        "retention_value": 10,
+    }
+
+
 def test_export_excludes_api_keys_when_opted_out(client):
     resp = client.get("/settings/export?include_keys=0")
     assert resp.status_code == 200
@@ -133,7 +173,11 @@ def test_import_round_trip_updates_config_and_keys(client, device_config_dev):
 
 
 def test_import_ignores_unknown_config_and_env_keys(client, device_config_dev):
-    """Bug 6: import_settings should filter unknown config and env keys."""
+    """Bug 6: import_settings should filter unknown config keys and internal
+    env keys, while still accepting arbitrary custom secrets (e.g.
+    calendar_auth's CALENDAR_AUTH_PASSWORD_<LABEL>) - those are legitimate
+    plugin data, not an unknown/dangerous key, and must round-trip through a
+    backup (see also test_settings_import.py::test_import_accepts_custom_secret_env_keys)."""
     payload = {
         "config": {
             "name": "Allowed",
@@ -144,7 +188,8 @@ def test_import_ignores_unknown_config_and_env_keys(client, device_config_dev):
         },
         "env_keys": {
             "OPEN_AI_SECRET": "sk-ok",
-            "EVIL_KEY": "should_be_ignored",
+            "CALENDAR_AUTH_PASSWORD_WORK": "custom-secret-ok",
+            "SECRET_KEY": "should_be_ignored",
         },
     }
 
@@ -162,7 +207,11 @@ def test_import_ignores_unknown_config_and_env_keys(client, device_config_dev):
     # Unknown config keys should not be set
     assert device_config_dev.get_config("secret_backdoor") is None
     assert device_config_dev.get_config("__class__") is None
-    # Unknown env keys should not be set
-    assert device_config_dev.load_env_key("EVIL_KEY") is None
-    # Allowed env key should be set
+    # Internal app secrets should never be settable via import
+    assert device_config_dev.load_env_key("SECRET_KEY") != "should_be_ignored"
+    # Fixed-provider and custom-secret env keys should both be set
     assert device_config_dev.load_env_key("OPEN_AI_SECRET") == "sk-ok"
+    assert (
+        device_config_dev.load_env_key("CALENDAR_AUTH_PASSWORD_WORK")
+        == "custom-secret-ok"
+    )
