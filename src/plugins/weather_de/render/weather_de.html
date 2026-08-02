@@ -41,7 +41,7 @@
 
     <!-- Data Points Grid (Sunset, Wind, UV, etc.) -->
     {% if plugin_settings.displayMetrics and  plugin_settings.displayMetrics == "true" %}
-    <div class="data-points{% if show_map %} compact-list{% endif %}">
+    <div class="data-points{% if show_map %} compact-list{% if plugin_settings.displayGraph == "true" %} sun-in-graph{% endif %}{% endif %}">
       {% for dp in data_points %}
         <div class="data-point column-container">
           <div class="data-point-data">

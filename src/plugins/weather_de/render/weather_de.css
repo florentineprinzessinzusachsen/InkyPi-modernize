@@ -210,36 +210,32 @@
 }
 
 /* Regenalarm Map option: metrics collapse from a 2-column icon-less grid
-   into a single-column list (one row per metric, label+value close
-   together on one line) - denser, so the remaining metrics still fit
-   legibly in a column that's now much narrower than before. Sunrise/
-   Sunset move to the hourly graph instead when it's enabled (see
-   _extract_sun_times_for_graph), so the row count here varies (5 with
-   the graph on, 7 with it off) - flex with equal flex-basis per row
-   adapts to however many there actually are, unlike a hardcoded
-   grid-template-rows count. */
+   into an actual 2-column TABLE (a label column + a value column, both
+   sized to their widest cell and aligned across every row, with a small
+   fixed gap between them) instead of a single-column list - much less
+   dead space than stretching each row edge-to-edge. `.data-point`/
+   `.data-point-data` are just DOM wrappers with one/two children each -
+   `display: contents` unwraps them so the label/measurement elements
+   become the grid's direct children, which is what lets one 2-column
+   grid template line up every row like a real table instead of each row
+   being its own independent flex line. Row count varies (5 with the
+   hourly graph on and Sunrise/Sunset moved there - see
+   _extract_sun_times_for_graph - 7 with it off); `grid-auto-rows: 1fr`
+   adapts to however many there actually are, unlike a hardcoded count. */
 .data-points.compact-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 0.6vw;
+  grid-auto-rows: 1fr;
+  justify-content: center;
+  align-items: center;
   width: 100%;
   height: 100%;
 }
 
-.data-points.compact-list .data-point {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-}
-
-/* Grouped tight to the left (label immediately followed by its value)
-   instead of spread edge-to-edge across the row - the column is narrow
-   now, so space-between just left a wide, empty-looking gap. */
+.data-points.compact-list .data-point,
 .data-points.compact-list .data-point-data {
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: baseline;
-  gap: 0.5vw;
+  display: contents;
 }
 
 .data-points.compact-list .data-point-label,
@@ -250,21 +246,32 @@
 }
 
 /* The base rules' cqh-based font-size (min(32cqh,15cqi)/min(46cqh,26cqi))
-   is tuned for .data-point-data filling a whole (tall) column cell - here
-   it's one of several stacked rows sharing that same height, so cqh alone
-   collapses toward unreadably tiny. dvh instead scales off the viewport,
-   independent of how short an individual row is. */
+   is tuned for .data-point-data filling a whole (tall) column cell, and
+   relies on a container-query context that no longer exists once that
+   element is unwrapped via display:contents above - dvh replaces it,
+   scaling off the viewport instead, independent of how short an
+   individual row is. */
 .data-points.compact-list .data-point-label {
   text-align: left;
-  flex: 0 1 auto;
   font-size: 2.6dvh;
 }
 
 .data-points.compact-list .data-point-measurement,
 .data-points.compact-list .wind-arrow-symbol {
-  text-align: right;
-  flex: 0 0 auto;
+  text-align: left;
   font-size: 2.8dvh;
+}
+
+/* Sunrise/Sunset moved onto the graph, so only 5 rows remain instead of
+   7 - the freed vertical room goes toward larger, easier-to-read text
+   rather than sitting unused. */
+.data-points.compact-list.sun-in-graph .data-point-label {
+  font-size: 3.4dvh;
+}
+
+.data-points.compact-list.sun-in-graph .data-point-measurement,
+.data-points.compact-list.sun-in-graph .wind-arrow-symbol {
+  font-size: 3.7dvh;
 }
 
 /* Regenalarm map column (3rd column, Regenalarm Map option only) */

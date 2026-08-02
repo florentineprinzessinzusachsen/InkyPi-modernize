@@ -858,6 +858,11 @@ class WeatherDe(BasePlugin):
             template_params["regenalarm_rain_image_data_uri"] = "data:image/png;base64," + base64.b64encode(rain_png).decode("ascii")
             template_params["regenalarm_map_marker_svg"] = render_marker_and_trajectory(
                 regenalarm_data.location_xy, regenalarm_data.location_uv, rain_native_size,
+                # This map column is far smaller than the standalone
+                # Regenalarm plugin's own panel - the "+Nh" trajectory
+                # labels shrink past legible at this size, so skip them
+                # here (the standalone plugin still gets them).
+                show_labels=False,
             )
             return True
         except Exception as e:

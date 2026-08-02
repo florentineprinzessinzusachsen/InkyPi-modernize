@@ -83,13 +83,19 @@ def _label_badge_svg(cx: float, cy: float, text: str) -> str:
 
 
 def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
-                           scale_x: float, scale_y: float, hours: int = 4, unit_scale: float = 4.0) -> str:
+                           scale_x: float, scale_y: float, hours: int = 4, unit_scale: float = 4.0,
+                           show_labels: bool = True) -> str:
     """Backward wind trajectory: where the air at (loc_x, loc_y) was N hours
     ago, per hour, drawn as a line from the oldest position to the location
     with the arrowhead at the location. Formula unchanged from the original
     Pillow renderer: far_point = location - (U,V)*unit_scale*hours, with
     V's screen-Y contribution negated (SVG/image Y grows downward,
-    geographic North is -Y)."""
+    geographic North is -Y).
+
+    show_labels=False keeps the perpendicular hour-tick crossbars but skips
+    the "+Nh" text badges - for callers that composite this map much
+    smaller than the standalone Regenalarm plugin's own panel (e.g.
+    weather_de's map column), where the badge text shrinks past legible."""
     dx_per_hour = u * unit_scale * scale_x
     dy_per_hour = -v * unit_scale * scale_y
     far_x = loc_x - dx_per_hour * hours
@@ -123,19 +129,21 @@ def render_trajectory_svg(loc_x: float, loc_y: float, u: float, v: float,
         parts.append(f'<line x1="{cx1:.1f}" y1="{cy1:.1f}" x2="{cx2:.1f}" y2="{cy2:.1f}" '
                      f'stroke="{TRAJECTORY_COLOR}" stroke-width="3"/>')
 
-        label_offset = half_len + 16
-        lx, ly = tx + perp_x * label_offset * side, ty + perp_y * label_offset * side
-        parts.append(_label_badge_svg(lx, ly, f"+{k}h"))
+        if show_labels:
+            label_offset = half_len + 16
+            lx, ly = tx + perp_x * label_offset * side, ty + perp_y * label_offset * side
+            parts.append(_label_badge_svg(lx, ly, f"+{k}h"))
 
     return "\n".join(parts)
 
 
 def render_marker_and_trajectory(location_xy: tuple | None, location_uv: tuple | None,
-                                  rain_native_size: tuple | None) -> str:
+                                  rain_native_size: tuple | None, show_labels: bool = True) -> str:
     """Scales location_xy/location_uv (native to the rain PNG's own pixel
     space) into this module's fixed MAP_VIEWBOX_W/H space, and returns the
     combined marker + trajectory SVG markup. Returns "" if there's nothing
-    to draw (no location data)."""
+    to draw (no location data). show_labels is forwarded to
+    render_trajectory_svg - see its docstring."""
     if location_xy is None or not rain_native_size:
         return ""
 
@@ -149,6 +157,7 @@ def render_marker_and_trajectory(location_xy: tuple | None, location_uv: tuple |
     parts = [f'<circle cx="{loc_x:.1f}" cy="{loc_y:.1f}" r="{r}" fill="{LOCATION_COLOR}"/>']
 
     if location_uv is not None:
-        parts.append(render_trajectory_svg(loc_x, loc_y, location_uv[0], location_uv[1], scale_x, scale_y))
+        parts.append(render_trajectory_svg(loc_x, loc_y, location_uv[0], location_uv[1], scale_x, scale_y,
+                                            show_labels=show_labels))
 
     return "\n".join(parts)
