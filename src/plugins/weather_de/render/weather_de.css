@@ -119,8 +119,15 @@
      label:value list now, not a 2-col icon grid), map keeps the same
      relative share as before (its own visual size is governed by row
      height via .regenalarm-map-svg's aspect-ratio, not by this column's
-     width, as long as the column stays wide enough to not clip it). */
-  grid-template-columns: 1.35fr 0.65fr 1fr;
+     width, as long as the column stays wide enough to not clip it).
+
+     A 2nd track (empty, no element placed in it - see the explicit
+     grid-column assignments below) sits between col1 and col2 purely to
+     widen that one gap further than the other one - the grid's own
+     `gap` applies uniformly between every adjacent track, so a plain
+     margin on col1 just gets absorbed by its own centered content
+     instead of reliably pushing col2 over. */
+  grid-template-columns: 1.35fr 0.5fr 0.65fr 1fr;
   gap: 2.4dvw;
 }
 
@@ -138,11 +145,9 @@
 }
 
 .today-container.with-map .current-temperature {
+  grid-column: 1;
   width: 100%;
   padding: 0 0.3vw;
-  /* Widens just the col1/col2 gap a bit further than the grid's own
-     uniform `gap` (which also applies to col2/col3 - left alone). */
-  margin-right: 2.2dvw;
 }
 
 .current-icon {
@@ -178,12 +183,19 @@
   height: 50%;
 }
 
-/* The 50% height above is tuned for the default (non-map) layout - here
-   it reserved more space than the number needs, which (combined with
-   align-content:end) pushed the whole temp/feels-like/min-max group
-   lower than the icon beside it. A smaller share balances it out. */
+/* The 50% height above is a fixed share of .current-weather's box,
+   tuned for the default (non-map) layout - it's taller than the number
+   actually needs, and in a column flex layout an item's `height` also
+   supplies its flex-basis, so that oversized 50% carried through as the
+   item's effective size, leaving .current-weather's
+   justify-content:center nothing to actually center: current-temp,
+   feels-like and min-max together already filled the full box, just
+   with current-temp's own text sitting at the top of its own (too
+   tall) share. Sizing to content here removes that dead reserved
+   space, so the real (shorter) 3-line group is what gets centered. */
 .today-container.with-map .current-temp {
-  height: 44%;
+  height: auto;
+  flex: none;
 }
 
 .temperature-unit {
@@ -203,6 +215,7 @@
 }
 
 .today-container.with-map .data-points {
+  grid-column: 3;
   width: 100%;
 }
 
@@ -296,8 +309,11 @@
   font-size: 3.7dvh;
 }
 
-/* Regenalarm map column (3rd column, Regenalarm Map option only) */
+/* Regenalarm map column (3rd column, Regenalarm Map option only) - only
+   ever rendered inside .today-container.with-map's grid, so grid-column
+   is safe to set unscoped here (4th track: col1, spacer, col2, col3). */
 .regenalarm-map-col {
+  grid-column: 4;
   width: 100%;
   height: 100%;
   display: flex;
