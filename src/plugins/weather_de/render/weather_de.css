@@ -128,7 +128,7 @@
      can't make just one gap bigger). Measured with Playwright's
      getBoundingClientRect() at 800x480: col1/col2 gap was 19px before,
      ~34px with this spacer - col2/col3 unchanged. */
-  grid-template-columns: 1.35fr 0.18fr 0.65fr 1fr;
+  grid-template-columns: 1.35fr 0.12fr 0.65fr 1fr;
   gap: 2.4dvw;
 }
 
@@ -173,6 +173,18 @@
 
 .today-container.with-map .current-weather {
   margin-left: -13%;
+}
+
+/* current-temp's default line-height ("normal", ~1.45x at this font
+   size) needs more vertical room than its own height:50% box actually
+   is, so the "22" text overflows past its box's bottom edge by ~23px
+   (measured via Range.getBoundingClientRect) - invisible in the box
+   model but visibly pushing the rendered number (and the centered
+   block as a whole) lower than intended. Tightening it removes that
+   overflow, so the block's already-centered box (justify-content:center,
+   base rule) matches what's actually painted on screen. */
+.today-container.with-map .current-temp {
+  line-height: 1;
 }
 
 .current-temp {
