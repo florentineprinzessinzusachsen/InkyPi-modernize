@@ -130,6 +130,10 @@
     const regenIntensity = [{% for hour in hourly_forecast %}{{ 'null' if hour.regen_intensity_pct is none else hour.regen_intensity_pct }}{% if not loop.last %}, {% endif %}{% endfor %}];
     const regenProbability = [{% for hour in hourly_forecast %}{{ 'null' if hour.regen_probability is none else hour.regen_probability }}{% if not loop.last %}, {% endif %}{% endfor %}];
     const useRegenalarmRain = {{ 'true' if plugin_settings.rainDataSource == 'regenalarm' else 'false' }};
+    const sunriseOffset = {{ sunrise_offset_hours | tojson }};
+    const sunsetOffset = {{ sunset_offset_hours | tojson }};
+    const sunriseLabel = {{ (sunrise_label or '') | tojson }};
+    const sunsetLabel = {{ (sunset_label or '') | tojson }};
 	const iconStep = parseInt("{{ plugin_settings.graphIconStep or 2 }}");
 	const units = document.getElementById('units-container').dataset.units;
 	const isImperial = units === "imperial";
@@ -177,6 +181,49 @@
       }
     });
 
+    // Sunrise/Sunset moved here (off the metrics list) whenever the graph
+    // is enabled - see _extract_sun_times_for_graph(). Offsets are hours
+    // from "now" along the same x-axis hourly_forecast/labels use, so a
+    // fractional offset needs to be interpolated between its two
+    // surrounding category ticks rather than snapped to one.
+    function sunMarkerX(chart, offsetHours) {
+      if (offsetHours === null || offsetHours === undefined) return null;
+      const n = labels.length;
+      if (offsetHours < 0 || offsetHours > n - 1) return null;
+      const i0 = Math.floor(offsetHours);
+      const i1 = Math.min(i0 + 1, n - 1);
+      const frac = offsetHours - i0;
+      const x0 = chart.scales.x.getPixelForValue(i0);
+      const x1 = chart.scales.x.getPixelForValue(i1);
+      return x0 + (x1 - x0) * frac;
+    }
+
+    Chart.register({
+      id: 'sunMarkers',
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea: { top, bottom } } = chart;
+        const marks = [
+          { x: sunMarkerX(chart, sunriseOffset), label: sunriseLabel, glyph: '↑' },
+          { x: sunMarkerX(chart, sunsetOffset), label: sunsetLabel, glyph: '↓' },
+        ];
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.font = '11px Jost, sans-serif';
+        ctx.fillStyle = "{{ plugin_settings.textColor }}";
+        ctx.strokeStyle = 'rgba(150,150,150,0.8)';
+        ctx.setLineDash([4, 3]);
+        marks.forEach(m => {
+          if (m.x === null) return;
+          ctx.beginPath();
+          ctx.moveTo(m.x, top);
+          ctx.lineTo(m.x, bottom);
+          ctx.stroke();
+          ctx.fillText(`${m.glyph} ${m.label}`, m.x, top + 12);
+        });
+        ctx.restore();
+      }
+    });
+
     {% if plugin_settings.displayGraphIcons == "true" %}
     Chart.register({
       id: 'chartIcons',
@@ -205,10 +252,17 @@
     });
     {% endif %}
 
+    // Regenalarm's own nowcast only ever covers the next couple of hours
+    // (see _bucket_regenalarm_by_hour's docstring) - beyond that, fall
+    // back to the weather provider's own precipitation-probability value
+    // so the bar spans the full 24h instead of just going to 0 once
+    // Regenalarm's coverage runs out.
+    const hybridRainData = regenIntensity.map((v, i) => v === null ? precipitation[i] : v);
+
     const rainBarDataset = useRegenalarmRain ? {
       type: 'bar',
-      label: 'Rain Intensity',
-      data: regenIntensity.map(v => v === null ? 0 : v),
+      label: 'Rain Intensity (Regenalarm + provider fallback)',
+      data: hybridRainData,
       borderColor: 'rgba(30,100,220,1)',
       borderWidth: {
         top: 2,

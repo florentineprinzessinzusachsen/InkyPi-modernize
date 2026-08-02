@@ -120,7 +120,7 @@ WEATHER_URL = "https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lo
 AIR_QUALITY_URL = "http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={long}&appid={api_key}"
 GEOCODING_URL = "http://api.openweathermap.org/geo/1.0/reverse?lat={lat}&lon={long}&limit=1&appid={api_key}"
 
-OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={long}&hourly=weather_code,temperature_2m,precipitation,precipitation_probability,relative_humidity_2m,surface_pressure,visibility&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max&current=temperature,windspeed,winddirection,is_day,precipitation,weather_code,apparent_temperature&timezone=auto&models={model}&forecast_days={forecast_days}"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={long}&hourly=weather_code,temperature_2m,precipitation,precipitation_probability,relative_humidity_2m,surface_pressure&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max&current=temperature,windspeed,winddirection,is_day,precipitation,weather_code,apparent_temperature&timezone=auto&models={model}&forecast_days={forecast_days}"
 OPEN_METEO_AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={long}&hourly=european_aqi,uv_index,uv_index_clear_sky&timezone=auto"
 OPEN_METEO_UNIT_PARAMS = {
     "standard": "temperature_unit=celsius&wind_speed_unit=ms&precipitation_unit=mm",  # temperature is converted to Kelvin later
@@ -175,7 +175,6 @@ LOCALE_DATA = {
             "humidity": "Luftfeuchtigkeit",
             "pressure": "Luftdruck",
             "uv_index": "UV-Index",
-            "visibility": "Sichtweite",
             "air_quality": "Luftqualität",
             "aqi_scale": ["Gut", "Mäßig", "Mittelmäßig", "Schlecht", "Sehr schlecht"],
             "aqi_scale_om": ["Gut", "Mäßig", "Mittelmäßig", "Schlecht", "Sehr schlecht", "Extrem schlecht"],
@@ -196,7 +195,6 @@ LOCALE_DATA = {
             "humidity": "Humedad",
             "pressure": "Presión",
             "uv_index": "Índice UV",
-            "visibility": "Visibilidad",
             "air_quality": "Calidad aire",
             "aqi_scale":    ["Buena", "Aceptable", "Moderada", "Mala", "Muy mala"],
             "aqi_scale_om": ["Buena", "Aceptable", "Moderada", "Mala", "Muy mala", "Extrema"],
@@ -216,7 +214,6 @@ LOCALE_DATA = {
             "humidity": "Humidité",
             "pressure": "Pression",
             "uv_index": "Indice UV",
-            "visibility": "Visibilité",
             "air_quality": "Qualité de l'air",
             "aqi_scale": ["Bonne", "Correcte", "Moyenne", "Mauvaise", "Très mauvaise"],
             "aqi_scale_om": ["Bonne", "Correcte", "Moyenne", "Mauvaise", "Très mauvaise", "Extrêmement mauvaise"],
@@ -236,7 +233,6 @@ LOCALE_DATA = {
             "humidity": "Kelembaban",
             "pressure": "Tekanan",
             "uv_index": "Indeks UV",
-            "visibility": "Jarak pandang",
             "air_quality": "Kualitas udara",
             "aqi_scale":    ["Baik", "Sedang", "Buruk ringan", "Buruk", "Sangat buruk"],
             "aqi_scale_om": ["Baik", "Sedang", "Buruk ringan", "Buruk", "Sangat buruk", "Berbahaya"],
@@ -256,7 +252,6 @@ LOCALE_DATA = {
             "humidity": "Umidità",
             "pressure": "Pressione",
             "uv_index": "Indice UV",
-            "visibility": "Visibilità",
             "air_quality": "Qualità aria",
             "aqi_scale":    ["Buona", "Discreta", "Moderata", "Scarsa", "Pessima"],
             "aqi_scale_om": ["Buona", "Discreta", "Moderata", "Scarsa", "Pessima", "Pericolosa"],
@@ -276,7 +271,6 @@ LOCALE_DATA = {
             "humidity": "Vochtigheid",
             "pressure": "Luchtdruk",
             "uv_index": "UV-index",
-            "visibility": "Zichtbaarheid",
             "air_quality": "Luchtkwaliteit",
             "aqi_scale":    ["Goed", "Matig", "Onvoldoende", "Slecht", "Zeer slecht"],
             "aqi_scale_om": ["Goed", "Matig", "Onvoldoende", "Slecht", "Zeer slecht", "Gevaarlijk"],
@@ -296,7 +290,6 @@ LOCALE_DATA = {
             "humidity": "Umidade",
             "pressure": "Pressão",
             "uv_index": "Índice UV",
-            "visibility": "Visibilidade",
             "air_quality": "Qualidade ar",
             "aqi_scale":    ["Boa", "Razoável", "Moderada", "Ruim", "Muito ruim"],
             "aqi_scale_om": ["Boa", "Razoável", "Moderada", "Ruim", "Muito ruim", "Péssima"],
@@ -729,6 +722,8 @@ class WeatherDe(BasePlugin):
                 if show_regenalarm_map:
                     regenalarm_map_ok = self._add_regenalarm_map_params(template_params, regenalarm_data)
             template_params['regenalarm_map_ok'] = regenalarm_map_ok
+
+            self._extract_sun_times_for_graph(template_params, settings, tz)
         except Exception as e:
             logger.error(f"{weather_provider} request failed: {str(e)}")
             raise RuntimeError(f"{weather_provider} request failure, please check logs.")
@@ -869,6 +864,45 @@ class WeatherDe(BasePlugin):
             logger.warning(f"weather_de: failed to build Regenalarm map SVG: {e}")
             return False
 
+    def _extract_sun_times_for_graph(self, template_params, settings, tz):
+        """Pulls the raw sunrise/sunset datetimes back out of data_points
+        (each provider's parse_*_data_points stashes them under a private
+        "_dt" key on the Sunrise/Sunset entries for exactly this purpose)
+        and, when the hourly graph is enabled, moves those two entries off
+        the metrics list entirely in favor of a vertical marker line drawn
+        directly on the graph (see weather_de.html's sunMarkers Chart.js
+        plugin) - with the graph off, they're left in data_points exactly
+        as before. The "_dt" key itself is always stripped either way, so
+        it never leaks into the rendered template."""
+        graph_enabled = settings.get('displayGraph', 'true') == 'true'
+        now = datetime.now(tz)
+        sunrise_dt = sunset_dt = None
+        sunrise_label = sunset_label = None
+
+        filtered = []
+        for dp in template_params.get('data_points', []):
+            key = dp.get('key')
+            if key == 'Sunrise':
+                sunrise_dt = dp.pop('_dt', None)
+                sunrise_label = f"{dp.get('measurement', '')}{dp.get('unit', '')}".strip()
+                if graph_enabled:
+                    continue
+            elif key == 'Sunset':
+                sunset_dt = dp.pop('_dt', None)
+                sunset_label = f"{dp.get('measurement', '')}{dp.get('unit', '')}".strip()
+                if graph_enabled:
+                    continue
+            filtered.append(dp)
+        template_params['data_points'] = filtered
+
+        def hours_from_now(dt):
+            return (dt - now).total_seconds() / 3600.0 if dt is not None else None
+
+        template_params['sunrise_offset_hours'] = hours_from_now(sunrise_dt) if graph_enabled else None
+        template_params['sunset_offset_hours'] = hours_from_now(sunset_dt) if graph_enabled else None
+        template_params['sunrise_label'] = sunrise_label if graph_enabled else None
+        template_params['sunset_label'] = sunset_label if graph_enabled else None
+
     def parse_weather_data(self, weather_data, aqi_data, tz, units, time_format, lat, language="en"):
         current = weather_data.get("current")
         daily_forecast = weather_data.get("daily", [])
@@ -945,7 +979,14 @@ class WeatherDe(BasePlugin):
             "time_format": time_format
         }
 
-        sunrise_dt, sunset_dt = self.get_sun_times(lat, long, dt.date(), tz)
+        # Today's sunrise/sunset may already be in the past (most evenings) -
+        # fall back to tomorrow's in that case, same reasoning as the other
+        # two providers' data-points builders.
+        now = datetime.now(tz)
+        today_sunrise, today_sunset = self.get_sun_times(lat, long, dt.date(), tz)
+        tomorrow_sunrise, tomorrow_sunset = self.get_sun_times(lat, long, dt.date() + timedelta(days=1), tz)
+        sunrise_dt = today_sunrise if (today_sunrise and today_sunrise >= now) else tomorrow_sunrise
+        sunset_dt = today_sunset if (today_sunset and today_sunset >= now) else tomorrow_sunset
 
         data['forecast'] = self.parse_bright_sky_forecast(hourly_records, units, tz, lat, language)
         data['data_points'] = self.parse_bright_sky_data_points(current, aqi_data, units, tz, sunrise_dt, sunset_dt, time_format, language)
@@ -1370,7 +1411,16 @@ class WeatherDe(BasePlugin):
 
     def parse_data_points(self, weather, air_quality, tz, units, time_format, language="en"):
         data_points = []
-        sunrise_epoch = weather.get('current', {}).get("sunrise")
+        # `current.sunrise`/`current.sunset` are always TODAY's - once
+        # today's has already passed (i.e. most evenings), that's a moment
+        # in the past, not something to show as an upcoming metric or
+        # graph marker. `daily[i].sunrise`/`sunset` covers today AND the
+        # following days, so scan those for the next one still ahead of
+        # "now" instead (falls back to tomorrow's once today's has passed).
+        now_epoch = datetime.now(tz).timestamp()
+        daily_list = weather.get('daily', []) or []
+        sunrise_epoch = next((d.get('sunrise') for d in daily_list if d.get('sunrise') and d.get('sunrise') >= now_epoch), None)
+        sunset_epoch = next((d.get('sunset') for d in daily_list if d.get('sunset') and d.get('sunset') >= now_epoch), None)
 
         if sunrise_epoch:
             sunrise_dt = datetime.fromtimestamp(sunrise_epoch, tz=timezone.utc).astimezone(tz)
@@ -1379,18 +1429,19 @@ class WeatherDe(BasePlugin):
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
                 "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
+                "_dt": sunrise_dt,
             })
         else:
             logger.error(f"Sunrise not found in OpenWeatherMap response, this is expected for polar areas in midnight sun and polar night periods.")
 
-        sunset_epoch = weather.get('current', {}).get("sunset")
         if sunset_epoch:
             sunset_dt = datetime.fromtimestamp(sunset_epoch, tz=timezone.utc).astimezone(tz)
             data_points.append({
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
+                "_dt": sunset_dt,
             })
         else:
             logger.error(f"Sunset not found in OpenWeatherMap response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1426,28 +1477,6 @@ class WeatherDe(BasePlugin):
             "unit": ''
         })
 
-        visibility = weather.get('current', {}).get("visibility")
-        if visibility is None:
-            visibility_str = "N/A"
-        else:
-            if units == "imperial":
-                # convert from m to mi
-                visibility /= 1609.
-                at_max_visibility = visibility >= 6.2
-            else:
-                # convert from m to km
-                visibility /= 1000.
-                at_max_visibility = visibility >= 10
-            visibility_str = f"{visibility:.1f}"
-            if at_max_visibility:
-                visibility_str = u"≥" + visibility_str
-        data_points.append({
-            "key": "Visibility",
-            "label": get_ui_label("visibility", language, "Visibility"),
-            "measurement": visibility_str,
-            "unit": UNITS[units]["distance"]
-        })
-
         aqi = (air_quality.get('list') or [{}])[0].get("main", {}).get("aqi")
         locale = LOCALE_DATA.get(language)
         aqi_scale = locale["ui"]["aqi_scale"] if locale and "ui" in locale else ["Good", "Fair", "Moderate", "Poor", "Very Poor"]
@@ -1469,28 +1498,35 @@ class WeatherDe(BasePlugin):
 
         current_time = datetime.now(tz)
 
-        # Sunrise
+        # Sunrise - daily_data covers today AND the following days (see
+        # generate_image's forecast_days+1), so pick the next one still
+        # ahead of "now" rather than always today's [0] (already in the
+        # past most evenings).
         sunrise_times = daily_data.get('sunrise', [])
-        if sunrise_times:
-            sunrise_dt = datetime.fromisoformat(sunrise_times[0]).astimezone(tz)
+        next_sunrise = next((s for s in sunrise_times if datetime.fromisoformat(s).astimezone(tz) >= current_time), None)
+        if next_sunrise:
+            sunrise_dt = datetime.fromisoformat(next_sunrise).astimezone(tz)
             data_points.append({
                 "key": "Sunrise",
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p')
+                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
+                "_dt": sunrise_dt,
             })
         else:
             logger.error(f"Sunrise not found in Open-Meteo response, this is expected for polar areas in midnight sun and polar night periods.")
 
         # Sunset
         sunset_times = daily_data.get('sunset', [])
-        if sunset_times:
-            sunset_dt = datetime.fromisoformat(sunset_times[0]).astimezone(tz)
+        next_sunset = next((s for s in sunset_times if datetime.fromisoformat(s).astimezone(tz) >= current_time), None)
+        if next_sunset:
+            sunset_dt = datetime.fromisoformat(next_sunset).astimezone(tz)
             data_points.append({
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
+                "_dt": sunset_dt,
             })
         else:
             logger.error(f"Sunset not found in Open-Meteo response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1556,39 +1592,6 @@ class WeatherDe(BasePlugin):
             "measurement": current_uv_index, "unit": ''
         })
 
-        # Visibility
-        current_visibility = None
-        at_max_visibility = False
-        visibility_hourly_times = hourly_data.get('time', [])
-        visibility_values = hourly_data.get('visibility', [])
-        if units == "imperial":
-            visibility_conversion = 1/5280.     # ft to mi
-            visibility_max = 6.2                # mi
-        else:
-            visibility_conversion = 0.001       # m to km
-            visibility_max = 10.                # km
-        for i, time_str in enumerate(visibility_hourly_times):
-            try:
-                if datetime.fromisoformat(time_str).astimezone(tz).hour == current_time.hour:
-                    current_visibility = visibility_values[i]*visibility_conversion
-                    at_max_visibility = current_visibility >= visibility_max
-                    break
-            except ValueError:
-                logger.warning(f"Could not parse time string {time_str} for visibility.")
-                continue
-        if current_visibility is None:
-            visibility_str = "N/A"
-        else:
-            visibility_str = f"{current_visibility:.1f}"
-            if at_max_visibility:
-                visibility_str = u"≥" + visibility_str
-        data_points.append({
-            "key": "Visibility",
-            "label": get_ui_label("visibility", language, "Visibility"),
-            "measurement": visibility_str, 
-            "unit": UNITS[units]["distance"]
-        })
-
         # Air Quality
         aqi_hourly_times = aqi_data.get('hourly', {}).get('time', [])
         aqi_values = aqi_data.get('hourly', {}).get('european_aqi', [])
@@ -1628,7 +1631,8 @@ class WeatherDe(BasePlugin):
                 "key": "Sunrise",
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p')
+                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
+                "_dt": sunrise_dt,
             })
         else:
             logger.error("Sunrise could not be calculated (astral), this is expected for polar areas in midnight sun and polar night periods.")
@@ -1638,7 +1642,8 @@ class WeatherDe(BasePlugin):
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
+                "_dt": sunset_dt,
             })
         else:
             logger.error("Sunset could not be calculated (astral), this is expected for polar areas in midnight sun and polar night periods.")
@@ -1686,27 +1691,6 @@ class WeatherDe(BasePlugin):
         data_points.append({
             "key": "UV Index", "label": get_ui_label("uv_index", language, "UV Index"),
             "measurement": current_uv_index, "unit": ''
-        })
-
-        visibility_m = current.get("visibility")
-        at_max_visibility = False
-        if visibility_m is not None:
-            if units == "imperial":
-                visibility = visibility_m / 1609.
-                at_max_visibility = visibility >= 6.2
-            else:
-                visibility = visibility_m / 1000.
-                at_max_visibility = visibility >= 10
-            visibility_str = f"{visibility:.1f}"
-            if at_max_visibility:
-                visibility_str = u"≥" + visibility_str
-        else:
-            visibility_str = "N/A"
-        data_points.append({
-            "key": "Visibility",
-            "label": get_ui_label("visibility", language, "Visibility"),
-            "measurement": visibility_str,
-            "unit": UNITS[units]["distance"]
         })
 
         aqi_times = aqi_data.get('hourly', {}).get('time', [])

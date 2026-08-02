@@ -115,8 +115,13 @@
    room for the map column. */
 .today-container.with-map {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 1.2dvw;
+  /* Icon+temp gets a bit more room, metrics a lot less (it's a tight
+     label:value list now, not a 2-col icon grid), map keeps the same
+     relative share as before (its own visual size is governed by row
+     height via .regenalarm-map-svg's aspect-ratio, not by this column's
+     width, as long as the column stays wide enough to not clip it). */
+  grid-template-columns: 1.35fr 0.65fr 1fr;
+  gap: 2.4dvw;
 }
 
 /* Current Weather Row */
@@ -205,28 +210,36 @@
 }
 
 /* Regenalarm Map option: metrics collapse from a 2-column icon-less grid
-   into a single-column list (one row per metric, label left / value
-   right on one line) - denser, so all 8 metrics still fit legibly in a
-   column that's now ~1/3 of the width instead of ~1/2. */
+   into a single-column list (one row per metric, label+value close
+   together on one line) - denser, so the remaining metrics still fit
+   legibly in a column that's now much narrower than before. Sunrise/
+   Sunset move to the hourly graph instead when it's enabled (see
+   _extract_sun_times_for_graph), so the row count here varies (5 with
+   the graph on, 7 with it off) - flex with equal flex-basis per row
+   adapts to however many there actually are, unlike a hardcoded
+   grid-template-rows count. */
 .data-points.compact-list {
-  grid-template-columns: 1fr;
-  grid-template-rows: repeat(8, 1fr);
-  gap: 0;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
 }
 
 .data-points.compact-list .data-point {
-  height: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   align-items: center;
 }
 
+/* Grouped tight to the left (label immediately followed by its value)
+   instead of spread edge-to-edge across the row - the column is narrow
+   now, so space-between just left a wide, empty-looking gap. */
 .data-points.compact-list .data-point-data {
   flex-direction: row;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: baseline;
-  gap: 0.6vw;
+  gap: 0.5vw;
 }
 
 .data-points.compact-list .data-point-label,
@@ -238,9 +251,9 @@
 
 /* The base rules' cqh-based font-size (min(32cqh,15cqi)/min(46cqh,26cqi))
    is tuned for .data-point-data filling a whole (tall) column cell - here
-   it's one of 8 stacked rows, so cqh alone collapses toward unreadably
-   tiny. dvh instead scales off the viewport, independent of how short an
-   individual row is. */
+   it's one of several stacked rows sharing that same height, so cqh alone
+   collapses toward unreadably tiny. dvh instead scales off the viewport,
+   independent of how short an individual row is. */
 .data-points.compact-list .data-point-label {
   text-align: left;
   flex: 0 1 auto;
