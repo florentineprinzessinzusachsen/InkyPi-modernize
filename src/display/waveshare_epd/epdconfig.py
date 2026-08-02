@@ -143,7 +143,12 @@ class RaspberryPi:
         else:
             # SPI device, bus = 0, device = 0
             self.SPI.open(0, 0)
-            self.SPI.max_speed_hz = 4000000
+            # Validated clean (no corruption) up to 24MHz on this panel/wiring
+            # via a checkerboard-pattern test at 10/16/24MHz; SPI transfer
+            # time is negligible next to the panel's own multi-second
+            # waveform either way, so this isn't a meaningful speed win, just
+            # a safe, free one.
+            self.SPI.max_speed_hz = 24000000
             self.SPI.mode = 0b00
             # CS is driven manually via GPIO_CS_PIN (send_command/send_data in
             # the epd driver toggle it explicitly); the SPI peripheral's own
