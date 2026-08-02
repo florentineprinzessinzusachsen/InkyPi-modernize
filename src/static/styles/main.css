@@ -5678,6 +5678,17 @@ body[data-page="plugin"] .workflow-help p {
   object-fit: contain;
 }
 
+/* The inline-SVG icon() macro wraps its <svg> in a span.icon-image, which
+   carries its own explicit `color: var(--text)` and `width/height: var(--icon-xl)`
+   (see _navigation.css) - both stronger than mere inheritance from
+   .pl-item-icon above, so they must be overridden here explicitly rather
+   than relying on the wrapper's color/sizing to cascade down. */
+.pl-item-icon .icon-image {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
 .pl-item-main {
   grid-area: main;
   min-width: 0;
