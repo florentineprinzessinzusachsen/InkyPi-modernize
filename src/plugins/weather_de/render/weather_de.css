@@ -142,7 +142,7 @@
   padding: 0 0.3vw;
   /* Widens just the col1/col2 gap a bit further than the grid's own
      uniform `gap` (which also applies to col2/col3 - left alone). */
-  margin-right: 1.4dvw;
+  margin-right: 2.2dvw;
 }
 
 .current-icon {
@@ -163,6 +163,7 @@
    over that margin doesn't cover any actual ink. */
 .today-container.with-map .current-icon {
   max-width: 62%;
+  align-self: center;
 }
 
 .today-container.with-map .current-weather {
@@ -175,6 +176,14 @@
   align-content: end;
   position: relative;
   height: 50%;
+}
+
+/* The 50% height above is tuned for the default (non-map) layout - here
+   it reserved more space than the number needs, which (combined with
+   align-content:end) pushed the whole temp/feels-like/min-max group
+   lower than the icon beside it. A smaller share balances it out. */
+.today-container.with-map .current-temp {
+  height: 44%;
 }
 
 .temperature-unit {
@@ -356,9 +365,9 @@
   flex-direction: column;
   align-items: center;
   padding: 1dvh 1vw;
-  /* Explicit light grey instead of the default currentColor (black,
-     same as the text) - a visible but much less pronounced outline. */
-  border: 1px solid rgb(200, 200, 200);
+  /* Explicit grey instead of the default currentColor (black, same as
+     the text) - visible but less heavy than plain black. */
+  border: 1px solid rgb(150, 150, 150);
   border-radius: 1.2vw;
   min-width: 0;
   max-height: 100%;
