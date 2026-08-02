@@ -119,8 +119,16 @@
      label:value list now, not a 2-col icon grid), map keeps the same
      relative share as before (its own visual size is governed by row
      height via .regenalarm-map-svg's aspect-ratio, not by this column's
-     width, as long as the column stays wide enough to not clip it). */
-  grid-template-columns: 1.35fr 0.65fr 1fr;
+     width, as long as the column stays wide enough to not clip it).
+
+     The 2nd track (0.18fr) is an empty spacer - no element is placed in
+     it (col2/col3 are explicitly grid-column'd past it below) - purely
+     to widen the col1/col2 gap a bit beyond the grid's own uniform
+     `gap` (which applies equally to every adjacent track, so it alone
+     can't make just one gap bigger). Measured with Playwright's
+     getBoundingClientRect() at 800x480: col1/col2 gap was 19px before,
+     ~34px with this spacer - col2/col3 unchanged. */
+  grid-template-columns: 1.35fr 0.18fr 0.65fr 1fr;
   gap: 2.4dvw;
 }
 
@@ -138,11 +146,9 @@
 }
 
 .today-container.with-map .current-temperature {
+  grid-column: 1;
   width: 100%;
   padding: 0 0.3vw;
-  /* Widens just the col1/col2 gap a bit further than the grid's own
-     uniform `gap` (which also applies to col2/col3 - left alone). */
-  margin-right: 1.4dvw;
 }
 
 .current-icon {
@@ -167,6 +173,15 @@
 
 .today-container.with-map .current-weather {
   margin-left: -13%;
+  /* justify-content:center (base rule) centers the temp/feels-like/
+     min-max block as a whole, but "23°C" is the visually dominant
+     line and it sits in the top half of that block (feels-like/min-max
+     hang below it) - so centering the block's bounding box still reads
+     as the number sitting above the icon's own center. flex-end shifts
+     the whole group down (measured: closes about 2/3 of that gap,
+     using up all the block's free space) without touching font
+     sizes or overflowing. */
+  justify-content: flex-end;
 }
 
 .current-temp {
@@ -194,6 +209,7 @@
 }
 
 .today-container.with-map .data-points {
+  grid-column: 3;
   width: 100%;
 }
 
@@ -287,8 +303,11 @@
   font-size: 3.7dvh;
 }
 
-/* Regenalarm map column (3rd column, Regenalarm Map option only) */
+/* Regenalarm map column (3rd column, Regenalarm Map option only) - only
+   ever rendered inside .today-container.with-map's grid, so grid-column
+   is safe to set unscoped here (4th track, after the col1/col2 spacer). */
 .regenalarm-map-col {
+  grid-column: 4;
   width: 100%;
   height: 100%;
   display: flex;
