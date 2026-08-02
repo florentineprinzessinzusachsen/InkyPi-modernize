@@ -861,12 +861,20 @@ class WeatherDe(BasePlugin):
                 # This map column is far smaller than the standalone
                 # Regenalarm plugin's own panel - the "+Nh" trajectory
                 # labels shrink past legible at this size, so skip them
-                # here (the standalone plugin still gets them), and scale
-                # up the trajectory/crossbar lines themselves (emphasis)
-                # so they're still visible at this column's much smaller
-                # rendered size instead of thinning down to near-invisible.
+                # here (the standalone plugin still gets them); the
+                # chevron arrowhead reads as a stray triangle rather than
+                # a legible arrow at this size, so it's dropped too,
+                # leaving just the plain line. Thicker stroke + longer
+                # line (unit_scale) so the trajectory stays visible at
+                # this column's much smaller rendered size; the
+                # perpendicular hour-tick crossbars get a bit shorter
+                # (independent of the now-longer line) so they don't
+                # dominate it.
                 show_labels=False,
-                emphasis=3.0,
+                show_arrowhead=False,
+                stroke_width=7.0,
+                unit_scale=6.0,
+                crossbar_length_scale=0.6,
             )
             return True
         except Exception as e:
