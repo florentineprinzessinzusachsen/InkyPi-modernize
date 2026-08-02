@@ -3,20 +3,31 @@
 {% block content %}
 <div id="units-container" data-units="{{ units }}"></div>
 
+{% set header_title_empty = (title | trim == '') %}
+{% set header_date_off = (plugin_settings.displayDate == 'false') %}
+{% set header_refresh_on = (plugin_settings.displayRefreshTime == 'true') %}
+{% if header_date_off and header_title_empty %}
+  {% set header_class = ' minimal' if header_refresh_on else ' empty' %}
+{% elif header_date_off %}
+  {% set header_class = ' no-date' %}
+{% else %}
+  {% set header_class = '' %}
+{% endif %}
+{% set show_map = plugin_settings.displayRegenalarmMap == "true" %}
 
 <div class="weather-dashboard">
-  {% if plugin_settings.displayRefreshTime == "true" %}
+  {% if header_refresh_on %}
   <div class="last-refresh">{{ last_refresh_label }}: {{ last_refresh_time }}</div>
   {% endif %}
   <!-- Current Date -->
-  <div class="header{% if plugin_settings.displayDate == "false" %} no-date{% endif %}">
+  <div class="header{{ header_class }}">
     <div class="title">{{ title }}</div>
     {% if plugin_settings.displayDate != "false" %}
     <div class="current-date">{{ current_date }}</div>
     {% endif %}
   </div>
 
-  <div class="today-container">
+  <div class="today-container{% if show_map %} with-map{% endif %}">
     <!-- Current Weather Row -->
     <div class="current-temperature">
       <!-- Icon + Temperature -->
@@ -30,14 +41,9 @@
 
     <!-- Data Points Grid (Sunset, Wind, UV, etc.) -->
     {% if plugin_settings.displayMetrics and  plugin_settings.displayMetrics == "true" %}
-    <div class="data-points{% if plugin_settings.displayMetricIcons == 'false' %} no-icons{% endif %}">
+    <div class="data-points{% if show_map %} compact-list{% endif %}">
       {% for dp in data_points %}
         <div class="data-point column-container">
-          {% if plugin_settings.displayMetricIcons != "false" %}
-          <div class="data-point-img-container">
-            <img class="data-point-icon" src="{{dp.icon}}" alt="{{ dp.label }}">
-          </div>
-          {% endif %}
           <div class="data-point-data">
             <div class="data-point-label">{{ dp.label }}</div>
             <div class="data-point-measurement">
@@ -45,10 +51,30 @@
               {% if dp.key == "Wind" %}
                 <span class="wind-arrow-symbol">{{ dp.arrow }}</span>
               {% endif %}
-		    	 </div>
+			    	 </div>
           </div>
         </div>
       {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if show_map %}
+    <div class="regenalarm-map-col">
+      {% if regenalarm_map_ok %}
+      <svg class="regenalarm-map-svg"
+           viewBox="{{ regenalarm_map_crop_x }} {{ regenalarm_map_crop_y }} {{ regenalarm_map_crop_w }} {{ regenalarm_map_crop_h }}"
+           preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        {{ regenalarm_map_bkg_svg | safe }}
+        {% if regenalarm_rain_image_data_uri %}
+        <image href="{{ regenalarm_rain_image_data_uri }}" x="0" y="0"
+               width="{{ regenalarm_map_viewbox_w }}" height="{{ regenalarm_map_viewbox_h }}" opacity="0.85"/>
+        {% endif %}
+        {{ regenalarm_map_borders_svg | safe }}
+        {{ regenalarm_map_marker_svg | safe }}
+      </svg>
+      {% else %}
+      <div class="regenalarm-map-unavailable">Regenalarm map<br>unavailable</div>
+      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -101,16 +127,19 @@
     const precipitation = [{% for hour in hourly_forecast %}{{ hour.precipitation * 100}}{% if not loop.last %}, {% endif %}{% endfor %}]; // Convert to percentage
     const rain = [{% for hour in hourly_forecast %}{{ hour.rain or 0 }}{% if not loop.last %}, {% endif %}{% endfor %}];
     const weatherIconsPaths = [{% for hour in hourly_forecast %}"{{ hour.icon | replace('\\', '/') }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+    const regenIntensity = [{% for hour in hourly_forecast %}{{ 'null' if hour.regen_intensity_pct is none else hour.regen_intensity_pct }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    const regenProbability = [{% for hour in hourly_forecast %}{{ 'null' if hour.regen_probability is none else hour.regen_probability }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    const useRegenalarmRain = {{ 'true' if plugin_settings.rainDataSource == 'regenalarm' else 'false' }};
 	const iconStep = parseInt("{{ plugin_settings.graphIconStep or 2 }}");
 	const units = document.getElementById('units-container').dataset.units;
 	const isImperial = units === "imperial";
 	const unit = isImperial ? "in" : "mm";
 	const threshold = isImperial ? 0.0035 : 0.09;
-	
+
     // Find min and max temperatures
     const minTemp = Math.min(...temperatures);
     var maxTemp = Math.max(...temperatures);
-	
+
     Chart.register({
       id: 'annotationRain',
       afterDatasetsDraw(chart, args, pluginOptions) {
@@ -128,9 +157,9 @@
             const y = bar.y;
 			const base = bar.base;
 			const height = base - y;
-			
+
 			let textY, unitY;
-			
+
 			if (height < 25) {
 			  textY = y - 10;
 			  unitY = y - 3;
@@ -140,14 +169,14 @@
 			}
             ctx.fillStyle = "{{ plugin_settings.textColor }}";
             ctx.fillText(rainAmount.toFixed(2), x, textY);
-            ctx.fillText(unit, x, unitY); 
+            ctx.fillText(unit, x, unitY);
           }
         });
 
         ctx.restore();
       }
     });
-	
+
     {% if plugin_settings.displayGraphIcons == "true" %}
     Chart.register({
       id: 'chartIcons',
@@ -157,14 +186,14 @@
 
         ctx.save();
         chart.getDatasetMeta(0).data.forEach((point, i) => {
-		
+
 		if (i % iconStep !== 0) return;
-		
+
           const img = new Image();
           img.src = weatherIconsPaths[i];
           const xPos = point.x - (iconSize / 2);
           const yPos = bottom + 25;
-      
+
           if (img.complete) {
             ctx.drawImage(img, xPos, yPos, iconSize, iconSize);
           } else {
@@ -176,37 +205,74 @@
     });
     {% endif %}
 
+    const rainBarDataset = useRegenalarmRain ? {
+      type: 'bar',
+      label: 'Rain Intensity',
+      data: regenIntensity.map(v => v === null ? 0 : v),
+      borderColor: 'rgba(30,100,220,1)',
+      borderWidth: {
+        top: 2,
+        right: 0,
+        bottom: 0,
+        left: 0
+      },
+      backgroundColor: 'rgba(30,100,220,0.55)',
+      yAxisID: 'y1',
+      barPercentage: 1.0,
+      categoryPercentage: 1.0,
+      fill: true,
+    } : {
+      type: 'bar',
+      label: 'Precipitation Probability',
+      data: precipitation,
+      borderColor: 'rgba(26, 111, 176, 1)', // Semi-transparent blue
+      borderWidth: {
+        top: 2,
+        right: 0,
+        bottom: 0,
+        left: 0
+      },
+      yAxisID: 'y1',
+      barPercentage: 1.0, // Ensures full width
+      categoryPercentage: 1.0,  // Ensures full width
+      fill: true, // Enable filling the area under the line
+    };
+
+    const chartDatasets = [{
+      type: 'line',
+      label: 'Hourly Temperature',
+      data: temperatures,
+      borderColor: 'rgba(241, 122, 36, 0.9)', // Line color
+      borderWidth: 2,
+      pointRadius: 0, // Hide points
+      fill: true, // Enable filling the area under the line
+      tension: 0.5
+    },
+    rainBarDataset,
+    ];
+
+    if (useRegenalarmRain) {
+      chartDatasets.push({
+        type: 'line',
+        label: 'Rain Probability',
+        data: regenProbability,
+        borderColor: 'rgba(210,30,30,0.9)',
+        backgroundColor: 'rgba(210,30,30,0.9)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointBackgroundColor: 'rgba(210,30,30,0.9)',
+        spanGaps: false,
+        yAxisID: 'y1',
+        tension: 0.3,
+        fill: false,
+      });
+    }
+
     const chart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: labels,
-        datasets: [{
-          type: 'line',
-          label: 'Hourly Temperature',
-          data: temperatures,
-          borderColor: 'rgba(241, 122, 36, 0.9)', // Line color
-          borderWidth: 2,
-          pointRadius: 0, // Hide points
-          fill: true, // Enable filling the area under the line
-          tension: 0.5
-        },
-        {
-          type: 'bar',
-          label: 'Precipitation Probability',
-          data: precipitation,
-          borderColor: 'rgba(26, 111, 176, 1)', // Semi-transparent blue
-          borderWidth: {
-            top: 2,
-            right: 0,
-            bottom: 0,
-            left: 0
-          },
-          yAxisID: 'y1',
-          barPercentage: 1.0, // Ensures full width
-          categoryPercentage: 1.0,  // Ensures full width
-          fill: true, // Enable filling the area under the line
-        }
-      ]
+        datasets: chartDatasets
       },
       options: {
         layout: {
@@ -312,7 +378,9 @@
     precipitationGradient.addColorStop(0, 'rgba(26, 111, 176, 0.8)'); // Top of the gradient (max temperature)
     precipitationGradient.addColorStop(1, 'rgba(194, 223, 246, 0)'); // Bottom of the gradient (min temperature)
 
-    chart.data.datasets[1].backgroundColor = precipitationGradient;
+    if (!useRegenalarmRain) {
+      chart.data.datasets[1].backgroundColor = precipitationGradient;
+    }
 
     chart.update();
   });

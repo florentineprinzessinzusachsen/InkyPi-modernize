@@ -48,6 +48,26 @@
   height: 7dvh;
 }
 
+/* Title falls back to an empty string for any provider other than
+   OpenWeatherMap unless the user typed a Custom Title (see
+   generate_image()'s `title` handling) - with the date also hidden, the
+   header then has literally nothing to show, yet without this it still
+   reserves its full 15dvh/7dvh. Shrinking it further hands that space
+   back to today-container/forecast via their existing flex weights
+   (nothing else needs to change - see the .weather-dashboard comment
+   above), which matters most when the Regenalarm map column needs
+   whatever vertical room it can get. `.minimal` still reserves a sliver
+   for the last-refresh corner label (position:absolute, not part of this
+   box's own flow, but visually needs the clearance); `.empty` is used
+   when that's off too, so there's truly nothing up top. */
+.header.minimal {
+  height: 4dvh;
+}
+
+.header.empty {
+  height: 1dvh;
+}
+
 .last-refresh {
   position: absolute;
   top: 0.5dvh;
@@ -90,6 +110,15 @@
   overflow: hidden;
 }
 
+/* Regenalarm Map option: the top info row becomes a 3-column grid (icon
+   +temp / metrics / map) instead of the default 2-way flex split, to make
+   room for the map column. */
+.today-container.with-map {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1.2dvw;
+}
+
 /* Current Weather Row */
 .current-temperature {
   display: flex;
@@ -103,6 +132,11 @@
   overflow: hidden;
 }
 
+.today-container.with-map .current-temperature {
+  width: 100%;
+  padding: 0 0.3vw;
+}
+
 .current-icon {
   height: auto;
   max-width: 90%;
@@ -112,6 +146,19 @@
   min-width: 0;
   min-height: 0;
   object-fit: contain;
+}
+
+/* A little tighter + a little smaller so the icon and the temperature
+   text read as one overlapping unit instead of two separate halves -
+   there's less width to spend once a 3rd (map) column exists. The icon
+   art itself has empty padding around the glyph, so pulling the text in
+   over that margin doesn't cover any actual ink. */
+.today-container.with-map .current-icon {
+  max-width: 62%;
+}
+
+.today-container.with-map .current-weather {
+  margin-left: -13%;
 }
 
 .current-temp {
@@ -138,38 +185,98 @@
   width: 50%;
 }
 
+.today-container.with-map .data-points {
+  width: 100%;
+}
+
 .data-point {
   width: 100%;
   justify-content: left;
   overflow: hidden;
 }
 
-.data-point-img-container {
-  width: 25%;
-  height: 80%;
-  align-content: center;
-}
-
-.data-point-icon {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 .data-point-data {
-  width: 75%;
+  width: 100%;
   display: flex;
   flex-direction: column;
   height: 100%;
   justify-content: center;
   container-type: size;
-
 }
 
-/* When icons are hidden (displayMetricIcons setting), let the label/value
-   column use the full row width instead of leaving the icon's 25% blank. */
-.data-points.no-icons .data-point-data {
+/* Regenalarm Map option: metrics collapse from a 2-column icon-less grid
+   into a single-column list (one row per metric, label left / value
+   right on one line) - denser, so all 8 metrics still fit legibly in a
+   column that's now ~1/3 of the width instead of ~1/2. */
+.data-points.compact-list {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(8, 1fr);
+  gap: 0;
   width: 100%;
+  height: 100%;
+}
+
+.data-points.compact-list .data-point {
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.data-points.compact-list .data-point-data {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6vw;
+}
+
+.data-points.compact-list .data-point-label,
+.data-points.compact-list .data-point-measurement,
+.data-points.compact-list .wind-arrow-symbol {
+  height: auto;
+  white-space: nowrap;
+}
+
+/* The base rules' cqh-based font-size (min(32cqh,15cqi)/min(46cqh,26cqi))
+   is tuned for .data-point-data filling a whole (tall) column cell - here
+   it's one of 8 stacked rows, so cqh alone collapses toward unreadably
+   tiny. dvh instead scales off the viewport, independent of how short an
+   individual row is. */
+.data-points.compact-list .data-point-label {
+  text-align: left;
+  flex: 0 1 auto;
+  font-size: 2.6dvh;
+}
+
+.data-points.compact-list .data-point-measurement,
+.data-points.compact-list .wind-arrow-symbol {
+  text-align: right;
+  flex: 0 0 auto;
+  font-size: 2.8dvh;
+}
+
+/* Regenalarm map column (3rd column, Regenalarm Map option only) */
+.regenalarm-map-col {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.regenalarm-map-svg {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  aspect-ratio: 690 / 935;
+  display: block;
+}
+
+.regenalarm-map-unavailable {
+  font-size: min(2.6dvh, 2.6dvw);
+  text-align: center;
+  opacity: 0.6;
+  line-height: 1.3;
 }
 
 .data-point-label {

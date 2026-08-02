@@ -16,7 +16,7 @@
 
     {% if map_bkg_svg %}
     <div class="map-panel" style="width: {{ map_w }}px; height: {{ content_h }}px;">
-      <svg class="map-svg" viewBox="0 0 {{ map_viewbox_w }} {{ map_viewbox_h }}" preserveAspectRatio="xMidYMid meet"
+      <svg class="map-svg" viewBox="{{ map_crop_x }} {{ map_crop_y }} {{ map_crop_w }} {{ map_crop_h }}" preserveAspectRatio="xMidYMid meet"
            xmlns="http://www.w3.org/2000/svg">
         {{ map_bkg_svg | safe }}
         {% if rain_image_data_uri %}

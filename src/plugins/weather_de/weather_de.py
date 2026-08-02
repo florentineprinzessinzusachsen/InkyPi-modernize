@@ -23,8 +23,22 @@ for German locations:
 """
 
 from plugins.base_plugin.base_plugin import BasePlugin
-from plugins.base_plugin.settings_schema import field, option, row, schema, section, widget
+from plugins.base_plugin.settings_schema import callout, field, option, row, schema, section, widget
+from plugins.regenalarm.lib.forecast import build_forecast_request, parse_forecast_response, extract_map_image
+from plugins.regenalarm.lib.map_svg import (
+    MAP_VIEWBOX_W as REGENALARM_MAP_VIEWBOX_W,
+    MAP_VIEWBOX_H as REGENALARM_MAP_VIEWBOX_H,
+    MAP_CROP_X as REGENALARM_MAP_CROP_X,
+    MAP_CROP_Y as REGENALARM_MAP_CROP_Y,
+    MAP_CROP_W as REGENALARM_MAP_CROP_W,
+    MAP_CROP_H as REGENALARM_MAP_CROP_H,
+    render_marker_and_trajectory,
+)
+from plugins.regenalarm.lib.chart_svg import intensity_fraction
+import base64
 import logging
+import os
+import struct
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone, date
 from astral import moon, Observer
@@ -33,8 +47,37 @@ from utils.time_utils import get_timezone
 from utils.app_utils import resolve_path
 from utils.http_client import get_http_session
 import math
+import requests
 
 logger = logging.getLogger(__name__)
+
+# Regenalarm (Germany rain-radar) integration - reuses the reverse-engineered
+# protocol/SVG-generation library (plugins/regenalarm/lib/*) that the
+# Regenalarm plugin itself is built on, rather than duplicating that ~500
+# lines of protocol logic here. Deliberately NOT importing anything from
+# plugins.regenalarm.regenalarm (the plugin class module itself) to keep
+# this dependency scoped to the reusable lib/ modules - the host list and
+# germany_*.svg assets below are small enough to read directly instead.
+_REGENALARM_HOSTS = ["regenonline.de", "rainforecast.de", "regen.online", "regenvorschau.de"]
+_REGENALARM_REQUEST_TIMEOUT = 15
+
+_REGENALARM_RENDER_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "regenalarm", "render",
+))
+with open(os.path.join(_REGENALARM_RENDER_DIR, "germany_bkg.svg")) as f:
+    _REGENALARM_MAP_BKG_SVG = f.read()
+with open(os.path.join(_REGENALARM_RENDER_DIR, "germany_borders.svg")) as f:
+    _REGENALARM_MAP_BORDERS_SVG = f.read()
+
+
+def _regenalarm_png_size(data: bytes):
+    """Width/height from a PNG's IHDR chunk - see regenalarm.py's identical
+    _png_size for the full rationale (avoids pulling in an image library
+    just to read a header)."""
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
 
 def get_moon_phase_name(phase_age: float) -> str:
     """Determines the name of the lunar phase based on the age of the moon."""
@@ -377,6 +420,46 @@ class WeatherDe(BasePlugin):
                 ),
             ),
             section(
+                "Regenalarm (Germany)",
+                row(
+                    field(
+                        "rainDataSource",
+                        "select",
+                        label="Rain Data Source",
+                        default="provider",
+                        options=[
+                            option("provider", "Weather Provider"),
+                            option("regenalarm", "Regenalarm Radar"),
+                        ],
+                        hint=(
+                            "Regenalarm sources a rain-intensity bar and probability "
+                            "curve for the hourly graph from its own short-range "
+                            "rain-radar nowcast instead of the weather provider's own "
+                            "precipitation forecast."
+                        ),
+                    ),
+                    field(
+                        "displayRegenalarmMap",
+                        "checkbox",
+                        label="Regenalarm Map",
+                        submit_unchecked=True,
+                        checked_value="true",
+                        unchecked_value="false",
+                        default="false",
+                        hint=(
+                            "Shows a Germany rain-radar map as a third column next to "
+                            "the current icon/temperature and metrics."
+                        ),
+                    ),
+                ),
+                callout(
+                    "Regenalarm only covers Germany, and its rain-radar nowcast "
+                    "typically only spans the next couple of hours - hourly slots "
+                    "beyond that will show no bars/curve. Upstream data refreshes "
+                    "roughly every 15 minutes."
+                ),
+            ),
+            section(
                 "Title",
                 row(
                     field(
@@ -429,16 +512,6 @@ class WeatherDe(BasePlugin):
                         checked_value="true",
                         unchecked_value="false",
                         default="true",
-                    ),
-                    field(
-                        "displayMetricIcons",
-                        "checkbox",
-                        label="Metric Icons",
-                        submit_unchecked=True,
-                        checked_value="true",
-                        unchecked_value="false",
-                        default="true",
-                        visible_if={"field": "displayMetrics", "equals": "true"},
                     ),
                     field(
                         "displayGraph",
@@ -570,25 +643,37 @@ class WeatherDe(BasePlugin):
         time_format = device_config.get_config("time_format", default="12h")
         tz = get_timezone(timezone)
 
+        use_regenalarm_rain = settings.get('rainDataSource', 'provider') == 'regenalarm'
+        show_regenalarm_map = settings.get('displayRegenalarmMap', 'false') == 'true'
+        need_regenalarm = use_regenalarm_rain or show_regenalarm_map
+
         # Each provider branch below makes 2-3 independent HTTP calls (none
         # depends on another's response - they're only combined afterward in
         # the parse_*_data() call) that were previously issued one at a
         # time; running them concurrently cuts that provider's total wait to
-        # its slowest single call instead of the sum of all of them.
+        # its slowest single call instead of the sum of all of them. The
+        # optional Regenalarm fetch (only issued when its rain-source/map
+        # settings are on) rides along in the same pool - it never raises
+        # (see _fetch_regenalarm), so a failed/unreachable Regenalarm never
+        # takes down the rest of the weather render.
         try:
+            regenalarm_data = None
             if weather_provider == "OpenWeatherMap":
                 api_key = device_config.load_env_key("OPEN_WEATHER_MAP_SECRET")
                 if not api_key:
                     raise RuntimeError("Open Weather Map API Key not configured.")
                 want_location = settings.get('titleSelection', 'location') == 'location'
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=4) as executor:
                     weather_future = executor.submit(self.get_weather_data, api_key, units, lat, long)
                     aqi_future = executor.submit(self.get_air_quality, api_key, lat, long)
                     location_future = executor.submit(self.get_location, api_key, lat, long) if want_location else None
+                    regenalarm_future = executor.submit(self._fetch_regenalarm, lat, long) if need_regenalarm else None
                     weather_data = weather_future.result()
                     aqi_data = aqi_future.result()
                     if location_future is not None:
                         title = location_future.result()
+                    if regenalarm_future is not None:
+                        regenalarm_data = regenalarm_future.result()
                 if settings.get('weatherTimeZone', 'locationTimeZone') == 'locationTimeZone':
                     logger.info("Using location timezone for OpenWeatherMap data.")
                     wtz = self.parse_timezone(weather_data)
@@ -601,26 +686,49 @@ class WeatherDe(BasePlugin):
                 model = settings.get('openMeteoModel', 'best_match')
                 if model not in OPEN_METEO_MODELS:
                     model = 'best_match'
-                with ThreadPoolExecutor(max_workers=2) as executor:
+                with ThreadPoolExecutor(max_workers=3) as executor:
                     weather_future = executor.submit(self.get_open_meteo_data, lat, long, units, forecast_days + 1, model)
                     aqi_future = executor.submit(self.get_open_meteo_air_quality, lat, long)
+                    regenalarm_future = executor.submit(self._fetch_regenalarm, lat, long) if need_regenalarm else None
                     weather_data = weather_future.result()
                     aqi_data = aqi_future.result()
+                    if regenalarm_future is not None:
+                        regenalarm_data = regenalarm_future.result()
                 template_params = self.parse_open_meteo_data(weather_data, aqi_data, tz, units, time_format, lat, language)
             elif weather_provider == "BrightSky":
                 forecast_days = 7
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=4) as executor:
                     current_future = executor.submit(self.get_bright_sky_current, lat, long)
                     forecast_future = executor.submit(self.get_bright_sky_forecast, lat, long, forecast_days + 1)
                     aqi_future = executor.submit(self.get_open_meteo_air_quality, lat, long)
+                    regenalarm_future = executor.submit(self._fetch_regenalarm, lat, long) if need_regenalarm else None
                     current_data = current_future.result()
                     forecast_data = forecast_future.result()
                     aqi_data = aqi_future.result()
+                    if regenalarm_future is not None:
+                        regenalarm_data = regenalarm_future.result()
                 template_params = self.parse_bright_sky_data(current_data, forecast_data.get("weather", []), aqi_data, tz, units, time_format, lat, long, language)
             else:
                 raise RuntimeError(f"Unknown weather provider: {weather_provider}")
 
             template_params['title'] = title
+
+            # Always present (defaulting to None) regardless of whether the
+            # Regenalarm rain source is even enabled, so weather_de.html's
+            # Jinja `is none` checks never hit a plain-missing dict key
+            # (which templates as an empty string, not "null", and would
+            # corrupt the chart JS's array literal).
+            for hour in template_params.get('hourly_forecast', []):
+                hour.setdefault('regen_intensity_pct', None)
+                hour.setdefault('regen_probability', None)
+
+            regenalarm_map_ok = False
+            if regenalarm_data is not None and not regenalarm_data.error_message:
+                if use_regenalarm_rain:
+                    self._merge_regenalarm_rain(template_params, regenalarm_data, tz)
+                if show_regenalarm_map:
+                    regenalarm_map_ok = self._add_regenalarm_map_params(template_params, regenalarm_data)
+            template_params['regenalarm_map_ok'] = regenalarm_map_ok
         except Exception as e:
             logger.error(f"{weather_provider} request failed: {str(e)}")
             raise RuntimeError(f"{weather_provider} request failure, please check logs.")
@@ -654,6 +762,112 @@ class WeatherDe(BasePlugin):
         if not image:
             raise RuntimeError("Failed to take screenshot, please check logs.")
         return image
+
+    def _fetch_regenalarm(self, lat, long):
+        """Fetches a Regenalarm rain-radar forecast for the same location as
+        the weather data, for the optional Regenalarm-sourced rain graph
+        and/or map. Mirrors plugins.regenalarm.regenalarm's own
+        _fetch_forecast (same host failover, one attempt per host, no
+        retries - no published rate limit exists for this unauthenticated
+        API). Never raises - both callers treat None as "skip this
+        optional feature", not a fatal error for the whole weather render."""
+        body = build_forecast_request(lat, long, wind_query=(1500, -1))
+        for host in _REGENALARM_HOSTS:
+            try:
+                resp = get_http_session().post(
+                    f"https://{host}/rain/bin", data=body, timeout=_REGENALARM_REQUEST_TIMEOUT,
+                )
+                resp.raise_for_status()
+                return parse_forecast_response(resp.content)
+            except (requests.exceptions.RequestException, OSError, TimeoutError) as e:
+                logger.warning(f"weather_de: Regenalarm host {host} failed: {e}")
+                continue
+        return None
+
+    def _bucket_regenalarm_by_hour(self, regenalarm_data, tz, num_hours):
+        """Aggregates Regenalarm's native-resolution intensity/probability
+        samples into num_hours hourly buckets aligned with
+        hourly_forecast[i] (every parse_*_hourly() implementation below
+        starts its list at the current hour, i.e. index i is "now + i
+        hours" - see their own start_index logic). Regenalarm's
+        reference_time_minutes/interval are a plain time-of-day clock,
+        unrelated to any one provider's own hourly indexing, so each
+        sample's clock time is converted to an offset from "now" instead.
+        Uses the peak (max) value per bucket. Regenalarm is a short-range
+        radar nowcast (on the order of a couple of hours), so buckets
+        beyond its coverage window are expected to stay None - that's the
+        correct "no data" state for this hour, not a bug."""
+        intensities = regenalarm_data.intensities or []
+        probabilities = regenalarm_data.probabilities or []
+        n = min(len(intensities), len(probabilities))
+        interval = regenalarm_data.interval
+        ref = regenalarm_data.reference_time_minutes
+        if n == 0 or not interval or ref is None:
+            return [None] * num_hours, [None] * num_hours
+
+        now = datetime.now(tz)
+        now_minutes = now.hour * 60 + now.minute
+
+        intensity_buckets = [None] * num_hours
+        probability_buckets = [None] * num_hours
+        for j in range(n):
+            sample_minutes = (ref + j * interval) % 1440
+            bucket = int(((sample_minutes - now_minutes) % 1440) // 60)
+            if bucket >= num_hours:
+                continue
+            raw_intensity = float(intensities[j])
+            raw_probability = float(probabilities[j])
+            if intensity_buckets[bucket] is None or raw_intensity > intensity_buckets[bucket]:
+                intensity_buckets[bucket] = raw_intensity
+            if probability_buckets[bucket] is None or raw_probability > probability_buckets[bucket]:
+                probability_buckets[bucket] = raw_probability
+        return intensity_buckets, probability_buckets
+
+    def _merge_regenalarm_rain(self, template_params, regenalarm_data, tz):
+        """Adds regen_intensity_pct/regen_probability to each entry of the
+        already-built hourly_forecast, for weather_de.html's chart JS to
+        plot as an intensity bar + probability curve. intensity is
+        normalized through the same 0-300 clamp/compression Regenalarm's
+        own chart uses (chart_svg.intensity_fraction), so it shares the
+        existing 0-100% right-hand axis instead of needing a third one."""
+        hourly = template_params.get('hourly_forecast') or []
+        try:
+            intensity_buckets, probability_buckets = self._bucket_regenalarm_by_hour(regenalarm_data, tz, len(hourly))
+            for hour, intensity, probability in zip(hourly, intensity_buckets, probability_buckets):
+                hour['regen_intensity_pct'] = round(intensity_fraction(intensity) * 100, 1) if intensity is not None else None
+                hour['regen_probability'] = round(probability, 1) if probability is not None else None
+        except Exception as e:
+            logger.warning(f"weather_de: failed to merge Regenalarm rain data: {e}")
+
+    def _add_regenalarm_map_params(self, template_params, regenalarm_data):
+        """Builds the Germany rain-radar map SVG params for the optional
+        third dashboard column - same composition (outline + rain overlay
+        + location/trajectory marker) as the Regenalarm plugin's own map
+        panel, including the whitespace-trimmed crop viewBox (see
+        plugins.regenalarm.lib.map_svg's MAP_CROP_* constants). Returns
+        False (leaving the column to show a fallback message) rather than
+        raising, matching Regenalarm's own _add_map_params."""
+        if regenalarm_data.payload_blob is None:
+            return False
+        try:
+            rain_png = extract_map_image(regenalarm_data.payload_blob)
+            rain_native_size = _regenalarm_png_size(rain_png)
+            template_params["regenalarm_map_bkg_svg"] = _REGENALARM_MAP_BKG_SVG
+            template_params["regenalarm_map_borders_svg"] = _REGENALARM_MAP_BORDERS_SVG
+            template_params["regenalarm_map_viewbox_w"] = REGENALARM_MAP_VIEWBOX_W
+            template_params["regenalarm_map_viewbox_h"] = REGENALARM_MAP_VIEWBOX_H
+            template_params["regenalarm_map_crop_x"] = REGENALARM_MAP_CROP_X
+            template_params["regenalarm_map_crop_y"] = REGENALARM_MAP_CROP_Y
+            template_params["regenalarm_map_crop_w"] = REGENALARM_MAP_CROP_W
+            template_params["regenalarm_map_crop_h"] = REGENALARM_MAP_CROP_H
+            template_params["regenalarm_rain_image_data_uri"] = "data:image/png;base64," + base64.b64encode(rain_png).decode("ascii")
+            template_params["regenalarm_map_marker_svg"] = render_marker_and_trajectory(
+                regenalarm_data.location_xy, regenalarm_data.location_uv, rain_native_size,
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"weather_de: failed to build Regenalarm map SVG: {e}")
+            return False
 
     def parse_weather_data(self, weather_data, aqi_data, tz, units, time_format, lat, language="en"):
         current = weather_data.get("current")
@@ -1165,7 +1379,6 @@ class WeatherDe(BasePlugin):
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
                 "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunrise.png')
             })
         else:
             logger.error(f"Sunrise not found in OpenWeatherMap response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1177,8 +1390,7 @@ class WeatherDe(BasePlugin):
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunset.png')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
             })
         else:
             logger.error(f"Sunset not found in OpenWeatherMap response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1190,7 +1402,6 @@ class WeatherDe(BasePlugin):
             "label": get_ui_label("wind", language, "Wind"),
             "measurement": weather.get('current', {}).get("wind_speed"),
             "unit": UNITS[units]["speed"],
-            "icon": self.get_plugin_dir('icons/wind.png'),
             "arrow": wind_arrow
         })
 
@@ -1198,24 +1409,21 @@ class WeatherDe(BasePlugin):
             "key": "Humidity",
             "label": get_ui_label("humidity", language, "Humidity"),
             "measurement": weather.get('current', {}).get("humidity"),
-            "unit": '%',
-            "icon": self.get_plugin_dir('icons/humidity.png')
+            "unit": '%'
         })
 
         data_points.append({
             "key": "Pressure",
             "label": get_ui_label("pressure", language, "Pressure"),
             "measurement": weather.get('current', {}).get("pressure"),
-            "unit": 'hPa',
-            "icon": self.get_plugin_dir('icons/pressure.png')
+            "unit": 'hPa'
         })
 
         data_points.append({
             "key": "UV Index",
             "label": get_ui_label("uv_index", language, "UV Index"),
             "measurement": weather.get('current', {}).get("uvi"),
-            "unit": '',
-            "icon": self.get_plugin_dir('icons/uvi.png')
+            "unit": ''
         })
 
         visibility = weather.get('current', {}).get("visibility")
@@ -1237,8 +1445,7 @@ class WeatherDe(BasePlugin):
             "key": "Visibility",
             "label": get_ui_label("visibility", language, "Visibility"),
             "measurement": visibility_str,
-            "unit": UNITS[units]["distance"],
-            "icon": self.get_plugin_dir('icons/visibility.png')
+            "unit": UNITS[units]["distance"]
         })
 
         aqi = (air_quality.get('list') or [{}])[0].get("main", {}).get("aqi")
@@ -1248,8 +1455,7 @@ class WeatherDe(BasePlugin):
             "key": "Air Quality",
             "label": get_ui_label("air_quality", language, "Air Quality"),
             "measurement": aqi,
-            "unit": aqi_scale[int(aqi)-1] if (aqi is not None and str(aqi).isdigit() and 1 <= int(aqi) <= len(aqi_scale)) else "N/A",
-            "icon": self.get_plugin_dir('icons/aqi.png')
+            "unit": aqi_scale[int(aqi)-1] if (aqi is not None and str(aqi).isdigit() and 1 <= int(aqi) <= len(aqi_scale)) else "N/A"
         })
 
         return data_points
@@ -1271,8 +1477,7 @@ class WeatherDe(BasePlugin):
                 "key": "Sunrise",
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunrise.png')
+                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p')
             })
         else:
             logger.error(f"Sunrise not found in Open-Meteo response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1285,8 +1490,7 @@ class WeatherDe(BasePlugin):
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunset.png')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
             })
         else:
             logger.error(f"Sunset not found in Open-Meteo response, this is expected for polar areas in midnight sun and polar night periods.")
@@ -1298,8 +1502,7 @@ class WeatherDe(BasePlugin):
         wind_unit = UNITS[units]["speed"]
         data_points.append({
             "key": "Wind", "label": get_ui_label("wind", language, "Wind"),
-            "measurement": wind_speed, "unit": wind_unit,
-            "icon": self.get_plugin_dir('icons/wind.png'), "arrow": wind_arrow
+            "measurement": wind_speed, "unit": wind_unit, "arrow": wind_arrow
         })
 
         # Humidity
@@ -1316,8 +1519,7 @@ class WeatherDe(BasePlugin):
                 continue
         data_points.append({
             "key": "Humidity", "label": get_ui_label("humidity", language, "Humidity"),
-            "measurement": current_humidity, "unit": '%',
-            "icon": self.get_plugin_dir('icons/humidity.png')
+            "measurement": current_humidity, "unit": '%'
         })
 
         # Pressure
@@ -1334,8 +1536,7 @@ class WeatherDe(BasePlugin):
                 continue
         data_points.append({
             "key": "Pressure", "label": get_ui_label("pressure", language, "Pressure"),
-            "measurement": current_pressure, "unit": 'hPa',
-            "icon": self.get_plugin_dir('icons/pressure.png')
+            "measurement": current_pressure, "unit": 'hPa'
         })
 
         # UV Index
@@ -1352,8 +1553,7 @@ class WeatherDe(BasePlugin):
                 continue
         data_points.append({
             "key": "UV Index", "label": get_ui_label("uv_index", language, "UV Index"),
-            "measurement": current_uv_index, "unit": '',
-            "icon": self.get_plugin_dir('icons/uvi.png')
+            "measurement": current_uv_index, "unit": ''
         })
 
         # Visibility
@@ -1386,8 +1586,7 @@ class WeatherDe(BasePlugin):
             "key": "Visibility",
             "label": get_ui_label("visibility", language, "Visibility"),
             "measurement": visibility_str, 
-            "unit": UNITS[units]["distance"],
-            "icon": self.get_plugin_dir('icons/visibility.png')
+            "unit": UNITS[units]["distance"]
         })
 
         # Air Quality
@@ -1410,7 +1609,7 @@ class WeatherDe(BasePlugin):
         data_points.append({
             "key": "Air Quality", "label": get_ui_label("air_quality", language, "Air Quality"),
             "measurement": current_aqi,
-            "unit": scale, "icon": self.get_plugin_dir('icons/aqi.png')
+            "unit": scale
         })
 
         return data_points
@@ -1429,8 +1628,7 @@ class WeatherDe(BasePlugin):
                 "key": "Sunrise",
                 "label": get_ui_label("sunrise", language, "Sunrise"),
                 "measurement": self.format_time(sunrise_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunrise.png')
+                "unit": "" if time_format == "24h" else sunrise_dt.strftime('%p')
             })
         else:
             logger.error("Sunrise could not be calculated (astral), this is expected for polar areas in midnight sun and polar night periods.")
@@ -1440,8 +1638,7 @@ class WeatherDe(BasePlugin):
                 "key": "Sunset",
                 "label": get_ui_label("sunset", language, "Sunset"),
                 "measurement": self.format_time(sunset_dt, time_format, include_am_pm=False),
-                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p'),
-                "icon": self.get_plugin_dir('icons/sunset.png')
+                "unit": "" if time_format == "24h" else sunset_dt.strftime('%p')
             })
         else:
             logger.error("Sunset could not be calculated (astral), this is expected for polar areas in midnight sun and polar night periods.")
@@ -1455,7 +1652,6 @@ class WeatherDe(BasePlugin):
             "label": get_ui_label("wind", language, "Wind"),
             "measurement": round(wind_speed, 1) if wind_speed is not None else "N/A",
             "unit": UNITS[units]["speed"],
-            "icon": self.get_plugin_dir('icons/wind.png'),
             "arrow": wind_arrow
         })
 
@@ -1463,8 +1659,7 @@ class WeatherDe(BasePlugin):
             "key": "Humidity",
             "label": get_ui_label("humidity", language, "Humidity"),
             "measurement": current.get("relative_humidity", "N/A"),
-            "unit": '%',
-            "icon": self.get_plugin_dir('icons/humidity.png')
+            "unit": '%'
         })
 
         pressure = current.get("pressure_msl")
@@ -1472,8 +1667,7 @@ class WeatherDe(BasePlugin):
             "key": "Pressure",
             "label": get_ui_label("pressure", language, "Pressure"),
             "measurement": round(pressure) if pressure is not None else "N/A",
-            "unit": 'hPa',
-            "icon": self.get_plugin_dir('icons/pressure.png')
+            "unit": 'hPa'
         })
 
         current_time = datetime.now(tz)
@@ -1491,8 +1685,7 @@ class WeatherDe(BasePlugin):
                 continue
         data_points.append({
             "key": "UV Index", "label": get_ui_label("uv_index", language, "UV Index"),
-            "measurement": current_uv_index, "unit": '',
-            "icon": self.get_plugin_dir('icons/uvi.png')
+            "measurement": current_uv_index, "unit": ''
         })
 
         visibility_m = current.get("visibility")
@@ -1513,8 +1706,7 @@ class WeatherDe(BasePlugin):
             "key": "Visibility",
             "label": get_ui_label("visibility", language, "Visibility"),
             "measurement": visibility_str,
-            "unit": UNITS[units]["distance"],
-            "icon": self.get_plugin_dir('icons/visibility.png')
+            "unit": UNITS[units]["distance"]
         })
 
         aqi_times = aqi_data.get('hourly', {}).get('time', [])
@@ -1536,7 +1728,7 @@ class WeatherDe(BasePlugin):
         data_points.append({
             "key": "Air Quality", "label": get_ui_label("air_quality", language, "Air Quality"),
             "measurement": current_aqi,
-            "unit": scale, "icon": self.get_plugin_dir('icons/aqi.png')
+            "unit": scale
         })
 
         return data_points

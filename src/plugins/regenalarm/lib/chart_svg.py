@@ -25,7 +25,7 @@ BAR_COLOR = "rgb(30,100,220)"    # Intensity - blue
 LINE_COLOR = "rgb(210,30,30)"    # Probability - red
 
 
-def _intensity_fraction(raw: float) -> float:
+def intensity_fraction(raw: float) -> float:
     """Clamps raw intensity into [0, 300] with a compression above 200
     (raw > 200 -> raw*0.5 + 100, capped at 300), giving a fraction =
     clamped/300 of full bar height."""
@@ -143,7 +143,7 @@ def render_chart_svg(intensities: list, probabilities: list, reference_time_minu
     bar_w = slot_w * (2 / 3)
     for j, raw in enumerate(intensities):
         x = left + (plot_w * j / (n - 1) if n > 1 else plot_w / 2)
-        frac = _intensity_fraction(float(raw))
+        frac = intensity_fraction(float(raw))
         bar_h = plot_h * frac
         parts.append(f'<rect x="{x - bar_w / 2:.1f}" y="{bottom - bar_h:.1f}" width="{bar_w:.1f}" '
                      f'height="{bar_h:.1f}" fill="{BAR_COLOR}"/>')

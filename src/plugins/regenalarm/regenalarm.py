@@ -53,7 +53,10 @@ import requests
 from utils.http_client import get_http_session
 
 from .lib.forecast import build_forecast_request, parse_forecast_response, extract_map_image
-from .lib.map_svg import MAP_VIEWBOX_W, MAP_VIEWBOX_H, render_marker_and_trajectory
+from .lib.map_svg import (
+    MAP_VIEWBOX_W, MAP_VIEWBOX_H, MAP_CROP_X, MAP_CROP_Y, MAP_CROP_W, MAP_CROP_H,
+    render_marker_and_trajectory,
+)
 from .lib.chart_svg import render_chart_svg
 
 logger = logging.getLogger(__name__)
@@ -225,6 +228,10 @@ class Regenalarm(BasePlugin):
             template_params["map_borders_svg"] = _MAP_BORDERS_SVG
             template_params["map_viewbox_w"] = MAP_VIEWBOX_W
             template_params["map_viewbox_h"] = MAP_VIEWBOX_H
+            template_params["map_crop_x"] = MAP_CROP_X
+            template_params["map_crop_y"] = MAP_CROP_Y
+            template_params["map_crop_w"] = MAP_CROP_W
+            template_params["map_crop_h"] = MAP_CROP_H
             template_params["rain_image_data_uri"] = "data:image/png;base64," + base64.b64encode(rain_png).decode("ascii")
             template_params["map_marker_svg"] = render_marker_and_trajectory(
                 parsed.location_xy, parsed.location_uv, rain_native_size,
@@ -289,7 +296,10 @@ class Regenalarm(BasePlugin):
 
         layout = {"header_h": header_h, "header_top_gap": header_top_gap, "content_h": content_h, "gap": gap}
         if has_map and has_chart:
-            map_aspect = MAP_VIEWBOX_W / MAP_VIEWBOX_H
+            # Aspect of the CROPPED viewBox (what's actually visible), not
+            # the full 936x1026 asset - otherwise this still budgets width
+            # for the dead margins the crop just removed.
+            map_aspect = MAP_CROP_W / MAP_CROP_H
             ideal_map_w = content_h * map_aspect
             map_w = round(max(content_w * 0.32, min(ideal_map_w, content_w * 0.62)))
             layout["map_w"] = map_w

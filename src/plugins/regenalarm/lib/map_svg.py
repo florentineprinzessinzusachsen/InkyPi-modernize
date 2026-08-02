@@ -21,6 +21,23 @@ from html import escape
 MAP_VIEWBOX_W = 936
 MAP_VIEWBOX_H = 1026
 
+# germany_bkg.svg/germany_borders.svg's paths don't reach the edges of the
+# full 936x1026 box above (measured via a headless-Chromium getBBox() pass
+# over both files' combined paths: ink spans roughly x=[139,810],
+# y=[87,999]) - composited at 0 0 936 1026 as before, that dead margin
+# reads as misaligned/off-center whitespace once the map is placed in a
+# tight container (e.g. a narrow grid column) rather than a large
+# letterboxed panel. This is a second, independent crop window into the
+# SAME coordinate space (~10px padding around the measured ink) - every
+# other coordinate in this module (location marker, trajectory, and the
+# rain-image overlay drawn at 0 0 MAP_VIEWBOX_W MAP_VIEWBOX_H) stays in the
+# original 936x1026 space; only the SVG's outer viewBox attribute (in the
+# consuming template) should use these instead of "0 0 936 1026".
+MAP_CROP_X = 130
+MAP_CROP_Y = 75
+MAP_CROP_W = 690
+MAP_CROP_H = 935
+
 LOCATION_COLOR = "rgb(36,35,172)"
 TRAJECTORY_COLOR = "rgb(76,76,76)"
 LABEL_BADGE_FILL = "rgba(204,204,204,0.95)"
