@@ -56,7 +56,7 @@ class RaspberryPi:
         self.SPI = spidev.SpiDev()
         self.GPIO_RST_PIN = gpiozero.LED(self.RST_PIN)
         self.GPIO_DC_PIN = gpiozero.LED(self.DC_PIN)
-        # self.GPIO_CS_PIN     = gpiozero.LED(self.CS_PIN)
+        self.GPIO_CS_PIN = gpiozero.LED(self.CS_PIN)
         self.GPIO_PWR_PIN = gpiozero.LED(self.PWR_PIN)
         self.GPIO_BUSY_PIN = gpiozero.Button(self.BUSY_PIN, pull_up=False)
 
@@ -73,11 +73,11 @@ class RaspberryPi:
                 self.GPIO_DC_PIN.on()
             else:
                 self.GPIO_DC_PIN.off()
-        # elif pin == self.CS_PIN:
-        #     if value:
-        #         self.GPIO_CS_PIN.on()
-        #     else:
-        #         self.GPIO_CS_PIN.off()
+        elif pin == self.CS_PIN:
+            if value:
+                self.GPIO_CS_PIN.on()
+            else:
+                self.GPIO_CS_PIN.off()
         elif pin == self.PWR_PIN:
             if value:
                 self.GPIO_PWR_PIN.on()
@@ -91,8 +91,8 @@ class RaspberryPi:
             return bool(self.GPIO_RST_PIN.value)
         elif pin == self.DC_PIN:
             return bool(self.GPIO_DC_PIN.value)
-        # elif pin == self.CS_PIN:
-        #     return self.CS_PIN.value
+        elif pin == self.CS_PIN:
+            return bool(self.GPIO_CS_PIN.value)
         elif pin == self.PWR_PIN:
             return bool(self.GPIO_PWR_PIN.value)
         return False
@@ -145,6 +145,11 @@ class RaspberryPi:
             self.SPI.open(0, 0)
             self.SPI.max_speed_hz = 4000000
             self.SPI.mode = 0b00
+            # CS is driven manually via GPIO_CS_PIN (send_command/send_data in
+            # the epd driver toggle it explicitly); the SPI peripheral's own
+            # automatic hardware CS does not reliably frame transfers on this
+            # setup, leaving the panel never actually seeing valid commands.
+            self.SPI.no_cs = True
         return 0
 
     def module_exit(self, cleanup: bool = False) -> None:
@@ -153,13 +158,14 @@ class RaspberryPi:
 
         self.GPIO_RST_PIN.off()
         self.GPIO_DC_PIN.off()
+        self.GPIO_CS_PIN.off()
         self.GPIO_PWR_PIN.off()
         logger.debug("close 5V, Module enters 0 power consumption ...")
 
         if cleanup:
             self.GPIO_RST_PIN.close()
             self.GPIO_DC_PIN.close()
-            # self.GPIO_CS_PIN.close()
+            self.GPIO_CS_PIN.close()
             self.GPIO_PWR_PIN.close()
             self.GPIO_BUSY_PIN.close()
 

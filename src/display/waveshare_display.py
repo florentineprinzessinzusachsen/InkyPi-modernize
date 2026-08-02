@@ -167,8 +167,14 @@ class WaveshareDisplay(AbstractDisplay):
         # Assume device was in sleep mode.
         self.epd_display_init()
 
-        # Clear residual pixels before updating the image.
-        self.epd_display.Clear()
+        # A full-refresh display() call already cycles the panel through its
+        # own waveform to transition cleanly from whatever image it's
+        # currently holding to the new one (this is what "full refresh" means
+        # on e-paper panels) - a separate Clear() beforehand just repeats that
+        # same multi-second refresh cycle for no visual benefit, roughly
+        # doubling update time. Waveshare's own demos only call Clear() once
+        # per session (before the first draw / before final sleep), never
+        # between successive display() calls.
 
         # Display the image on the WS display.
         if not self.bi_color_display:

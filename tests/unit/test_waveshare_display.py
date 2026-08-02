@@ -121,7 +121,9 @@ def test_waveshare_display_image_mono(monkeypatch, device_config_dev):
 
     epd = driver.epd_display
     assert epd.inited is True
-    assert epd.cleared is True
+    # Clear() is intentionally not called on routine updates - a full-refresh
+    # display() already cycles the panel through its own waveform.
+    assert epd.cleared is False
     assert len(epd.displayed) == 1
     (buf, size), args = epd.displayed[0]
     assert size == img.size
@@ -141,7 +143,9 @@ def test_waveshare_display_image_bicolor(monkeypatch, device_config_dev):
 
     epd = driver.epd_display
     assert epd.inited is True
-    assert epd.cleared is True
+    # Clear() is intentionally not called on routine updates - a full-refresh
+    # display() already cycles the panel through its own waveform.
+    assert epd.cleared is False
     # bi-color path uses two buffers
     assert len(epd.displayed) == 1
     buf1, buf2 = epd.displayed[0]
