@@ -175,24 +175,22 @@
   margin-left: -13%;
 }
 
-/* current-temp's default line-height ("normal", ~1.45x at this font
-   size) needs more vertical room than its own height:50% box actually
-   is, so the "22" text overflows past its box's bottom edge by ~23px
-   (measured via Range.getBoundingClientRect) - invisible in the box
-   model but visibly pushing the rendered number (and the centered
-   block as a whole) lower than intended. Tightening it removes that
-   overflow, so the block's already-centered box (justify-content:center,
-   base rule) matches what's actually painted on screen. */
-.today-container.with-map .current-temp {
-  line-height: 1;
-}
-
 .current-temp {
   font-size: 45cqmin;
   text-align: center;
   align-content: end;
   position: relative;
   height: 50%;
+}
+
+/* current-temp's default line-height ("normal", ~1.45x at this font
+   size) needs more vertical room than its own height:50% box actually
+   has, so the number overflows past its box's bottom edge (measured
+   via Range.getBoundingClientRect on the text node - invisible to the
+   box model, but visibly rendered lower on screen than the box
+   implies). Tightening it removes most of that overflow. */
+.today-container.with-map .current-temp {
+  line-height: 1;
 }
 
 .temperature-unit {
