@@ -54,12 +54,21 @@ _PLUGIN_TIMEOUT_DEFAULTS_S = {
     # OpenAI/Google image generation routinely takes longer than the generic
     # 60s guard, especially when a prompt remix runs first.
     "ai_image": 180.0,
+    # Combines calendar_auth's ICS fetch/parse/recurrence-expansion and
+    # abfahrtzeiten's multi-stop departure fetch into one render, plus the
+    # Chromium screenshot - measured ~25s in-process with zero contention on
+    # a real Pi Zero 2 W, but that excludes subprocess spawn overhead, and
+    # this hardware is memory-constrained enough (415MB RAM, already
+    # swapping at idle) that spawn alone has been observed taking ~19s
+    # before the plugin's own code even starts.
+    "cal_abfahrt": 120.0,
 }
 _MANUAL_WAIT_DEFAULTS_S = {
     # Wait for the generated image to be saved, not the slow e-paper write.
     # Keep this slightly above the plugin timeout so the caller sees the
     # plugin's real result instead of a queue wait timeout.
     "ai_image": 210.0,
+    "cal_abfahrt": 140.0,
 }
 
 
