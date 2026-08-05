@@ -35,9 +35,9 @@ PROVIDER_BASES = {
 PROVIDER_LABELS = {"vbb": "VBB", "bvg": "BVG", "db": "DB"}
 
 DEPARTURES_DURATION_MIN = 60
-DEPARTURES_RESULTS = 30
+DEPARTURES_RESULTS = 20  # pre-filter cap; MAX_FETCHED_DEPARTURES below is the real (post-filter) cap
 MAX_FETCHED_DEPARTURES = 12  # raw per-stop fetch cap, ahead of display truncation below
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = 6  # kept short so a hung provider fails fast within the executor's 60s attempt budget
 
 # How many departures a (cols, grid_rows)-shaped row can show. Tuned by
 # hand per shape rather than one formula, since "how many rows visually
