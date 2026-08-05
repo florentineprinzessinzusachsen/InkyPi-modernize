@@ -726,7 +726,11 @@ class WeatherDe(BasePlugin):
             self._extract_sun_times_for_graph(template_params, settings, tz)
         except Exception as e:
             logger.error(f"{weather_provider} request failed: {str(e)}")
-            raise RuntimeError(f"{weather_provider} request failure, please check logs.")
+            # Preserve the real exception text (not just a generic wrapper) so
+            # utils/fallback_image.py's sanitizer can classify it (timeout,
+            # connection error, 404, ...) instead of always falling through
+            # to its fully generic "check configuration" message.
+            raise RuntimeError(f"{weather_provider}: {e}") from e
 
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
@@ -1791,7 +1795,7 @@ class WeatherDe(BasePlugin):
         response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve weather data: {response.content}")
-            raise RuntimeError("Failed to retrieve weather data.")
+            raise RuntimeError(f"Failed to retrieve weather data (HTTP {response.status_code}).")
 
         return response.json()
 
@@ -1801,7 +1805,7 @@ class WeatherDe(BasePlugin):
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to get air quality data: {response.content}")
-            raise RuntimeError("Failed to retrieve air quality data.")
+            raise RuntimeError(f"Failed to retrieve air quality data (HTTP {response.status_code}).")
 
         return response.json()
 
@@ -1811,7 +1815,7 @@ class WeatherDe(BasePlugin):
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to get location: {response.content}")
-            raise RuntimeError("Failed to retrieve location.")
+            raise RuntimeError(f"Failed to retrieve location (HTTP {response.status_code}).")
 
         location_data = response.json()[0]
         location_str = f"{location_data.get('name')}, {location_data.get('state', location_data.get('country'))}"
@@ -1825,7 +1829,7 @@ class WeatherDe(BasePlugin):
 
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Open-Meteo weather data: {response.content}")
-            raise RuntimeError("Failed to retrieve Open-Meteo weather data.")
+            raise RuntimeError(f"Failed to retrieve Open-Meteo weather data (HTTP {response.status_code}).")
 
         return response.json()
 
@@ -1834,7 +1838,7 @@ class WeatherDe(BasePlugin):
         response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Open-Meteo air quality data: {response.content}")
-            raise RuntimeError("Failed to retrieve Open-Meteo air quality data.")
+            raise RuntimeError(f"Failed to retrieve Open-Meteo air quality data (HTTP {response.status_code}).")
 
         return response.json()
 
@@ -1843,7 +1847,7 @@ class WeatherDe(BasePlugin):
         response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Bright Sky current weather: {response.content}")
-            raise RuntimeError("Failed to retrieve Bright Sky current weather.")
+            raise RuntimeError(f"Failed to retrieve Bright Sky current weather (HTTP {response.status_code}).")
 
         return response.json()
 
@@ -1854,7 +1858,7 @@ class WeatherDe(BasePlugin):
         response = get_http_session().get(url, timeout=30)
         if not 200 <= response.status_code < 300:
             logger.error(f"Failed to retrieve Bright Sky forecast: {response.content}")
-            raise RuntimeError("Failed to retrieve Bright Sky forecast.")
+            raise RuntimeError(f"Failed to retrieve Bright Sky forecast (HTTP {response.status_code}).")
 
         return response.json()
 

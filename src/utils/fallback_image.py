@@ -77,7 +77,7 @@ _FRIENDLY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # Auth / API-key style errors
     (
         re.compile(
-            r"\b(?:API key|api_key|apikey)\b.*(?:missing|required|invalid|unauthorized)",
+            r"\b(?:API key|api_key|apikey)\b.*(?:missing|required|invalid|unauthorized|not configured)",
             re.IGNORECASE,
         ),
         "This plugin is missing a valid API key. Update its settings.",
@@ -85,6 +85,14 @@ _FRIENDLY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"\b(?:401|Unauthorized|Forbidden|403)\b"),
         "The remote service rejected the request (authentication failed).",
+    ),
+    (
+        re.compile(r"\b404\b"),
+        "The requested resource was not found (404). Check the configured URL, ID, or address in settings.",
+    ),
+    (
+        re.compile(r"\b5\d\d\b"),
+        "The remote service is having problems (server error). Try again later.",
     ),
 )
 

@@ -35,7 +35,7 @@ PROVIDER_BASES = {
 PROVIDER_LABELS = {"vbb": "VBB", "bvg": "BVG", "db": "DB"}
 
 DEPARTURES_DURATION_MIN = 60
-DEPARTURES_RESULTS = 20  # pre-filter cap; MAX_FETCHED_DEPARTURES below is the real (post-filter) cap
+DEPARTURES_RESULTS = 15  # pre-filter cap; MAX_FETCHED_DEPARTURES below is the real (post-filter) cap
 MAX_FETCHED_DEPARTURES = 12  # raw per-stop fetch cap, ahead of display truncation below
 REQUEST_TIMEOUT = 6  # kept short so a hung provider fails fast within the executor's 60s attempt budget
 
@@ -152,10 +152,18 @@ class Abfahrtzeiten(BasePlugin):
             raise RuntimeError("At least one stop is required. Add a stop in the plugin settings.")
 
         stop_groups = _group_by_stop(entries)
-        stops, any_succeeded = self._fetch_all(stop_groups)
+        stops, any_succeeded, fetch_errors = self._fetch_all(stop_groups)
 
         if not any_succeeded:
-            raise RuntimeError("Unable to fetch departures from any configured stop. Please try again later.")
+            # All stops almost always fail for the same underlying reason (one
+            # flaky/unreachable provider) - surface the first one so the
+            # shared fallback-image sanitizer (utils/fallback_image.py) can
+            # classify it (timeout, connection error, 404, ...) instead of
+            # always falling through to its fully generic message.
+            detail = fetch_errors[0] if fetch_errors else None
+            message = "Unable to fetch departures from any configured stop"
+            message += f": {detail}" if detail else ". Please try again later."
+            raise RuntimeError(message)
 
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
@@ -200,6 +208,7 @@ class Abfahrtzeiten(BasePlugin):
     def _fetch_all(self, stop_groups):
         stops = []
         any_succeeded = False
+        fetch_errors = []
         session = get_http_session()
 
         def fetch_one(group):
@@ -207,7 +216,11 @@ class Abfahrtzeiten(BasePlugin):
                 return group, self._fetch_stop_departures(session, group), None
             except Exception as e:
                 logger.warning(f"Abfahrtzeiten: departures fetch failed for stop {group['stopId']} ({group['provider']}): {e}")
-                return group, [], "Departures unavailable"
+                # Keep the raw exception text out of the per-stop dict (it's
+                # too technical/long for the small in-template error slot -
+                # see abfahrtzeiten.html's .stop-error) but hand it back so
+                # generate_image() can use it if every stop ends up failing.
+                return group, [], str(e)
 
         # Each stop is an independent request to a (often different)
         # transit API, previously fetched one at a time - with N stops
@@ -224,11 +237,13 @@ class Abfahrtzeiten(BasePlugin):
                 "name": group["stopName"],
                 "provider": PROVIDER_LABELS.get(group["provider"], group["provider"]),
                 "departures": rows,
-                "error": error,
+                "error": "Departures unavailable" if error else None,
             })
             if error is None:
                 any_succeeded = True
-        return stops, any_succeeded
+            else:
+                fetch_errors.append(error)
+        return stops, any_succeeded, fetch_errors
 
     def _fetch_stop_departures(self, session, group):
         base = PROVIDER_BASES[group["provider"]]
