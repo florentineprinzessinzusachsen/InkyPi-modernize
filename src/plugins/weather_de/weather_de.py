@@ -795,7 +795,19 @@ class WeatherDe(BasePlugin):
         Uses the peak (max) value per bucket. Regenalarm is a short-range
         radar nowcast (on the order of a couple of hours), so buckets
         beyond its coverage window are expected to stay None - that's the
-        correct "no data" state for this hour, not a bug."""
+        correct "no data" state for this hour, not a bug.
+
+        reference_time_minutes is Regenalarm's own clock, which routinely
+        lands a couple of minutes BEFORE the device's "now" (it's the
+        timestamp of the most recent completed radar sweep, not a
+        request-time echo) - a plain `(sample_minutes - now_minutes) %
+        1440` turns that small negative diff into ~1439, i.e. it silently
+        dumps the most important sample (the current one) into "23 hours
+        from now" instead of bucket 0, corrupting the graph's x-axis at
+        both ends. Recentering the modulo into (-720, 720] and clamping
+        any remaining negative (mildly stale) diff to 0 fixes both the
+        near-now case and genuine day-boundary wraparound (e.g. now
+        23:55, sample 00:05 -> should still land in bucket 0)."""
         intensities = regenalarm_data.intensities or []
         probabilities = regenalarm_data.probabilities or []
         n = min(len(intensities), len(probabilities))
@@ -811,7 +823,8 @@ class WeatherDe(BasePlugin):
         probability_buckets = [None] * num_hours
         for j in range(n):
             sample_minutes = (ref + j * interval) % 1440
-            bucket = int(((sample_minutes - now_minutes) % 1440) // 60)
+            diff = ((sample_minutes - now_minutes + 720) % 1440) - 720
+            bucket = max(0, diff) // 60
             if bucket >= num_hours:
                 continue
             raw_intensity = float(intensities[j])
