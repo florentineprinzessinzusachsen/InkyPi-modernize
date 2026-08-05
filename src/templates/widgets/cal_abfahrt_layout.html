@@ -1,0 +1,171 @@
+{#- Layout picker for the Calendar + Departures plugin.
+
+    Two radio inputs presented as tiles, each carrying an abstracted diagram of
+    the layout it selects rather than a word: the left block is the agenda, the
+    right side is either one continuous departure board (board) or a grid of
+    per-stop cards (grid). The shape IS the label - which is the point, since
+    "Board" vs "Grid" tells you nothing until you have seen both renders.
+
+    No JS: a plain radio group plus :checked sibling selectors covers the whole
+    interaction, so this widget deliberately registers no initializer in
+    plugin_schema.js (initializeWidgets() no-ops when there is none). -#}
+
+{% set current_layout = plugin_settings.get('layout', 'board') if plugin_settings else 'board' %}
+
+<div class="layout-picker">
+  {% for opt in [
+      {'value': 'board', 'title': 'Board', 'desc': 'One merged departure list. Fits the most departures.'},
+      {'value': 'grid',  'title': 'Grid',  'desc': 'A card per stop, larger type. Easier to read from a distance.'}
+  ] %}
+  <label class="layout-option" for="layout-{{ opt.value }}">
+    <input
+      type="radio"
+      id="layout-{{ opt.value }}"
+      name="layout"
+      value="{{ opt.value }}"
+      {% if current_layout == opt.value %}checked{% endif %}
+    >
+    <span class="layout-tile">
+      <svg class="layout-diagram" viewBox="0 0 100 60" aria-hidden="true">
+        <rect class="lp-frame" x="0.75" y="0.75" width="98.5" height="58.5" rx="3"></rect>
+        {#- Agenda side: a date gutter tick plus event lines, narrow for the
+            grid layout's 206px rail, wider for the board layout's 40% pane. -#}
+        {% set agenda_w = 38 if opt.value == 'board' else 28 %}
+        {% for y in range(5) %}
+        <rect class="lp-tick" x="7" y="{{ 11 + y * 8 }}" width="7" height="3.5" rx="1.2"></rect>
+        <rect class="lp-line" x="17" y="{{ 11 + y * 8 }}" width="{{ agenda_w - 17 }}" height="3.5" rx="1.2"></rect>
+        {% endfor %}
+        <line class="lp-divider" x1="{{ agenda_w + 5 }}" y1="7" x2="{{ agenda_w + 5 }}" y2="53"></line>
+
+        {% if opt.value == 'board' %}
+        {#- One continuous board: many thin rows, no card chrome. -#}
+        {% for y in range(8) %}
+        <rect class="lp-row{% if loop.index0 is even %} is-alt{% endif %}"
+              x="{{ agenda_w + 11 }}" y="{{ 8 + y * 5.6 }}" width="42" height="4.2" rx="1.2"></rect>
+        {% endfor %}
+        {% else %}
+        {#- Four cards, each with a filled header bar and a few fat rows. -#}
+        {% for cx in [0, 1] %}{% for cy in [0, 1] %}
+        <g transform="translate({{ agenda_w + 11 + cx * 27 }}, {{ 8 + cy * 24 }})">
+          <rect class="lp-card" x="0" y="0" width="24" height="21" rx="2"></rect>
+          <rect class="lp-card-head" x="0" y="0" width="24" height="5.5" rx="2"></rect>
+          <rect class="lp-row" x="3" y="9" width="18" height="3.4" rx="1.2"></rect>
+          <rect class="lp-row" x="3" y="15" width="18" height="3.4" rx="1.2"></rect>
+        </g>
+        {% endfor %}{% endfor %}
+        {% endif %}
+      </svg>
+      <span class="layout-text">
+        <strong>{{ opt.title }}</strong>
+        <small>{{ opt.desc }}</small>
+      </span>
+    </span>
+  </label>
+  {% endfor %}
+</div>
+
+<style>
+  /* Scoped to .layout-picker so nothing here can leak into other widgets on
+     the same settings page. Colors come from the shared design tokens so the
+     tiles follow the light/dark aesthetic like every other control. */
+  .layout-picker {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .layout-picker .layout-option {
+    flex: 1 1 240px;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  /* Visually hidden, not display:none - the radio has to stay focusable and
+     reachable by keyboard/screen reader for the group to work at all. */
+  .layout-picker input[type="radio"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .layout-picker .layout-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 2px solid var(--surface-border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    height: 100%;
+  }
+
+  .layout-picker input:checked + .layout-tile {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+  }
+
+  .layout-picker input:focus-visible + .layout-tile {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .layout-picker .layout-diagram {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .layout-picker .lp-frame {
+    fill: var(--surface);
+    stroke: var(--surface-border);
+    stroke-width: 1.5;
+  }
+
+  .layout-picker .lp-tick,
+  .layout-picker .lp-card-head {
+    fill: var(--text-primary);
+  }
+
+  .layout-picker .lp-line,
+  .layout-picker .lp-row {
+    fill: var(--muted);
+  }
+
+  .layout-picker .lp-row.is-alt {
+    fill: var(--border-strong);
+  }
+
+  .layout-picker .lp-card {
+    fill: none;
+    stroke: var(--text-primary);
+    stroke-width: 1.2;
+  }
+
+  .layout-picker .lp-divider {
+    stroke: var(--surface-border);
+    stroke-width: 1.2;
+  }
+
+  .layout-picker input:checked + .layout-tile .lp-tick,
+  .layout-picker input:checked + .layout-tile .lp-card-head {
+    fill: var(--accent);
+  }
+
+  .layout-picker input:checked + .layout-tile .lp-card {
+    stroke: var(--accent);
+  }
+
+  .layout-picker .layout-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--text-primary);
+  }
+
+  .layout-picker .layout-text small {
+    color: var(--text-secondary);
+    line-height: 1.35;
+  }
+</style>

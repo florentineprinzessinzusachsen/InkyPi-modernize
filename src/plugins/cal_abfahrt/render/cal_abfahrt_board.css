@@ -1,0 +1,288 @@
+/* cal_abfahrt - "board" layout.
+ *
+ * Agenda on the left, ONE merged, chronologically sorted departure board on
+ * the right with the stop as a column instead of a per-stop header. That
+ * costs the per-stop grouping but buys the most departure rows: no header
+ * row, no card border and no inter-card gap is spent per stop, so an extra
+ * stop costs nothing beyond its own rows.
+ *
+ * Sizes derive from --s, a unit equal to 1px on a 480px-tall panel, so the
+ * whole layout scales linearly on a differently-sized display. The pixel
+ * costs in constants.py's LAYOUT_METRICS["board"] are measured against this
+ * file - change a line-height here and those need re-measuring.
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.board {
+  --s: calc(100dvh / 480);
+  --rule: #cccccc;
+  --muted: #5a5a5a;
+  --late: #b00020;
+
+  font-family: "Jost";
+  display: flex;
+  gap: calc(10 * var(--s));
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-cal {
+  flex: 0 0 40%;
+  border-right: calc(1 * var(--s)) solid var(--rule);
+  padding-right: calc(9 * var(--s));
+}
+
+.pane-dep {
+  flex: 1 1 0;
+}
+
+/* With only one half configured, that half takes the whole panel - the
+   divider and the fixed 40% split would otherwise leave a dead column. */
+.board.no-dep .pane-cal,
+.board.no-cal .pane-dep {
+  flex: 1 1 auto;
+  border-right: none;
+  padding-right: 0;
+}
+
+.pane-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: calc(14 * var(--s));
+  font-weight: bold;
+  letter-spacing: calc(0.6 * var(--s));
+  text-transform: uppercase;
+  border-bottom: calc(2 * var(--s)) solid #000;
+  padding-bottom: calc(1 * var(--s));
+}
+
+.pane-sub {
+  font-size: calc(11 * var(--s));
+  font-weight: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- agenda --- */
+
+.cal-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: calc(4 * var(--s));
+  overflow: hidden;
+}
+
+.cal-empty {
+  font-size: calc(12.5 * var(--s));
+  font-style: italic;
+  color: var(--muted);
+}
+
+.cal-day {
+  display: flex;
+  gap: calc(6 * var(--s));
+  padding: calc(2 * var(--s)) 0;
+  border-top: calc(1 * var(--s)) solid #ececec;
+}
+
+.cal-day:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.cal-date {
+  flex: 0 0 calc(58 * var(--s));
+  font-size: calc(12 * var(--s));
+  font-weight: bold;
+  line-height: calc(17 * var(--s));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cal-day.is-weekend .cal-date {
+  color: var(--muted);
+}
+
+.cal-day.is-today .cal-date {
+  background: #000;
+  color: #fff;
+  border-radius: calc(3 * var(--s));
+  padding: 0 calc(4 * var(--s));
+  align-self: flex-start;
+}
+
+.cal-events {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-event {
+  display: flex;
+  align-items: baseline;
+  gap: calc(5 * var(--s));
+  font-size: calc(12.5 * var(--s));
+  line-height: calc(17 * var(--s));
+}
+
+/* All-day events get a filled square in the time slot instead of a clock, in
+   that calendar's own color, so the time column stays aligned either way. */
+.ev-time,
+.ev-allday {
+  flex: 0 0 calc(32 * var(--s));
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  border-left: calc(3 * var(--s)) solid var(--ev-color);
+  padding-left: calc(5 * var(--s));
+}
+
+.ev-allday::before {
+  content: "▪";
+  color: var(--ev-color);
+}
+
+.ev-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- merged departure board --- */
+
+.dep-head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6 * var(--s));
+  padding: calc(3 * var(--s)) calc(2 * var(--s)) calc(1 * var(--s));
+  font-size: calc(9.5 * var(--s));
+  text-transform: uppercase;
+  letter-spacing: calc(0.4 * var(--s));
+  color: var(--muted);
+}
+
+.dep-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dep-row {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6 * var(--s));
+  padding: 0 calc(2 * var(--s));
+  border-top: calc(1 * var(--s)) solid var(--rule);
+  font-size: calc(13 * var(--s));
+  line-height: calc(17 * var(--s));
+}
+
+.dep-row:nth-child(even) {
+  background: #f2f2f2;
+}
+
+.dep-row.is-cancelled {
+  opacity: 0.55;
+}
+
+.dep-row.is-cancelled .dep-line,
+.dep-row.is-cancelled .dep-dir,
+.dep-row.is-cancelled .dep-time {
+  text-decoration: line-through;
+}
+
+.dep-note {
+  padding: calc(3 * var(--s)) calc(2 * var(--s));
+  font-size: calc(11 * var(--s));
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* Column widths are shared by .dep-head and .dep-row so the header labels
+   line up with the data without a real <table>. */
+.dep-min {
+  flex: 0 0 calc(26 * var(--s));
+  text-align: right;
+  font-size: calc(14 * var(--s));
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.dep-head .dep-min {
+  font-size: calc(9.5 * var(--s));
+  font-weight: normal;
+}
+
+.dep-line {
+  flex: 0 0 calc(32 * var(--s));
+  text-align: center;
+  font-size: calc(11 * var(--s));
+  font-weight: bold;
+  border: calc(1 * var(--s)) solid #000;
+  border-radius: calc(3 * var(--s));
+}
+
+.dep-head .dep-line {
+  border: none;
+  font-size: calc(9.5 * var(--s));
+  font-weight: normal;
+}
+
+.dep-dir {
+  flex: 1.35 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dep-stop {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: calc(11 * var(--s));
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dep-time {
+  flex: 0 0 calc(34 * var(--s));
+  text-align: right;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.dep-head .dep-time {
+  font-weight: normal;
+}
+
+/* Reserved, not collapsed when empty: an on-time row has to keep the same
+   width as a delayed one or the "ab" column zig-zags down the board. */
+.dep-delay {
+  flex: 0 0 calc(16 * var(--s));
+  font-size: calc(11 * var(--s));
+  font-weight: bold;
+  color: var(--late);
+  margin-left: calc(-3 * var(--s));
+}

@@ -1,0 +1,313 @@
+/* cal_abfahrt - "grid" layout.
+ *
+ * Narrow agenda rail on the left (one line per event, the date as a stacked
+ * weekday-over-number chip), departures as a grid of stop cards filling the
+ * rest. Departure rows stretch to share their card's height, which makes this
+ * the layout that reads from across the room - at the cost of the fewest
+ * agenda rows and the fewest departures per stop.
+ *
+ * Sizes derive from --s, a unit equal to 1px on a 480px-tall panel, so the
+ * whole layout scales linearly on a differently-sized display. The pixel
+ * costs in constants.py's LAYOUT_METRICS["grid"] are measured against this
+ * file - change a line-height here and those need re-measuring.
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.board {
+  --s: calc(100dvh / 480);
+  --rule: #c9c9c9;
+  --muted: #5a5a5a;
+  --late: #b00020;
+
+  font-family: "Jost";
+  display: flex;
+  gap: calc(10 * var(--s));
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* --- agenda rail --- */
+
+.cal-rail {
+  flex: 0 0 calc(206 * var(--s));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: calc(1 * var(--s)) solid var(--rule);
+  padding-right: calc(9 * var(--s));
+}
+
+/* Only one half configured: it takes the whole panel rather than leaving the
+   rail's fixed width as a dead column. */
+.board.no-dep .cal-rail {
+  flex: 1 1 auto;
+  border-right: none;
+  padding-right: 0;
+}
+
+.rail-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: calc(13 * var(--s));
+  font-weight: bold;
+  letter-spacing: calc(0.6 * var(--s));
+  text-transform: uppercase;
+  border-bottom: calc(2 * var(--s)) solid #000;
+  padding-bottom: calc(1 * var(--s));
+  margin-bottom: calc(4 * var(--s));
+}
+
+.rail-sub {
+  font-size: calc(10 * var(--s));
+  font-weight: normal;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cal-empty {
+  font-size: calc(12 * var(--s));
+  font-style: italic;
+  color: var(--muted);
+}
+
+.cal-day {
+  display: flex;
+  gap: calc(6 * var(--s));
+  padding: calc(2.5 * var(--s)) 0;
+  border-top: calc(1 * var(--s)) solid #ececec;
+}
+
+.cal-day:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Stacked weekday-over-number chip: 22px of gutter instead of the ~58px a
+   "Mi 06.08." single line needs, which is what makes a 206px rail workable.
+   It is also why a one-event day costs more than one event line - see
+   LAYOUT_METRICS["grid"]["cal_day_min_body"]. */
+.cal-date {
+  flex: 0 0 calc(22 * var(--s));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: calc(11 * var(--s));
+  padding-top: calc(2 * var(--s));
+}
+
+.cal-dow {
+  font-size: calc(9 * var(--s));
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cal-num {
+  font-size: calc(14 * var(--s));
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-day.is-today .cal-date {
+  background: #000;
+  color: #fff;
+  border-radius: calc(3 * var(--s));
+  align-self: flex-start;
+  padding-bottom: calc(2 * var(--s));
+}
+
+.cal-day.is-today .cal-dow {
+  color: #fff;
+}
+
+.cal-day.is-weekend .cal-num {
+  color: var(--muted);
+}
+
+.cal-events {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--s));
+}
+
+.cal-event {
+  display: flex;
+  align-items: baseline;
+  gap: calc(4 * var(--s));
+  font-size: calc(12 * var(--s));
+  line-height: calc(15 * var(--s));
+  border-left: calc(3 * var(--s)) solid var(--ev-color);
+  padding-left: calc(4 * var(--s));
+}
+
+.ev-time {
+  flex: 0 0 calc(30 * var(--s));
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+/* No time column for an all-day event here (unlike the board layout): the
+   rail is too narrow to spend 30px on a marker, so the colored left border
+   carries the calendar identity on its own. */
+.ev-allday {
+  display: none;
+}
+
+.ev-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- departure grid --- */
+
+.dep-area {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.dep-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--stop-columns, 2), 1fr);
+  grid-auto-rows: 1fr;
+  gap: calc(8 * var(--s));
+  min-height: 0;
+}
+
+/* An odd stop out would leave a hole in the last row; spanning it keeps the
+   block rectangular. Python decides when this applies (grid_span_last). */
+.dep-grid.span-last > .stop-card:last-child {
+  grid-column: 1 / -1;
+}
+
+.stop-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: calc(1 * var(--s)) solid #000;
+  border-radius: calc(4 * var(--s));
+  overflow: hidden;
+}
+
+.stop-head {
+  background: #000;
+  color: #fff;
+  padding: calc(1 * var(--s)) calc(6 * var(--s));
+}
+
+.stop-name {
+  display: block;
+  font-size: calc(13 * var(--s));
+  font-weight: bold;
+  line-height: calc(18 * var(--s));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Rows share the card's leftover height evenly rather than stacking at a
+   fixed height - a stop with fewer departures gets taller, more legible rows
+   instead of a block of dead space under the last one. */
+.stop-rows {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dep-row {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--s));
+  padding: 0 calc(6 * var(--s));
+  border-top: calc(1 * var(--s)) solid var(--rule);
+  font-size: calc(14 * var(--s));
+}
+
+.dep-row:first-child {
+  border-top: none;
+}
+
+.dep-row.is-cancelled {
+  opacity: 0.55;
+}
+
+.dep-row.is-cancelled .dep-line,
+.dep-row.is-cancelled .dep-dir,
+.dep-row.is-cancelled .dep-time {
+  text-decoration: line-through;
+}
+
+.dep-note {
+  padding: calc(4 * var(--s)) calc(6 * var(--s));
+  font-size: calc(12 * var(--s));
+  font-style: italic;
+  color: var(--muted);
+}
+
+.dep-line {
+  flex: 0 0 calc(34 * var(--s));
+  text-align: center;
+  font-size: calc(12 * var(--s));
+  font-weight: bold;
+  border: calc(1 * var(--s)) solid #000;
+  border-radius: calc(3 * var(--s));
+  line-height: calc(16 * var(--s));
+}
+
+.dep-dir {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dep-platform {
+  flex: none;
+  font-size: calc(10 * var(--s));
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.dep-time {
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.dep-delay {
+  font-size: calc(11 * var(--s));
+  font-weight: bold;
+  color: var(--late);
+}
+
+/* The slot is always emitted so an on-time row needs no separate template
+   branch; :empty collapses it including its flex gap. Unlike the board
+   layout there is no column below it to keep aligned. */
+.dep-delay:empty {
+  display: none;
+}

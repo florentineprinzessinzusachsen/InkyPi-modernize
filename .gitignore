@@ -190,6 +190,11 @@ src/config/plugin_history/
 src/config/device.local.json
 src/config/device_dev.json
 
+# Snapshot of frame's real calendar events / departures, pulled over ssh as a
+# fixture for offline layout work on cal_abfahrt. Contains private calendar
+# entries - keep it on disk, out of git.
+src/plugins/*/live_data.json
+
 # But keep static asset PNGs (icons, plugin assets) tracked
 !src/static/icons/*.png
 !src/plugins/**/icon.png

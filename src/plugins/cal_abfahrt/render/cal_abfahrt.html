@@ -1,0 +1,134 @@
+{% extends "plugin.html" %}
+
+{#- Agenda rows. Shared by both layouts: only the date gutter differs, since
+    the "board" layout has room for "Mi 06.08." on one line while the "grid"
+    layout's 206px rail only fits a stacked weekday-over-number chip. -#}
+{% macro agenda_days(days, strings, stacked) -%}
+  {% if not days %}
+  <div class="cal-empty">{{ strings.no_events }}</div>
+  {% endif %}
+  {% for day in days %}
+  <div class="cal-day{% if day.is_weekend %} is-weekend{% endif %}{% if day.is_today %} is-today{% endif %}">
+    <div class="cal-date">
+      {%- if stacked -%}
+      <span class="cal-dow">{{ day.weekday }}</span><span class="cal-num">{{ day.daynum }}</span>
+      {%- else -%}
+      {{ day.label }}
+      {%- endif -%}
+    </div>
+    <div class="cal-events">
+      {% for event in day.events %}
+      <div class="cal-event" style="--ev-color: {{ event.color }};">
+        {%- if event.all_day -%}
+        <span class="ev-allday" aria-label="{{ strings.all_day }}"></span>
+        {%- else -%}
+        <span class="ev-time">{{ event.time }}</span>
+        {%- endif -%}
+        <span class="ev-title">{{ event.title }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{%- endmacro %}
+
+{#- Always emitted, empty when on time. The board layout's CSS keeps the slot
+    reserved so its "ab" column stays aligned all the way down; the grid
+    layout collapses it with .dep-delay:empty. -#}
+{% macro delay(departure) -%}
+<span class="dep-delay">{% if departure.delay %}+{{ departure.delay }}{% endif %}</span>
+{%- endmacro %}
+
+{% block content %}
+<div class="board{% if not has_calendars %} no-cal{% endif %}{% if not has_stops %} no-dep{% endif %}"
+     {% if grid_columns %}style="--stop-columns: {{ grid_columns }};"{% endif %}>
+
+  {% if layout == 'grid' %}
+
+  {% if has_calendars %}
+  <section class="cal-rail">
+    <div class="rail-title">
+      <span>{{ strings.calendar }}</span>
+      {% if show_refresh_time %}<span class="rail-sub">{{ last_refresh_time }}</span>{% endif %}
+    </div>
+    <div class="cal-list">
+      {{ agenda_days(days, strings, true) }}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if has_stops %}
+  <section class="dep-area">
+    <div class="dep-grid{% if grid_span_last %} span-last{% endif %}">
+      {% for stop in stop_cards %}
+      <div class="stop-card">
+        <div class="stop-head"><span class="stop-name">{{ stop.name }}</span></div>
+        <div class="stop-rows">
+          {% if stop.error %}
+          <div class="dep-note">{{ strings.unavailable }}</div>
+          {% elif not stop.departures %}
+          <div class="dep-note">{{ strings.no_departures }}</div>
+          {% else %}
+          {% for departure in stop.departures %}
+          <div class="dep-row{% if departure.cancelled %} is-cancelled{% endif %}">
+            <span class="dep-line">{{ departure.line }}</span>
+            <span class="dep-dir">{{ departure.direction }}</span>
+            {%- if show_platform and departure.platform %}<span class="dep-platform">{{ departure.platform }}</span>{% endif -%}
+            <span class="dep-time">{{ departure.time }}</span>{{ delay(departure) }}
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% else %}
+
+  {% if has_calendars %}
+  <section class="pane pane-cal">
+    <div class="pane-title">{{ strings.calendar }}</div>
+    <div class="cal-list">
+      {{ agenda_days(days, strings, false) }}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if has_stops %}
+  <section class="pane pane-dep">
+    <div class="pane-title">
+      <span>{{ strings.departures }}</span>
+      {% if show_refresh_time %}<span class="pane-sub">{{ last_refresh_time }}</span>{% endif %}
+    </div>
+    <div class="dep-head">
+      <span class="dep-min">{{ strings.min }}</span>
+      <span class="dep-line">{{ strings.line }}</span>
+      <span class="dep-dir">{{ strings.direction }}</span>
+      <span class="dep-stop">{{ strings.stop }}</span>
+      <span class="dep-time">{{ strings.leaves }}</span>
+    </div>
+    <div class="dep-list">
+      {% if not board_rows %}
+      <div class="dep-note">{{ strings.no_departures }}</div>
+      {% endif %}
+      {% for departure in board_rows %}
+      <div class="dep-row{% if departure.cancelled %} is-cancelled{% endif %}">
+        <span class="dep-min">{% if departure.minutes %}{{ departure.minutes }}{% else %}{{ strings.now }}{% endif %}</span>
+        <span class="dep-line">{{ departure.line }}</span>
+        <span class="dep-dir">{{ departure.direction }}</span>
+        <span class="dep-stop">{{ departure.stop }}</span>
+        <span class="dep-time">{{ departure.time }}</span>{{ delay(departure) }}
+      </div>
+      {% endfor %}
+      {% if stop_errors %}
+      <div class="dep-note">{{ strings.unavailable }}: {{ stop_errors | join(', ') }}</div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}
