@@ -372,7 +372,16 @@ def setup_csp_nonce(app: Flask) -> None:
 _DEFAULT_CSP_TEMPLATE = (
     "default-src 'self'; img-src 'self' data: https:; "
     "style-src 'self' 'unsafe-inline'; "
-    "script-src 'self' 'nonce-{nonce}'; font-src 'self' data: https:"
+    "script-src 'self' 'nonce-{nonce}'; font-src 'self' data: https:; "
+    # The abfahrtzeiten-stops settings widget (used by both the abfahrtzeiten
+    # and cal_abfahrt plugins - see plugin_schema.js's abfahrtzeitenSearchAddress/
+    # NearbyStops/LinesForStop) calls these free, keyless HAFAS-wrapper transit
+    # APIs directly from the browser rather than through a backend route (this
+    # fork's "no plugin-level backend routes" convention). Without an explicit
+    # connect-src, fetch() to them falls back to default-src 'self' and is
+    # silently blocked - the wizard's catch-and-console.warn makes that look
+    # exactly like "no results", with no visible error anywhere.
+    "connect-src 'self' https://v6.vbb.transport.rest https://v6.bvg.transport.rest https://v6.db.transport.rest"
 )
 
 
