@@ -6,21 +6,6 @@
 }
 
 .weather-dashboard {
-  /* height:100% matches the built-in weather plugin's own dashboard rule.
-     It now resolves correctly because base_plugin/render/plugin.html's
-     <body> gets an explicit height (viewport height minus margins), which
-     .container (plugin.css) and this element's height:100% both cascade
-     from - previously nothing in that chain had a definite height, so it
-     silently fell back to auto (content-sized) instead. That's fixed at
-     the shared template level, not per-plugin.
-
-     .header and .chart-container both have fixed dvh heights;
-     .today-container/.forecast get explicit flex weights below so they
-     share whatever's actually left after those two, instead of each
-     claiming their full natural content size - with every optional
-     section enabled at once (graph, rain, moon phase), natural content
-     height exceeds what's available, so without this they'd still
-     overflow even inside a correctly-bounded container. */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -28,7 +13,7 @@
   gap: 1dvh;
   width: 100%;
   height: 100%;
-  font-family: "Jost"
+  font-family: "Jost";
 }
 
 .header {
@@ -40,10 +25,6 @@
   container-type: size;
 }
 
-/* Hiding the date (displayDate setting) only removes that one line, so
-   shrink the header itself too - otherwise the freed line just becomes
-   dead space instead of actually going back to today-container/forecast
-   (which share whatever's left over via their flex weights). */
 .header.no-date {
   height: 7dvh;
 }
@@ -121,14 +102,14 @@
      height via .regenalarm-map-svg's aspect-ratio, not by this column's
      width, as long as the column stays wide enough to not clip it).
 
-     The 2nd track (0.18fr) is an empty spacer - no element is placed in
+     The 2nd track is an empty spacer - no element is placed in
      it (col2/col3 are explicitly grid-column'd past it below) - purely
      to widen the col1/col2 gap a bit beyond the grid's own uniform
      `gap` (which applies equally to every adjacent track, so it alone
      can't make just one gap bigger). Measured with Playwright's
      getBoundingClientRect() at 800x480: col1/col2 gap was 19px before,
      ~34px with this spacer - col2/col3 unchanged. */
-  grid-template-columns: 1.35fr 0.12fr 0.65fr 1fr;
+  grid-template-columns: 1.35fr 0.1fr 0.65fr 1fr;
   gap: 2.4dvw;
 }
 
@@ -136,7 +117,6 @@
 .current-temperature {
   display: flex;
   flex-direction: row;
-  /* Column on small screens */
   align-items: center;
   justify-content: center;
   width: 50%;
@@ -162,11 +142,6 @@
   object-fit: contain;
 }
 
-/* A little tighter + a little smaller so the icon and the temperature
-   text read as one overlapping unit instead of two separate halves -
-   there's less width to spend once a 3rd (map) column exists. The icon
-   art itself has empty padding around the glyph, so pulling the text in
-   over that margin doesn't cover any actual ink. */
 .today-container.with-map .current-icon {
   max-width: 62%;
 }
@@ -181,15 +156,6 @@
   align-content: end;
   position: relative;
   height: 50%;
-}
-
-/* current-temp's default line-height ("normal", ~1.45x at this font
-   size) needs more vertical room than its own height:50% box actually
-   has, so the number overflows past its box's bottom edge (measured
-   via Range.getBoundingClientRect on the text node - invisible to the
-   box model, but visibly rendered lower on screen than the box
-   implies). Tightening it removes most of that overflow. */
-.today-container.with-map .current-temp {
   line-height: 1;
 }
 
@@ -198,7 +164,6 @@
   position: absolute;
   top: 0.6em;
 }
-
 
 /* Data Points Grid */
 .data-points {
@@ -336,7 +301,7 @@
   font-size: min(32cqh, 15cqi);
   text-align: center;
   font-weight: lighter;
-  height: 30%
+  height: 30%;
 }
 
 .data-point-measurement,
@@ -382,7 +347,7 @@
   border-radius: 1.2vw;
   min-width: 0;
   max-height: 100%;
-  gap: 0.5dvh
+  gap: 0.5dvh;
 }
 
 .forecast-day-name {
@@ -451,7 +416,7 @@
 }
 
 .separator {
-  border-top: 1px #AAA solid;
+  border-top: 1px #aaa solid;
   height: 1px;
   width: 90%;
   margin: 3px auto 0 auto;
@@ -493,7 +458,7 @@
 @media (max-aspect-ratio: 1) {
   .today-container {
     flex-direction: column;
-    gap: 1dvh
+    gap: 1dvh;
   }
 
   /* Current Weather Row */
@@ -511,7 +476,6 @@
   .data-point {
     height: 7dvh;
   }
-
 }
 
 @media (max-aspect-ratio: 1/2) {
@@ -519,7 +483,6 @@
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(2, 1fr);
   }
-
 }
 
 @media (min-aspect-ratio: 2) {
@@ -527,7 +490,6 @@
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
   }
-
 }
 
 @media (max-width: 250px) {
