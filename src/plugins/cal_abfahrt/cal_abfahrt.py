@@ -127,7 +127,8 @@ def _calendar_cache_path(device_config, url):
 
 
 def _load_calendar_cache(device_config, url):
-    """Returns the cached {etag, last_modified, body} dict for `url`, or None.
+    """Returns the cached {etag, last_modified, body, expanded} dict for
+    `url`, or None.
 
     Best-effort: a missing, corrupt, or unreadable cache file is treated the
     same as "no cache" rather than raised - caching is an optimization, never
@@ -143,18 +144,75 @@ def _load_calendar_cache(device_config, url):
     return data
 
 
-def _store_calendar_cache(device_config, url, etag, last_modified, body):
+def _store_calendar_cache(device_config, url, etag, last_modified, body, expanded=None):
     """Writes the cache file via a temp-file-plus-rename so a concurrent
     reader (another refresh, or this same file mid-read) never sees a
-    partially-written file."""
+    partially-written file.
+
+    `expanded`, when given, is the {date, events} same-day parse cache (see
+    _serialize_expanded_events) - stored alongside the raw body so a network
+    cache hit (304, body unchanged) can also skip re-parsing.
+    """
     try:
         path = _calendar_cache_path(device_config, url)
         tmp_path = f"{path}.tmp"
+        payload = {"etag": etag, "last_modified": last_modified, "body": body}
+        if expanded is not None:
+            payload["expanded"] = expanded
         with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump({"etag": etag, "last_modified": last_modified, "body": body}, f)
+            json.dump(payload, f)
         os.replace(tmp_path, path)
     except (OSError, AttributeError) as e:
         logger.debug("Could not write calendar cache for %s: %s", url, e)
+
+
+def _serialize_expanded_events(window_date, events):
+    """Packs a calendar's already-parsed-and-expanded event list for the
+    disk cache. `window_date` is range_start.date() - the expansion window
+    only changes once a day (see generate_image), so a cache entry is only
+    reused for a repeat render on the SAME calendar day."""
+    return {
+        "date": window_date.isoformat(),
+        "events": [
+            {
+                "title": e["title"],
+                "start": e["start"].isoformat(),
+                "end": e["end"].isoformat() if e["end"] else None,
+                "all_day": e["all_day"],
+            }
+            for e in events
+        ],
+    }
+
+
+def _deserialize_expanded_events(expanded, window_date, color, text_color):
+    """Inverse of _serialize_expanded_events, reattaching this render's
+    color/text_color (per-instance display settings, not calendar data, so
+    never part of the cached payload). Returns None if `expanded` is missing,
+    malformed, or was computed for a different day's window."""
+    if not isinstance(expanded, dict) or expanded.get("date") != window_date.isoformat():
+        return None
+    try:
+        events = []
+        for e in expanded["events"]:
+            all_day = e["all_day"]
+            start = date.fromisoformat(e["start"]) if all_day else datetime.fromisoformat(e["start"])
+            end = None
+            if e["end"]:
+                end = date.fromisoformat(e["end"]) if all_day else datetime.fromisoformat(e["end"])
+            events.append(
+                {
+                    "title": e["title"],
+                    "start": start,
+                    "end": end,
+                    "all_day": all_day,
+                    "color": color,
+                    "text_color": text_color,
+                }
+            )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return events
 
 
 # Trailing "(Berlin)" etc. on stop names, and a "via <route>" suffix on
@@ -603,16 +661,27 @@ class CalAbfahrt(BasePlugin):
         The two source plugins fetch concurrently but parse and expand back on
         the main thread afterwards; doing it here means one calendar's parse
         overlaps another's network wait instead of queueing behind it.
+
+        Two-tier cache (see the module docstring): a conditional GET can skip
+        the network transfer, but `icalendar.Calendar.from_ical()` measured
+        7+ seconds on a large real personal calendar - order of magnitude
+        more than the network fetch it was replacing. Since the expansion
+        window (range_start/range_end) only shifts once a day, a confirmed-
+        unchanged calendar (304) whose cached expansion was computed for
+        today's window can skip parsing AND expansion entirely, not just the
+        download.
         """
         url = entry["url"]
         if url.startswith("webcal://"):
             url = "https://" + url[len("webcal://") :]
+        color = entry["color"]
+        text_color = self._contrast_color(color)
+        window_date = range_start.date()
 
-        # Conditional GET - see the module docstring's caching note. Only
-        # sent when we actually have a prior body to fall back on, so a 304
-        # with no local cache (cache file deleted, first run raced, etc.)
-        # is treated as the genuine error it would be, not a mystery empty
-        # calendar.
+        # Conditional GET - only sent when we actually have a prior body to
+        # fall back on, so a 304 with no local cache (cache file deleted,
+        # first run raced, etc.) is treated as the genuine error it would
+        # be, not a mystery empty calendar.
         cached = _load_calendar_cache(device_config, url)
         headers = {}
         if cached:
@@ -631,7 +700,14 @@ class CalAbfahrt(BasePlugin):
                     f"Server returned 304 Not Modified for {url} but no local "
                     "cache exists to serve"
                 )
+            reused = _deserialize_expanded_events(
+                cached.get("expanded"), window_date, color, text_color
+            )
+            if reused is not None:
+                return reused
             raw = cached["body"]
+            etag = cached.get("etag")
+            last_modified = cached.get("last_modified")
         else:
             response.raise_for_status()
             # Explicit UTF-8 instead of response.text: see the module
@@ -642,13 +718,9 @@ class CalAbfahrt(BasePlugin):
             raw = response.content.decode("utf-8", errors="replace")
             etag = response.headers.get("ETag")
             last_modified = response.headers.get("Last-Modified")
-            if etag or last_modified:
-                _store_calendar_cache(device_config, url, etag, last_modified, raw)
 
         calendar = icalendar.Calendar.from_ical(raw)
 
-        color = entry["color"]
-        text_color = self._contrast_color(color)
         parsed = []
         for event in recurring_ical_events.of(calendar).between(range_start, range_end):
             start, end, all_day = self._parse_event_times(event, tz)
@@ -662,6 +734,11 @@ class CalAbfahrt(BasePlugin):
                     "text_color": text_color,
                 }
             )
+
+        if etag or last_modified:
+            expanded = _serialize_expanded_events(window_date, parsed)
+            _store_calendar_cache(device_config, url, etag, last_modified, raw, expanded)
+
         return parsed
 
     def _fetch_stop_departures(self, group, session):
