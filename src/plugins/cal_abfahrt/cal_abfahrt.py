@@ -38,14 +38,31 @@ Rendering notes (this plugin is deliberately faster than the two it replaces):
   * Departure requests ask the API to drop what this panel never reads
     (`pretty=false`, `linesOfStops=false`, `subStops=false`, `entrances=false`),
     which measured ~27% off the response body per stop.
+  * **Calendar fetches use HTTP conditional GET (`If-None-Match`/
+    `If-Modified-Since`), with the ETag/Last-Modified and last-known body
+    persisted to a small JSON file under `device_config.plugin_image_dir`.**
+    Measured against a real personal calendar: 727KB decompressed (134KB over
+    the wire even with gzip already on) and ~3s just for one fetch - by far
+    the largest cost in the whole render, dwarfing all four stops' departure
+    fetches combined (~20KB / ~0.2s each). A calendar server that supports
+    conditional GET (confirmed for SOGo) returns an empty-bodied 304 in a
+    fraction of that time when nothing changed, which is the common case
+    between the few-minutes playlist refresh interval. This is why the cache
+    has to be on disk, not the in-memory `utils/http_cache.py`: plugin
+    renders execute in a fresh subprocess each refresh (see base_plugin's
+    docstring on this), so anything held only in process memory is gone by
+    the next attempt. Best-effort throughout - any cache read/write failure
+    just falls back to an unconditional fetch, never breaks the render.
 
 Recommended playlist refresh interval: 2-5 minutes, driven by the departures
 half (the calendar half is happy with far less).
 """
 
+import hashlib
 import json
 import logging
 import math
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -98,6 +115,47 @@ DEPARTURES_QUERY = {
 }
 
 MAX_WORKERS = 8
+
+# Filename prefix for the on-disk ICS conditional-GET cache - see the module
+# docstring's "Calendar fetches use HTTP conditional GET" note.
+_ICS_CACHE_PREFIX = "_cal_abfahrt_ics_cache_"
+
+
+def _calendar_cache_path(device_config, url):
+    digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:32]
+    return os.path.join(device_config.plugin_image_dir, f"{_ICS_CACHE_PREFIX}{digest}.json")
+
+
+def _load_calendar_cache(device_config, url):
+    """Returns the cached {etag, last_modified, body} dict for `url`, or None.
+
+    Best-effort: a missing, corrupt, or unreadable cache file is treated the
+    same as "no cache" rather than raised - caching is an optimization, never
+    something a render should fail over.
+    """
+    try:
+        with open(_calendar_cache_path(device_config, url), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(data, dict) or not data.get("body"):
+        return None
+    return data
+
+
+def _store_calendar_cache(device_config, url, etag, last_modified, body):
+    """Writes the cache file via a temp-file-plus-rename so a concurrent
+    reader (another refresh, or this same file mid-read) never sees a
+    partially-written file."""
+    try:
+        path = _calendar_cache_path(device_config, url)
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump({"etag": etag, "last_modified": last_modified, "body": body}, f)
+        os.replace(tmp_path, path)
+    except (OSError, AttributeError) as e:
+        logger.debug("Could not write calendar cache for %s: %s", url, e)
+
 
 # Trailing "(Berlin)" etc. on stop names, and a "via <route>" suffix on
 # directions: both are noise once the panel is this narrow.
@@ -316,7 +374,7 @@ class CalAbfahrt(BasePlugin):
         auths = [self._auth_for_entry(entry, device_config) for entry in calendars]
 
         events, stops, failures = self._fetch_all(
-            calendars, auths, stop_groups, tz, range_start, range_end
+            calendars, auths, stop_groups, tz, range_start, range_end, device_config
         )
 
         if failures and not events and not stops_have_departures(stops):
@@ -464,7 +522,9 @@ class CalAbfahrt(BasePlugin):
     # Fetching
     # ------------------------------------------------------------------
 
-    def _fetch_all(self, calendars, auths, stop_groups, tz, range_start, range_end):
+    def _fetch_all(
+        self, calendars, auths, stop_groups, tz, range_start, range_end, device_config
+    ):
         """Runs every calendar and every stop request through ONE pool.
 
         Splitting them (as the two source plugins necessarily do) makes total
@@ -492,6 +552,7 @@ class CalAbfahrt(BasePlugin):
                     tz,
                     range_start,
                     range_end,
+                    device_config,
                 )
                 for entry, auth in zip(calendars, auths, strict=True)
             ]
@@ -534,7 +595,9 @@ class CalAbfahrt(BasePlugin):
 
         return events, stops, failures
 
-    def _fetch_calendar_events(self, entry, auth, session, tz, range_start, range_end):
+    def _fetch_calendar_events(
+        self, entry, auth, session, tz, range_start, range_end, device_config
+    ):
         """Fetch, parse AND expand one calendar, all inside the worker thread.
 
         The two source plugins fetch concurrently but parse and expand back on
@@ -545,14 +608,43 @@ class CalAbfahrt(BasePlugin):
         if url.startswith("webcal://"):
             url = "https://" + url[len("webcal://") :]
 
-        response = session.get(url, auth=auth, timeout=CALENDAR_TIMEOUT)
-        response.raise_for_status()
+        # Conditional GET - see the module docstring's caching note. Only
+        # sent when we actually have a prior body to fall back on, so a 304
+        # with no local cache (cache file deleted, first run raced, etc.)
+        # is treated as the genuine error it would be, not a mystery empty
+        # calendar.
+        cached = _load_calendar_cache(device_config, url)
+        headers = {}
+        if cached:
+            if cached.get("etag"):
+                headers["If-None-Match"] = cached["etag"]
+            if cached.get("last_modified"):
+                headers["If-Modified-Since"] = cached["last_modified"]
 
-        # Explicit UTF-8 instead of response.text: see the module docstring -
-        # a missing charset header sends requests into full-body charset
-        # detection, which costs more than everything after it. RFC 5545
-        # mandates UTF-8, so errors="replace" only guards a broken server.
-        raw = response.content.decode("utf-8", errors="replace")
+        response = session.get(
+            url, auth=auth, timeout=CALENDAR_TIMEOUT, headers=headers or None
+        )
+
+        if response.status_code == 304:
+            if not cached:
+                raise RuntimeError(
+                    f"Server returned 304 Not Modified for {url} but no local "
+                    "cache exists to serve"
+                )
+            raw = cached["body"]
+        else:
+            response.raise_for_status()
+            # Explicit UTF-8 instead of response.text: see the module
+            # docstring - a missing charset header sends requests into
+            # full-body charset detection, which costs more than everything
+            # after it. RFC 5545 mandates UTF-8, so errors="replace" only
+            # guards a broken server.
+            raw = response.content.decode("utf-8", errors="replace")
+            etag = response.headers.get("ETag")
+            last_modified = response.headers.get("Last-Modified")
+            if etag or last_modified:
+                _store_calendar_cache(device_config, url, etag, last_modified, raw)
+
         calendar = icalendar.Calendar.from_ical(raw)
 
         color = entry["color"]
