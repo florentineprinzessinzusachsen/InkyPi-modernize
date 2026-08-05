@@ -16,7 +16,7 @@ budget of the BVG/VBB APIs.
 """
 
 from plugins.base_plugin.base_plugin import BasePlugin
-from plugins.base_plugin.settings_schema import schema, section, widget
+from plugins.base_plugin.settings_schema import schema, section, row, field, widget
 from utils.http_client import get_http_session
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -138,6 +138,21 @@ class Abfahrtzeiten(BasePlugin):
             section(
                 "Stops",
                 widget("abfahrtzeiten-stops", template="widgets/abfahrtzeiten_stops.html"),
+            ),
+            section(
+                "Display",
+                row(
+                    field(
+                        "displayPlatform",
+                        "checkbox",
+                        label="Platform",
+                        submit_unchecked=True,
+                        checked_value="true",
+                        unchecked_value="false",
+                        default="true",
+                        hint="Shows the departure platform/track (e.g. \"Gl. 3\") next to each departure, when the provider reports one.",
+                    ),
+                ),
             ),
         )
 

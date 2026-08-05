@@ -31,7 +31,7 @@
               {% elif dep.delay_minutes %}
                 <span class="delay">+{{ dep.delay_minutes }}</span>
               {% endif %}
-              {% if dep.platform %}<span class="platform">Gl. {{ dep.platform }}</span>{% endif %}
+              {% if dep.platform and plugin_settings.displayPlatform != "false" %}<span class="platform">Gl. {{ dep.platform }}</span>{% endif %}
             </div>
             {% endfor %}
           </div>
