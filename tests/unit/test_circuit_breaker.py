@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 from model import Playlist, PluginInstance
 from refresh_task import RefreshTask
+from refresh_task.health import PluginHealthTracker
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -406,6 +407,186 @@ class TestCircuitBreakerScheduler:
 
 
 # ---------------------------------------------------------------------------
+# Auto-recovery cooldown (JTN-cal_abfahrt-wifi-outage): a paused plugin used
+# to stay paused forever - the scheduler skipped it on every cycle with no
+# path back except a human manually hitting force_retry. An overnight wifi
+# drop meant the display stayed blank for hours after the network came back
+# on its own. A cooldown timer lets the scheduler retry automatically.
+# ---------------------------------------------------------------------------
+
+
+class TestCircuitBreakerCooldown:
+    def test_default_cooldown_is_1800(self):
+        original = os.environ.copy()
+        os.environ.pop("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", None)
+        try:
+            assert PluginHealthTracker.circuit_breaker_cooldown_seconds() == 1800
+        finally:
+            os.environ.clear()
+            os.environ.update(original)
+
+    def test_cooldown_env_var_override(self, monkeypatch):
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "300")
+        assert PluginHealthTracker.circuit_breaker_cooldown_seconds() == 300
+
+    def test_cooldown_invalid_env_var_falls_back(self, monkeypatch):
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "not-a-number")
+        assert PluginHealthTracker.circuit_breaker_cooldown_seconds() == 1800
+
+    def test_cooldown_minimum_is_60(self, monkeypatch):
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "0")
+        assert PluginHealthTracker.circuit_breaker_cooldown_seconds() == 60
+
+    def test_failure_sets_paused_at(self, device_config_dev, monkeypatch):
+        monkeypatch.setenv("PLUGIN_FAILURE_THRESHOLD", "5")
+        task = _make_task(device_config_dev)
+        pi = _make_plugin_instance()
+        _add_plugin_to_pm(device_config_dev, pi)
+
+        assert pi.paused_at is None
+        for _ in range(5):
+            task._update_plugin_health(
+                plugin_id="weather",
+                instance="my_weather",
+                ok=False,
+                metrics=None,
+                error="API error",
+            )
+        assert pi.paused is True
+        assert pi.paused_at is not None
+
+    def test_success_clears_paused_at(self, device_config_dev, monkeypatch):
+        task = _make_task(device_config_dev)
+        pi = _make_plugin_instance()
+        _add_plugin_to_pm(device_config_dev, pi)
+        pi.paused = True
+        pi.paused_at = "2025-01-01T00:00:00+00:00"
+
+        task._update_plugin_health(
+            plugin_id="weather",
+            instance="my_weather",
+            ok=True,
+            metrics=None,
+            error=None,
+        )
+        assert pi.paused_at is None
+
+    def test_manual_reset_clears_paused_at(self, device_config_dev, monkeypatch):
+        task = _make_task(device_config_dev)
+        pi = _make_plugin_instance()
+        _add_plugin_to_pm(device_config_dev, pi)
+        pi.paused = True
+        pi.paused_at = "2025-01-01T00:00:00+00:00"
+
+        assert task.reset_circuit_breaker("weather", "my_weather") is True
+        assert pi.paused_at is None
+
+    def test_no_paused_at_never_elapses(self):
+        """A paused instance with no paused_at (legacy config predating this
+        field, or paused by hand without going through on_failure) has no
+        cooldown timer running, so it must stay skipped - never
+        spontaneously eligible."""
+        pi = _make_plugin_instance()
+        pi.paused = True
+        current_dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        assert RefreshTask._circuit_breaker_cooldown_elapsed(pi, current_dt) is False
+
+    def test_cooldown_not_yet_elapsed(self, monkeypatch):
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "1800")
+        pi = _make_plugin_instance()
+        pi.paused = True
+        pi.paused_at = "2025-01-01T12:00:00+00:00"
+        current_dt = datetime(2025, 1, 1, 12, 10, 0, tzinfo=UTC)  # 10 min later
+        assert RefreshTask._circuit_breaker_cooldown_elapsed(pi, current_dt) is False
+
+    def test_cooldown_elapsed(self, monkeypatch):
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "1800")
+        pi = _make_plugin_instance()
+        pi.paused = True
+        pi.paused_at = "2025-01-01T12:00:00+00:00"
+        current_dt = datetime(2025, 1, 1, 12, 31, 0, tzinfo=UTC)  # 31 min later
+        assert RefreshTask._circuit_breaker_cooldown_elapsed(pi, current_dt) is True
+
+    def test_unparseable_paused_at_treated_as_not_elapsed(self):
+        pi = _make_plugin_instance()
+        pi.paused = True
+        pi.paused_at = "not-a-timestamp"
+        current_dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        assert RefreshTask._circuit_breaker_cooldown_elapsed(pi, current_dt) is False
+
+
+class TestCircuitBreakerCooldownScheduler:
+    def _setup_playlist(self, device_config_dev, plugin_instances):
+        pm = device_config_dev.get_playlist_manager()
+        pm.playlists = []
+        playlist = Playlist("CooldownTest", "00:00", "24:00")
+        playlist.plugins = plugin_instances
+        pm.playlists.append(playlist)
+        pm.active_playlist = "CooldownTest"
+        return pm
+
+    def test_cooldown_elapsed_plugin_retried_not_skipped(
+        self, device_config_dev, monkeypatch
+    ):
+        from model import RefreshInfo
+
+        monkeypatch.setenv("PLUGIN_FAILURE_THRESHOLD", "5")
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "1800")
+        task = _make_task(device_config_dev)
+
+        stale_paused = _make_plugin_instance("weather", "stale_paused")
+        stale_paused.paused = True
+        stale_paused.consecutive_failure_count = 5
+        stale_paused.paused_at = "2025-01-01T11:00:00+00:00"  # 1h before current_dt
+
+        pm = self._setup_playlist(device_config_dev, [stale_paused])
+
+        latest_refresh = RefreshInfo(
+            refresh_type="Playlist",
+            plugin_id="weather",
+            refresh_time=None,
+            image_hash=None,
+        )
+        current_dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        playlist, plugin = task._determine_next_plugin(pm, latest_refresh, current_dt)
+
+        # Cooldown elapsed -> reset via the same path force_retry uses, then
+        # returned as this cycle's chosen plugin instead of being skipped.
+        assert plugin is not None
+        assert plugin.name == "stale_paused"
+        assert plugin.paused is False
+        assert plugin.paused_at is None
+
+    def test_cooldown_not_elapsed_plugin_still_skipped(
+        self, device_config_dev, monkeypatch
+    ):
+        from model import RefreshInfo
+
+        monkeypatch.setenv("PLUGIN_FAILURE_THRESHOLD", "5")
+        monkeypatch.setenv("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "1800")
+        task = _make_task(device_config_dev)
+
+        fresh_paused = _make_plugin_instance("weather", "fresh_paused")
+        fresh_paused.paused = True
+        fresh_paused.consecutive_failure_count = 5
+        fresh_paused.paused_at = "2025-01-01T11:59:00+00:00"  # 1 min before current_dt
+
+        pm = self._setup_playlist(device_config_dev, [fresh_paused])
+
+        latest_refresh = RefreshInfo(
+            refresh_type="Playlist",
+            plugin_id="weather",
+            refresh_time=None,
+            image_hash=None,
+        )
+        current_dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        playlist, plugin = task._determine_next_plugin(pm, latest_refresh, current_dt)
+
+        assert plugin is None
+        assert fresh_paused.paused is True
+
+
+# ---------------------------------------------------------------------------
 # PluginInstance model — serialization round-trip
 # ---------------------------------------------------------------------------
 
@@ -447,6 +628,31 @@ class TestPluginInstanceCircuitBreakerFields:
         pi = PluginInstance.from_dict(data)
         assert pi.consecutive_failure_count == 0
         assert pi.paused is False
+        assert pi.paused_at is None
+
+    def test_default_paused_at_is_none(self):
+        pi = PluginInstance("weather", "inst", {}, {"interval": 3600})
+        assert pi.paused_at is None
+
+    def test_to_dict_includes_paused_at_when_set(self):
+        pi = PluginInstance("weather", "inst", {}, {"interval": 3600})
+        pi.paused_at = "2025-01-01T00:00:00+00:00"
+        assert pi.to_dict()["paused_at"] == "2025-01-01T00:00:00+00:00"
+
+    def test_to_dict_omits_paused_at_when_none(self):
+        pi = PluginInstance("weather", "inst", {}, {"interval": 3600})
+        assert "paused_at" not in pi.to_dict()
+
+    def test_from_dict_restores_paused_at(self):
+        data = {
+            "plugin_id": "weather",
+            "name": "inst",
+            "plugin_settings": {},
+            "refresh": {"interval": 3600},
+            "paused_at": "2025-01-01T00:00:00+00:00",
+        }
+        pi = PluginInstance.from_dict(data)
+        assert pi.paused_at == "2025-01-01T00:00:00+00:00"
 
 
 # ---------------------------------------------------------------------------

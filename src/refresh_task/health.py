@@ -78,6 +78,26 @@ class PluginHealthTracker:
             return 5
         return max(1, value)
 
+    @staticmethod
+    def circuit_breaker_cooldown_seconds(environ: Mapping[str, str] | None = None) -> int:
+        """Return how long a paused plugin waits before an automatic retry.
+
+        A transient outage (wifi drop, upstream API blip) can easily outlast
+        a plugin's failure threshold, and there was previously no way back
+        from `paused` short of a human noticing and hitting force_retry -
+        on unattended hardware that meant staying blank indefinitely even
+        after the underlying problem cleared itself hours earlier. Read from
+        ``PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S``, clamped to a minimum of 60s so
+        a misconfigured "0" can't turn this back into "retry every cycle"
+        and defeat the point of pausing at all. Default 1800s (30 min).
+        """
+        env = os.environ if environ is None else environ
+        try:
+            value = int(env.get("PLUGIN_CIRCUIT_BREAKER_COOLDOWN_S", "1800"))
+        except (ValueError, TypeError):
+            return 1800
+        return max(60, value)
+
     def update(
         self,
         *,
@@ -152,6 +172,7 @@ class PluginHealthTracker:
             plugin_instance.consecutive_failure_count = 0
             plugin_instance.paused = False
             plugin_instance.disabled_reason = None
+            plugin_instance.paused_at = None
 
         set_circuit_breaker_open(plugin_id, False)
         if changed:
@@ -206,6 +227,7 @@ class PluginHealthTracker:
                     or "unknown"
                 )
                 plugin_instance.paused = True
+                plugin_instance.paused_at = now_iso
                 plugin_instance.disabled_reason = (
                     f"Paused after {plugin_instance.consecutive_failure_count} consecutive "
                     f"failures at {now_iso}. Last error: {error_msg[:120]}"
@@ -249,6 +271,7 @@ class PluginHealthTracker:
             plugin_instance.consecutive_failure_count = 0
             plugin_instance.paused = False
             plugin_instance.disabled_reason = None
+            plugin_instance.paused_at = None
 
         set_circuit_breaker_open(plugin_id, False)
         safe_pid = str(plugin_id).replace("\r", "").replace("\n", "")[:64]

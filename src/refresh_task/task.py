@@ -162,6 +162,44 @@ class RefreshTask:
         """
         return int(PluginHealthTracker.circuit_breaker_threshold())
 
+    @staticmethod
+    def _circuit_breaker_cooldown_elapsed(plugin: Any, current_dt: datetime) -> bool:
+        """Whether a paused plugin's cooldown has elapsed and it should be
+        given another real attempt this cycle.
+
+        ``paused_at`` is None both for a plugin that's never been paused
+        (unreachable here, since the caller already checked ``plugin.paused``)
+        and for one paused before this field existed - a config carried over
+        from before this feature, or a test/caller that sets ``paused`` by
+        hand without going through the real failure path. Either way, with no
+        timer running there's nothing to have elapsed, so it stays skipped
+        exactly like before this cooldown existed, until a manual force_retry
+        sets a real ``paused_at`` for future auto-recovery.
+        """
+        paused_at = getattr(plugin, "paused_at", None)
+        if not paused_at:
+            return False
+        try:
+            paused_at_dt = datetime.fromisoformat(paused_at)
+        except (TypeError, ValueError):
+            logger.warning(
+                "plugin circuit_breaker: unparseable paused_at=%r for plugin_id=%s "
+                "instance=%s - treating cooldown as not elapsed",
+                paused_at,
+                getattr(plugin, "plugin_id", "?"),
+                getattr(plugin, "name", "?"),
+            )
+            return False
+
+        # now_device_tz() gives current_dt a device-configured tzinfo, while
+        # paused_at was stored as a UTC ISO string (PluginHealthTracker._now_iso) -
+        # both tz-aware, so a normal comparison already correctly measures the
+        # true elapsed wall-clock time regardless of which offset each carries.
+        if paused_at_dt.tzinfo is None:
+            paused_at_dt = paused_at_dt.replace(tzinfo=current_dt.tzinfo)
+        cooldown = PluginHealthTracker.circuit_breaker_cooldown_seconds()
+        return (current_dt - paused_at_dt).total_seconds() >= cooldown
+
     def start(self) -> None:
         """Starts the background thread for refreshing the display."""
         if not self.thread or not self.thread.is_alive():
@@ -1191,16 +1229,36 @@ class RefreshTask:
             if plugin is None:
                 break
             if getattr(plugin, "paused", False):
-                logger.info(
-                    "plugin circuit_breaker: skipping paused plugin | "
-                    "plugin_id=%s instance=%s failures=%s reason=%s",
-                    plugin.plugin_id,
-                    plugin.name,
-                    getattr(plugin, "consecutive_failure_count", "?"),
-                    getattr(plugin, "disabled_reason", None) or "not recorded",
-                )
-                attempts_left -= 1
-                continue
+                if self._circuit_breaker_cooldown_elapsed(plugin, current_dt):
+                    # A transient outage can easily outlast the failure
+                    # threshold, and without this a paused plugin never got
+                    # attempted again - it would stay blank on unattended
+                    # hardware until a human noticed and hit force_retry,
+                    # even hours after the underlying problem cleared itself
+                    # (this is what an overnight wifi drop looked like before
+                    # this cooldown existed). Reuse the exact same reset path
+                    # force_retry uses, then let this cycle attempt it
+                    # normally - success clears the breaker for good, a
+                    # renewed failure re-pauses with a fresh cooldown clock.
+                    logger.info(
+                        "plugin circuit_breaker: cooldown elapsed, retrying | "
+                        "plugin_id=%s instance=%s failures=%s",
+                        plugin.plugin_id,
+                        plugin.name,
+                        getattr(plugin, "consecutive_failure_count", "?"),
+                    )
+                    self.reset_circuit_breaker(plugin.plugin_id, plugin.name)
+                else:
+                    logger.info(
+                        "plugin circuit_breaker: skipping paused plugin | "
+                        "plugin_id=%s instance=%s failures=%s reason=%s",
+                        plugin.plugin_id,
+                        plugin.name,
+                        getattr(plugin, "consecutive_failure_count", "?"),
+                        getattr(plugin, "disabled_reason", None) or "not recorded",
+                    )
+                    attempts_left -= 1
+                    continue
             logger.info(
                 f"Determined next plugin. | active_playlist: {playlist.name} | plugin_instance: {plugin.name}"
             )
