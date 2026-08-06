@@ -14,6 +14,7 @@ from model import PlaylistManager, RefreshInfo
 from plugins.plugin_registry import get_plugin_instance
 from refresh_task import recorder as refresh_recorder
 from refresh_task.actions import ManualUpdateRequest, PlaylistRefresh, RefreshAction
+from refresh_task.connectivity import ConnectivityMonitor
 from refresh_task.context import RefreshContext
 from refresh_task.display_pipeline import DisplayPipeline
 from refresh_task.executor import RefreshExecutor
@@ -153,6 +154,8 @@ class RefreshTask:
         self._executor_run_subprocess_attempt = self.executor.run_subprocess_attempt
         self._tick_count: int = 0
         self.watchdog_thread: threading.Thread | None = None
+        self.connectivity = ConnectivityMonitor()
+        self.connectivity_thread: threading.Thread | None = None
 
     @staticmethod
     def _get_circuit_breaker_threshold() -> int:
@@ -232,6 +235,15 @@ class RefreshTask:
                     name="WatchdogHeartbeat",
                 )
                 self.watchdog_thread.start()
+            # Own cadence, decoupled from plugin_cycle_interval_seconds (which
+            # can be configured far longer than the 5-minute default this
+            # should recheck at) - see ConnectivityMonitor's module docstring.
+            self.connectivity_thread = threading.Thread(
+                target=self._connectivity_heartbeat_loop,
+                daemon=True,
+                name="ConnectivityMonitor",
+            )
+            self.connectivity_thread.start()
 
     def stop(self) -> None:
         """Stops the refresh task by notifying the background thread to exit."""
@@ -285,6 +297,26 @@ class RefreshTask:
         so a watchdog hiccup never aborts the refresh loop.
         """
         RefreshScheduler.notify_watchdog(_sd_notify)
+
+    def _connectivity_heartbeat_loop(self) -> None:
+        """Background loop that re-probes internet connectivity on its own
+        fixed cadence (default 5 minutes - see
+        ConnectivityMonitor.check_interval_seconds), independent of
+        plugin_cycle_interval_seconds, which can be configured far longer.
+
+        Checks immediately on start (same shape as _watchdog_heartbeat_loop)
+        so a device that boots already offline is flagged within moments,
+        not after waiting a full interval.
+        """
+        while self.running:
+            try:
+                self.connectivity.check_now()
+            except Exception:  # noqa: BLE001  defensive — must never kill this thread
+                logger.warning("Connectivity check failed unexpectedly", exc_info=True)
+            with self.condition:
+                self.condition.wait(
+                    timeout=ConnectivityMonitor.check_interval_seconds()
+                )
 
     def _complete_manual_request(
         self,
@@ -411,6 +443,22 @@ class RefreshTask:
             logger.info(
                 f"Running interval refresh check. | current_time: {current_dt.strftime('%Y-%m-%d %H:%M:%S')}"
             )
+            if not self.connectivity.online:
+                # Device-level gate, checked before touching any plugin: an
+                # internet outage otherwise looks identical, per plugin, to
+                # that one specific API being broken, and each configured
+                # plugin independently burns through its own circuit-breaker
+                # threshold for a reason that was never its own fault (see
+                # ConnectivityMonitor's module docstring). Nothing is
+                # attempted here, so nothing is paused - the automatic cycle
+                # just sits out this tick and tries again once the
+                # background connectivity probe reports online again (or a
+                # manual recheck from the sidebar flips it sooner).
+                logger.info(
+                    "Device offline - skipping automatic refresh cycle until "
+                    "connectivity is restored."
+                )
+                return None, None
             playlist, plugin_instance = self._determine_next_plugin(
                 playlist_manager, latest_refresh, current_dt
             )

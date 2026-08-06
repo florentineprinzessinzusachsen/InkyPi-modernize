@@ -121,6 +121,37 @@ def test_all_pages_include_sidebar_system_footer(client, monkeypatch, path):
     assert 'class="sys-load" aria-label="Load average">0.00 avg</span>' in html
 
 
+def test_sidebar_online_indicator_reflects_connectivity_state(client):
+    """The sidebar's offline indicator (inkypi.py's _inject_sidebar_system)
+    reflects RefreshTask.connectivity's real state on first paint, not a
+    hardcoded 'online' - see refresh_task/connectivity.py."""
+    from unittest.mock import MagicMock
+
+    from refresh_task.connectivity import ConnectivityMonitor
+
+    monitor = ConnectivityMonitor(check_fn=lambda: False)
+    monitor.check_now()
+
+    rt = MagicMock()
+    rt.connectivity = monitor
+    with client.application.app_context():
+        client.application.config["REFRESH_TASK"] = rt
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert 'class="sys-online is-offline"' in html
+    assert 'data-online="false"' in html
+    assert '<span id="sidebarOnlineLabel">offline</span>' in html
+    # Retry button must be visible (not hidden) whenever offline.
+    assert 'id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn"' in html
+    assert (
+        'id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn" hidden'
+        not in html
+    )
+
+
 def test_plugin_page_keeps_progress_timer_contract(client):
     """Plugin pages keep the elapsed timer and progress log hooks present."""
     resp = client.get("/plugin/clock")

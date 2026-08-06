@@ -377,6 +377,59 @@
   color: var(--text-3);
 }
 
+/* Offline indicator (RefreshTask.connectivity, polled live by
+   sidebar_connectivity.js via /api/health/connectivity). Amber, not the
+   destructive --error red - a transient outage is an expected, self-
+   recovering state, not a failure requiring attention. */
+.sys-online.is-offline .live-dot {
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warning) 25%, transparent);
+}
+
+.sys-online.is-offline #sidebarOnlineLabel {
+  color: var(--warning-contrast, var(--warning));
+}
+
+.sidebar-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-retry-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.sidebar-retry-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.sidebar-retry-btn .action-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.sidebar-retry-btn.is-spinning .action-icon {
+  animation: sidebar-retry-spin 0.7s linear infinite;
+}
+
+@keyframes sidebar-retry-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Main content column */
 .shell-main {
   min-width: 0;

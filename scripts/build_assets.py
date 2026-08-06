@@ -75,6 +75,7 @@ JS_MANIFEST_DEFERRED: list[str] = [
     "form_state.js",
     "lightbox.js",
     "sidebar_preview.js",
+    "sidebar_connectivity.js",
     "tweaks_panel.js",
     "update_indicator.js",
 ]

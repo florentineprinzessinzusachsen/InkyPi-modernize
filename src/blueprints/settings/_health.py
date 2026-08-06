@@ -147,6 +147,53 @@ def health_system() -> tuple[Any, int] | Response:
         return json_internal_error("health system")
 
 
+@_mod.settings_bp.route("/api/health/connectivity", methods=["GET"])  # type: ignore[untyped-decorator]
+def health_connectivity() -> tuple[Any, int] | Response:
+    """Return the device's cached internet-connectivity status.
+
+    Read-only - reflects whatever the background ConnectivityMonitor last
+    found (see refresh_task/connectivity.py), without forcing a new probe;
+    POST .../recheck does that. Powers the sidebar's offline indicator.
+    """
+    try:
+        rt = current_app.config["REFRESH_TASK"]
+        monitor = getattr(rt, "connectivity", None)
+        if monitor is None:
+            return json_success(online=True, last_checked_at=None, last_changed_at=None)
+        return json_success(**monitor.snapshot())
+    except Exception:
+        logger.exception("health connectivity failed")
+        return json_internal_error("health connectivity")
+
+
+@_mod.settings_bp.route(
+    "/api/health/connectivity/recheck", methods=["POST"]
+)  # type: ignore[untyped-decorator]
+def health_connectivity_recheck() -> tuple[Any, int] | Response:
+    """Force an immediate connectivity probe - the sidebar's "Retry" action.
+
+    If this flips the device from offline to online, also wakes the refresh
+    task's background thread so the next automatic refresh cycle runs right
+    away instead of waiting out the rest of plugin_cycle_interval_seconds.
+    """
+    try:
+        rt = current_app.config["REFRESH_TASK"]
+        monitor = getattr(rt, "connectivity", None)
+        if monitor is None:
+            return json_error("Connectivity monitoring not available", status=501)
+        was_online = monitor.online
+        online = monitor.check_now()
+        if online and not was_online:
+            condition = getattr(rt, "condition", None)
+            if condition is not None:
+                with condition:
+                    condition.notify_all()
+        return json_success(**monitor.snapshot())
+    except Exception:
+        logger.exception("health connectivity recheck failed")
+        return json_internal_error("health connectivity recheck")
+
+
 @_mod.settings_bp.route("/api/progress/stream", methods=["GET"])  # type: ignore[untyped-decorator]
 def progress_stream() -> Response | tuple[Any, int]:
     if not _progress_stream_enabled():

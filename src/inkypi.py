@@ -567,9 +567,29 @@ def _register_context_processors(app: Flask) -> None:
 
     @app.context_processor
     def _inject_sidebar_system():  # type: ignore[no-untyped-def]
+        """Expose the sidebar's online/offline indicator.
+
+        Reflects RefreshTask.connectivity's cached state (see
+        refresh_task/connectivity.py) for the first server-rendered paint;
+        static/scripts/sidebar_connectivity.js takes over from there,
+        polling /api/health/connectivity so the indicator updates live
+        without a full page reload. Defaults to "online" whenever the
+        refresh task or its monitor isn't available yet (matches
+        ConnectivityMonitor's own optimistic startup default), so a
+        mid-request restart never flashes a false offline state.
+        """
+        online = True
+        refresh_task = app.config.get("REFRESH_TASK")
+        monitor = getattr(refresh_task, "connectivity", None)
+        if monitor is not None:
+            try:
+                online = bool(monitor.online)
+            except Exception:
+                online = True
         return {
             "sidebar_system": {
-                "online_label": "online",
+                "online": online,
+                "online_label": "online" if online else "offline",
                 "load_label": _format_sidebar_load_average(),
             }
         }

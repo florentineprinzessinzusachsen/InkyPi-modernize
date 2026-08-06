@@ -158,6 +158,125 @@ class TestHealthSystem:
         assert data["uptime_seconds"] is None
 
 
+class TestHealthConnectivity:
+    """Tests for GET /api/health/connectivity and POST .../recheck (the
+    sidebar's offline indicator + manual retry - see
+    refresh_task/connectivity.py)."""
+
+    def test_default_online_snapshot(self, client):
+        """With no override, the flask_app fixture's real RefreshTask has a
+        fresh ConnectivityMonitor: online by default, never probed yet."""
+        resp = client.get("/api/health/connectivity")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["success"] is True
+        assert data["online"] is True
+        assert data["last_checked_at"] is None
+        assert data["last_changed_at"] is None
+
+    def test_reflects_offline_state(self, client):
+        from refresh_task.connectivity import ConnectivityMonitor
+
+        monitor = ConnectivityMonitor(check_fn=lambda: False)
+        monitor.check_now()
+
+        rt = MagicMock()
+        rt.connectivity = monitor
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.get("/api/health/connectivity")
+        data = resp.get_json()
+        assert data["online"] is False
+        assert data["last_checked_at"] is not None
+        assert data["last_changed_at"] is not None
+
+    def test_get_missing_monitor_defaults_to_online(self, client):
+        rt = MagicMock()
+        rt.connectivity = None
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.get("/api/health/connectivity")
+        data = resp.get_json()
+        assert data["online"] is True
+
+    def test_recheck_forces_new_probe(self, client):
+        from refresh_task.connectivity import ConnectivityMonitor
+
+        calls = []
+
+        def check_fn():
+            calls.append(1)
+            return True
+
+        monitor = ConnectivityMonitor(check_fn=check_fn)
+        rt = MagicMock()
+        rt.connectivity = monitor
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.post("/api/health/connectivity/recheck")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["online"] is True
+        assert len(calls) == 1
+
+    def test_recheck_wakes_scheduler_on_offline_to_online_transition(self, client):
+        from refresh_task.connectivity import ConnectivityMonitor
+
+        monitor = ConnectivityMonitor(check_fn=lambda: False)
+        monitor.check_now()  # starts offline
+        monitor._check_fn = lambda: True  # the recheck call will find it back
+
+        rt = MagicMock()
+        rt.connectivity = monitor
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.post("/api/health/connectivity/recheck")
+        assert resp.get_json()["online"] is True
+        # The whole point of forcing this: the next automatic refresh cycle
+        # shouldn't have to wait out the rest of plugin_cycle_interval_seconds.
+        rt.condition.notify_all.assert_called_once()
+
+    def test_recheck_does_not_wake_scheduler_when_already_online(self, client):
+        from refresh_task.connectivity import ConnectivityMonitor
+
+        monitor = ConnectivityMonitor(check_fn=lambda: True)
+        rt = MagicMock()
+        rt.connectivity = monitor
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.post("/api/health/connectivity/recheck")
+        assert resp.get_json()["online"] is True
+        rt.condition.notify_all.assert_not_called()
+
+    def test_recheck_still_offline_does_not_wake_scheduler(self, client):
+        from refresh_task.connectivity import ConnectivityMonitor
+
+        monitor = ConnectivityMonitor(check_fn=lambda: False)
+        rt = MagicMock()
+        rt.connectivity = monitor
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.post("/api/health/connectivity/recheck")
+        assert resp.get_json()["online"] is False
+        rt.condition.notify_all.assert_not_called()
+
+    def test_recheck_missing_monitor_returns_501(self, client):
+        rt = MagicMock()
+        rt.connectivity = None
+        with client.application.app_context():
+            client.application.config["REFRESH_TASK"] = rt
+
+        resp = client.post("/api/health/connectivity/recheck")
+        assert resp.status_code == 501
+        assert resp.get_json()["success"] is False
+
+
 class TestProgressStream:
     def test_disabled(self, client, monkeypatch):
         """SSE endpoint returns 404 when disabled."""

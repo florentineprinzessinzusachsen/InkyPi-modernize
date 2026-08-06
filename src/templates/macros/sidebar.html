@@ -17,6 +17,7 @@
     {% set now_has_preview = false %}
 {% endif %}
 {% set system_online = sidebar_system.online_label if sidebar_system is mapping and sidebar_system.online_label is defined else 'online' %}
+{% set system_is_online = sidebar_system.online if sidebar_system is mapping and sidebar_system.online is defined else true %}
 {% set system_load = sidebar_system.load_label if sidebar_system is mapping and sidebar_system.load_label is defined else none %}
 {% set brand_parts = [] %}
 {#- Only render the brand-host row when the configured device name is
@@ -166,7 +167,17 @@
         </div>
         <div class="sys-row">
             <div class="sys-stats">
-                <span class="sys-online" id="sidebarOnlineDot" aria-label="Online status"><span class="live-dot" aria-hidden="true"></span><span id="sidebarOnlineLabel">{{ system_online }}</span></span>
+                {#- Reflects RefreshTask.connectivity's cached state for this
+                    first paint (inkypi.py's _inject_sidebar_system);
+                    static/scripts/sidebar_connectivity.js polls
+                    /api/health/connectivity afterwards and keeps this live,
+                    including across the plugin-refresh gate that skips the
+                    display cycle entirely while offline (see
+                    RefreshTask._select_refresh_action). -#}
+                <span class="sys-online{% if not system_is_online %} is-offline{% endif %}" id="sidebarOnlineDot" data-online="{{ 'true' if system_is_online else 'false' }}" aria-label="Connectivity status"><span class="live-dot" aria-hidden="true"></span><span id="sidebarOnlineLabel">{{ system_online }}</span></span>
+                <button type="button" id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn"{% if system_is_online %} hidden{% endif %} aria-label="Retry connectivity check" title="Retry connectivity check">
+                    {{ icon('arrows-clockwise', 'action-icon') | safe }}
+                </button>
                 {% if system_load %}
                 <span class="sys-load" aria-label="Load average">{{ system_load }}</span>
                 {% endif %}

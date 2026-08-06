@@ -89,6 +89,105 @@ def test_select_refresh_action_manual(device_config_dev):
     assert request_id == "req-1"
 
 
+# ---------------------------------------------------------------------------
+# Connectivity gate: the automatic (non-manual) refresh cycle sits out
+# entirely while the device is offline, rather than letting every configured
+# plugin discover the outage independently and burn through its own
+# circuit-breaker threshold (refresh_task/connectivity.py).
+# ---------------------------------------------------------------------------
+
+
+def test_select_refresh_action_playlist_skips_when_offline(
+    device_config_dev, monkeypatch
+):
+    from display.display_manager import DisplayManager
+    from refresh_task import RefreshTask
+
+    dm = DisplayManager(device_config_dev)
+    task = RefreshTask(device_config_dev, dm)
+    task.connectivity._online = False
+
+    called = []
+    monkeypatch.setattr(
+        task,
+        "_determine_next_plugin",
+        lambda *a, **k: called.append(1) or (None, None),
+    )
+
+    action, request_id = task._select_refresh_action(
+        None, None, task._get_current_datetime(), None
+    )
+
+    assert action is None
+    assert request_id is None
+    # The whole point: no plugin is even considered while offline, so
+    # nothing's circuit breaker can be touched for a reason that was never
+    # its own fault.
+    assert called == []
+
+
+def test_select_refresh_action_playlist_proceeds_when_online(
+    device_config_dev, monkeypatch
+):
+    from display.display_manager import DisplayManager
+    from refresh_task import PlaylistRefresh, RefreshTask
+
+    dm = DisplayManager(device_config_dev)
+    task = RefreshTask(device_config_dev, dm)
+    task.connectivity._online = True
+
+    class FakePlaylist:
+        name = "pl"
+
+    class FakePlugin:
+        plugin_id = "dummy"
+        name = "inst"
+        settings = {}
+
+        def get_image_path(self):
+            return "dummy.png"
+
+        def should_refresh(self, dt):
+            return True
+
+    fake_playlist = FakePlaylist()
+    fake_plugin = FakePlugin()
+
+    def fake_determine(self, pm, latest, current_dt):
+        return fake_playlist, fake_plugin
+
+    monkeypatch.setattr(
+        task, "_determine_next_plugin", fake_determine.__get__(task, RefreshTask)
+    )
+    action, request_id = task._select_refresh_action(
+        None, None, task._get_current_datetime(), None
+    )
+    assert isinstance(action, PlaylistRefresh)
+    assert action.plugin_instance is fake_plugin
+
+
+def test_select_refresh_action_manual_not_blocked_by_offline_gate(device_config_dev):
+    """A manual request (Display Now, force_retry, ...) still gets a real
+    attempt even while the device is believed offline - the gate only
+    applies to the unattended, automatic playlist-cycling path."""
+    from display.display_manager import DisplayManager
+    from refresh_task import ManualRefresh, ManualUpdateRequest, RefreshTask
+
+    dm = DisplayManager(device_config_dev)
+    task = RefreshTask(device_config_dev, dm)
+    task.connectivity._online = False
+
+    manual = ManualRefresh("dummy", {})
+    action, request_id = task._select_refresh_action(
+        None,
+        None,
+        task._get_current_datetime(),
+        ManualUpdateRequest("req-1", manual),
+    )
+    assert action is manual
+    assert request_id == "req-1"
+
+
 def test_perform_refresh_skips_when_cached(device_config_dev, monkeypatch):
     from display.display_manager import DisplayManager
     from model import RefreshInfo
