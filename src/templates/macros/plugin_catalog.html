@@ -17,16 +17,7 @@
         <a href="{{ url_for('plugin.plugin_page', plugin_id=plugin.id) }}" class="plugin-item plugin-tile"
            aria-label="Open {{ plugin.display_name }} plugin settings">
             <span class="plugin-tile-icon">
-            {% set ph = PLUGIN_ICON_MAP.get(plugin.id) %}
-            {% if ph %}
-            {{ icon(ph, 'icon-image') | safe }}
-            {% else %}
-            <img
-                src="{{ url_for('plugin.image', plugin_id=plugin.id, filename='icon.png') }}"
-                alt=""
-                class="icon-image"
-                loading="lazy">
-            {% endif %}
+            {{ icon(PLUGIN_ICON_MAP.get(plugin.id, 'squares-four'), 'icon-image') | safe }}
             </span>
             <span class="plugin-tile-body">
                 <span class="plugin-name plugin-tile-name">{{ plugin.display_name }}</span>

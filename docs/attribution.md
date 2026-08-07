@@ -12,7 +12,7 @@ This project uses various fonts and icons, each with specific licensing terms. B
 
 ## Icons
 
-All built-in plugin icons (plugin picker, dashboard nav) are inline SVGs from the [Phosphor Icons](https://phosphoricons.com/) set (MIT licensed), mapped per-plugin in `src/templates/macros/icons.html`. `icon.png` is only used as a fallback for a plugin not in that map — chiefly third-party plugins (see [building_plugins.md](building_plugins.md)). The raster icons below are still shipped as files and carry their own attribution requirements:
+All plugin icons (plugin picker, dashboard nav) are inline SVGs from the [Phosphor Icons](https://phosphoricons.com/) set (MIT licensed), mapped per-plugin in `src/templates/macros/icons.html` — there is no raster-icon-per-plugin scheme. The unrelated raster icons below are still shipped as files (weather condition art, used inside the Weather plugin's rendered output, not as a plugin's own icon) and carry their own attribution requirements:
 
 | Name | Attribution |
 |---------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|

@@ -46,8 +46,7 @@
         <header class="pageheader pageheader-plugin">
             <div class="pageheader-main">
                 <div class="plugin-titlerow">
-                    {% set ph_icon = PLUGIN_ICON_MAP.get(plugin.id, None) %}
-                    {% if ph_icon %}{{ icon(ph_icon, 'app-icon') | safe }}{% else %}<img src="{{ url_for('plugin.image', plugin_id=plugin.id, filename='icon.png') }}" alt="{{ plugin.display_name }} icon" class="app-icon">{% endif %}
+                    {{ icon(PLUGIN_ICON_MAP.get(plugin.id, 'squares-four'), 'app-icon') | safe }}
                     <div class="title-stack">
                         <div class="eyebrow">Plugin</div>
                         <h1 class="page-title app-title" title="{{ plugin.display_name }}">{{ plugin.display_name }}</h1>

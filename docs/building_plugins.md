@@ -12,7 +12,6 @@ A plugin is a directory under `src/plugins/<id>/` containing:
 src/plugins/{plugin_id}/
     {plugin_id}.py          # Main plugin class, extends BasePlugin
     plugin-info.json        # Plugin manifest
-    icon.png                # 256x256 icon shown in the plugin picker
     render/                 # Optional: HTML/CSS templates, if using render_image()
 ```
 
@@ -31,11 +30,11 @@ def generate_image(self, settings: dict, device_config) -> PIL.Image:
 
 ```json
 {
-    "display_name": "Clock",
-    "id": "clock",
-    "class": "Clock",
-    "api_version": "1.0",
-    "version": "1.0.0"
+  "display_name": "Clock",
+  "id": "clock",
+  "class": "Clock",
+  "api_version": "1.0",
+  "version": "1.0.0"
 }
 ```
 
@@ -90,7 +89,17 @@ def api_key_required_for_settings(self, settings) -> bool:
 
 ## Icon
 
-Drop a 256x256 `icon.png` into the plugin directory. Custom icons without a `PLUGIN_ICON_MAP` entry (`src/templates/macros/icons.html`) render as a raster `<img>`, not the built-ins' `currentColor` inline SVG — flat black-line art has nothing to adapt with in dark mode, though `_plugins.css` gives plugin icon images a light backing plate across render contexts. Add a `PLUGIN_ICON_MAP` entry with an equivalent Phosphor icon if you want the built-in look instead.
+Every plugin icon is an inline `currentColor` SVG from the [Phosphor Icons](https://phosphoricons.com/) set, resolved by plugin id through `PLUGIN_ICON_MAP` in `src/templates/macros/icons.html`:
+
+```python
+PLUGIN_ICON_MAP = {
+    ...
+    'clock': 'clock',
+    ...
+}
+```
+
+Add an entry mapping your plugin's `id` to a Phosphor icon name (the SVG must exist under `src/templates/icons/ph/<name>.svg` — add it if it isn't already vendored). A plugin with no entry falls back to a generic icon rather than failing to render. There is intentionally no raster-icon fallback — a past PNG-per-plugin-directory scheme was removed in favor of always using the shared SVG set, since it kept icons legible across the console/paper/minimal dark-mode aesthetics without per-file backing-plate CSS.
 
 ## Generating images by rendering HTML and CSS
 
@@ -137,5 +146,7 @@ Create a new repository (recommended name: `InkyPi-{plugin_name}`, for GitHub se
 
 - A folder named after your `plugin_id`, with the structure above — this gets copied into `src/plugins/` on install.
 - A README with: a one-sentence description, at least one screenshot, any external API dependencies (docs link, key setup, rate limits/cost), and current maintenance status.
+
+A third-party plugin has no way to ship its own icon file — since there's no raster-icon fallback, showing a custom icon means adding a `PLUGIN_ICON_MAP` entry in `src/templates/macros/icons.html`, a core template file. Mention this in your README so installers know to add the entry themselves (or send a PR against this fork); until then the plugin renders with the generic fallback icon.
 
 See [InkyPi-Plugin-Template](https://github.com/fatihak/InkyPi-Plugin-Template) for a sample third-party plugin template.

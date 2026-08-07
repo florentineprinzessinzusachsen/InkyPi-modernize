@@ -101,16 +101,7 @@
                         <div class="plugin-item pl-item{% if is_playing %} is-playing{% endif %}" data-plugin-id="{{ plugin_instance.plugin_id }}" data-instance-name="{{ plugin_instance.name }}" data-instance-label="{{ pi_label }}">
                             <span class="drag-handle" aria-hidden="true">{{ icon('dots-six-vertical', 'drag-handle-icon') | safe }}</span>
                             <span class="pl-item-icon" aria-hidden="true">
-                                {% set pi_icon = PLUGIN_ICON_MAP.get(plugin_instance.plugin_id) %}
-                                {% if pi_icon %}
-                                {{ icon(pi_icon, 'icon-image') | safe }}
-                                {% else %}
-                                <img
-                                    src="{{ url_for('plugin.image', plugin_id=plugin_instance.plugin_id, filename='icon.png') }}"
-                                    alt=""
-                                    class="icon-image"
-                                    loading="lazy">
-                                {% endif %}
+                                {{ icon(PLUGIN_ICON_MAP.get(plugin_instance.plugin_id, 'squares-four'), 'icon-image') | safe }}
                             </span>
                             <div class="pl-item-main plugin-info" id="{{plugin_instance.name}}">
                                 <div class="pl-item-name"><span class="plugin-instance">{{ pi_label }}{% if pi_suffix and pi_suffix != pi_label %} <span class="plugin-instance-suffix">({{ pi_suffix }})</span>{% endif %}</span>{% if is_playing %}<span class="displayed-now">Playing</span>{% endif %}</div>

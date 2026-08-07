@@ -65,21 +65,6 @@
 .btn-label { font-size: 0.85em; }
 .btn-spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.5); border-top-color: var(--on-accent); border-radius: 50%; display:none; animation: spin .9s linear infinite; }
 
-/* Custom (non-built-in) plugins fall back to a flat black-line-art PNG
-   (plugins/<id>/icon.png) instead of a currentColor SVG from PLUGIN_ICON_MAP,
-   because they have no entry in that map - see templates/macros/icons.html.
-   That artwork has nothing to adapt with in dark mode and goes invisible
-   against dark surfaces. Give just the raster fallback (the `img` element
-   selector leaves the built-in plugins' inline `svg.icon-image` etc.
-   untouched) a light, theme-independent backing plate so it stays legible
-   in any theme/aesthetic. */
-[data-theme="dark"] img.icon-image,
-[data-theme="dark"] img.app-icon {
-    background: var(--eink-paper-bg);
-    border-radius: var(--border-radius-sm);
-    box-sizing: border-box;
-}
-
 .plugin-instance {
     color: var(--text);
 }
@@ -186,13 +171,6 @@
     border-color: color-mix(in oklab, var(--accent) 30%, var(--surface-border));
 }
 
-/* Override this context's own dark surface-2 chip background (set above)
-   for the raster-icon fallback specifically - see the img.icon-image rule
-   near the top of this file for why. */
-[data-theme="dark"] .plugins-container .plugin-item img.icon-image {
-    background: var(--eink-paper-bg);
-}
-
 .plugin-name {
     margin-top: 10px;
     font-size: 0.82rem;
@@ -288,16 +266,6 @@
     background: transparent;
     border: 0;
     border-radius: 0;
-}
-
-/* Override this context's own transparent background for the raster-icon
-   fallback specifically - see the img.icon-image rule near the top of this
-   file for why. Padded/inset within the existing 22px box rather than
-   growing it, so tile layout is unaffected. */
-[data-theme="dark"] .plugins-container.plugin-tile-grid .plugin-tile img.icon-image {
-    background: var(--eink-paper-bg);
-    border-radius: 4px;
-    padding: 2px;
 }
 
 .plugin-tile-body {
