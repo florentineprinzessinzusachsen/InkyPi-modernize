@@ -6,7 +6,7 @@ mutants that were killed by the same PR as this file (cross-referenced to the
 assertion that catches them), and acceptable / deferred survivors. See the
 headings below for the specific sections.
 
-See `docs/mutation_testing.md` for the mutation-testing setup, CI schedule,
+See `docs/testing.md` for the mutation-testing setup, CI schedule,
 and triage workflow. The source tracking issue is **JTN-595**.
 
 ## Status of the nightly artifact (JTN-595, 2026-04-19 through 2026-04-25)
@@ -26,7 +26,7 @@ artifact. That bug is fixed in the same PR that landed this file — see
 **Consequences for this triage pass:**
 
 - There is no real survivor list to load from an artifact.
-- We did not run the full mutmut pass locally — `docs/mutation_testing.md`
+- We did not run the full mutmut pass locally — `docs/testing.md`
   and the JTN-595 issue explicitly forbid that, since it takes hours.
 - The entries below were identified by **static inspection** of small
   files in the expanded scope (`src/utils/`, `src/blueprints/`), targeting

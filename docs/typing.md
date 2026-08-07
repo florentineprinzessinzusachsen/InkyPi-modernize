@@ -1,140 +1,55 @@
 # Type-Checking Strategy
 
-InkyPi uses [mypy](https://mypy.readthedocs.io/) for static type analysis.
-Rather than enabling strict mode everywhere at once, we follow an **incremental
-strict** path: a small "strict subset" is enforced as a CI blocker today, with
-more modules added over time as they stabilize. The broader `src/` check is now
-expected to stay clean, while `tests/` is ratcheted against a checked-in
-baseline so new test typing debt cannot slip in while we keep paying down the
-backlog.
-
-## Why incremental strict?
-
-Enabling `--strict` across the whole codebase in one shot would produce
-hundreds of errors and risk churn on actively-changing files.  An incremental
-approach lets us raise the quality bar module by module without blocking
-ongoing feature work.
+InkyPi uses [mypy](https://mypy.readthedocs.io/) for static analysis, following an **incremental strict** path: a curated subset of modules is held to `--strict` as a hard CI blocker, while the rest of `src/` is checked non-strict against a zero baseline and `tests/` is ratcheted against a checked-in baseline. This avoids enabling `--strict` everywhere at once (which would produce hundreds of errors and churn on actively-changing files) while still raising the bar module by module.
 
 ## Current strict subset (CI-blocking)
 
-| Module | Added |
-|---|---|
-| `src/utils/http_utils.py` | JTN-525 |
-| `src/utils/security_utils.py` | JTN-525 |
-| `src/utils/client_endpoint.py` | Quality guards PR |
-| `src/utils/display_names.py` | Quality guards PR |
-| `src/utils/messages.py` | Quality guards PR |
-| `src/utils/output_validator.py` | Quality guards PR |
-| `src/utils/paths.py` | Quality guards PR |
-| `src/utils/refresh_info.py` | Quality guards follow-up PR |
-| `src/utils/refresh_stats.py` | Quality guards follow-up PR |
-| `src/refresh_task/actions.py` | Refresh guards PR |
-| `src/refresh_task/context.py` | Refresh guards PR |
-| `src/refresh_task/worker.py` | Refresh guards PR |
-| `src/utils/sri.py` | Quality guards follow-up PR |
-| `src/utils/time_utils.py` | Quality guards PR |
-| `src/utils/http_cache.py` | JTN-676 |
-| `src/utils/request_models.py` | Request-model ratchet PR |
-| `src/model.py` | JTN-663 |
+See `mypy.ini` for the authoritative list (`grep -B1 "strict = True" mypy.ini`). As of this writing:
 
-This list is intentionally low-churn: the broad `src/` ratchet protects the
-rest of production code from backsliding, while the modules above are held to
-full `--strict`.
+`utils/http_utils.py`, `utils/plugin_errors.py`, `utils/security_utils.py`, `utils/client_endpoint.py`, `utils/display_names.py`, `utils/messages.py`, `utils/output_validator.py`, `utils/paths.py`, `utils/refresh_info.py`, `utils/refresh_stats.py`, `utils/sri.py`, `utils/time_utils.py`, `utils/http_cache.py`, `utils/request_models.py`, `refresh_task/actions.py`, `refresh_task/context.py`, `refresh_task/worker.py`, `model.py`.
 
-## How to add a module to the strict subset
+## Adding a module to the strict subset
 
-1. **Run mypy strict on the module locally** and fix all errors:
-
+1. Run mypy strict on the module locally and fix all errors:
    ```bash
    .venv/bin/python -m mypy --strict src/utils/your_module.py
    ```
-
-2. **Add a per-module block to `mypy.ini`:**
-
+2. Add a per-module block to `mypy.ini`:
    ```ini
    [mypy-utils.your_module]
    strict = True
    ```
+3. Add the file to the blocking check in `scripts/lint.sh` (alongside the existing strict-subset invocation).
+4. Open a PR — CI enforces strictness from that point forward.
 
-3. **Add the file to the blocking check in `scripts/lint.sh`:**
+## CI behavior: clean `src/`, ratcheted `tests/`
 
-   ```bash
-   mypy --strict \
-     src/utils/http_utils.py \
-     src/utils/security_utils.py \
-     src/utils/your_module.py
-   ```
-4. **Update the table above** with the module path and Linear issue reference.
-5. Open a PR — CI will enforce strictness from that point forward.
+`scripts/lint.sh` runs mypy as three separate passes:
 
-## Current CI behavior: clean `src/`, ratcheted `tests/`
+1. `mypy src/` — production code, compared against `scripts/mypy_src_baseline.txt`. This baseline should stay `0`; CI fails on any reported issue or a run that can't produce a summary.
+2. `mypy tests/` — compared against `scripts/mypy_tests_baseline.txt`. CI fails if the error count rises above the committed baseline.
+3. `mypy --strict ...` — the curated subset above, fully blocking regardless of the other two.
 
-`scripts/lint.sh` runs the non-strict mypy pass as **two separate invocations**
-plus the blocking strict subset:
+The split exists because the test suite carries far more typing noise than `src/` (fixtures, monkeypatching, duck-typed stubs). Combining both into one run let small production regressions get lost in thousands of test-only errors.
 
-1. `mypy src/` — production code, compared against the checked-in baseline in
-   `scripts/mypy_src_baseline.txt`; this baseline should remain `0`
-2. `mypy tests/` — test suite, compared against the checked-in baseline in
-   `scripts/mypy_tests_baseline.txt`
-3. `mypy --strict ...` — curated strict subset, fully blocking
+### If the `src/` count changes
 
-`src/` is no longer purely informational. Now that the production baseline is
-zero, CI fails if `mypy src/` reports any issue or cannot produce a summary.
-`tests/` still has much higher typing noise, but it is no longer unbounded:
-CI fails if the test error count rises above the committed baseline, or if
-mypy cannot produce a summary to compare against. The strict subset above is
-unchanged and remains fully blocking.
+1. Run `mypy src/` locally, diff against `main`.
+2. If your PR introduced the errors, fix them before merging.
+3. If unrelated, call it out in the PR and fix the underlying dependency/config issue rather than raising the baseline.
+4. If it stays at zero, prefer adding newly-stable modules to the strict subset over changing the baseline.
 
-### Why the split?
+If `mypy src/` exits without a `Found N errors` / `Success:` summary, treat it as a broken invocation — the ratchet fails until the underlying config/import problem is fixed.
 
-The test suite carries far more typing noise than `src/` (fixtures,
-monkeypatching, duck-typed stubs). When both were combined into a single
-`mypy src tests` run, a small regression in production code was invisible,
-drowned out by thousands of test-only errors. Splitting the counts keeps
-**`src/` clean and makes `tests/` type drift legible** so we can ratchet it
-down over time.
+### If the `tests/` count changes
 
-### What to do if the `src/` count changes
-
-If `src/` goes above zero:
-
-1. Run `mypy src/` locally and look at the diff in errors vs `main`.
-2. If your PR introduced the new errors, fix them before merging.
-3. If the increase is unrelated to your change, call it out in the PR and fix
-   the underlying dependency/config issue rather than raising the baseline.
-
-If `src/` stays at zero:
-
-1. Leave `scripts/mypy_src_baseline.txt` at `0`.
-2. Prefer adding newly stable modules to the strict subset instead of changing
-   the production baseline.
-
-If `mypy src/` exits without a `Found N errors` or `Success:` summary, treat it
-as a broken type-check invocation. The ratchet will fail until the underlying
-config/import problem is fixed.
-
-### What to do if the `tests/` count changes
-
-If `tests/` goes up:
-
-1. Run `mypy tests/` locally and inspect the new errors.
-2. Fix errors introduced by the PR before merging.
-3. Treat baseline increases as exceptional and coordinated, not as routine.
-
-If `tests/` goes down:
-
-1. Confirm the lower count is real by rerunning `mypy tests/` or
-   `bash scripts/lint.sh`.
-2. Update `scripts/mypy_tests_baseline.txt` to the new lower integer.
-3. Prefer paying down errors in clusters: shared fixtures, contract/security
-   tests, then browser/integration tests.
+1. Run `mypy tests/` locally, fix errors your PR introduced.
+2. Treat baseline *increases* as exceptional and coordinated, not routine.
+3. If it goes down, confirm by rerunning, then lower `scripts/mypy_tests_baseline.txt` to the new integer. Pay down errors in clusters: shared fixtures first, then contract/security tests, then browser/integration tests.
 
 ## Coding guidelines for typed modules
 
 - Avoid `Any` unless truly unavoidable; prefer `object` or a narrow union.
-- Prefer `collections.abc.Callable`, `Sequence`, `Mapping` over their
-  `typing` counterparts for argument types.
-- Use `cast()` sparingly — only when mypy cannot infer a type that you know is
-  correct (e.g. narrowing an untyped third-party return value).
-- Add `# type: ignore[<code>]` only as a last resort, always with a narrow
-  error code and an inline comment explaining why.
+- Prefer `collections.abc.Callable`/`Sequence`/`Mapping` over their `typing` counterparts for argument types.
+- Use `cast()` sparingly — only when mypy can't infer a type you know is correct (e.g. narrowing an untyped third-party return value).
+- Add `# type: ignore[<code>]` only as a last resort, with a narrow error code and an inline comment explaining why.

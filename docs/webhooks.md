@@ -7,7 +7,7 @@ Pushover, ntfy.sh, or any other service that accepts an HTTP POST.
 ## Configuration
 
 Add a `webhook_urls` list to your device config (typically via the Settings
-page or by editing `device_config.json` directly):
+page or by editing `device.json` directly):
 
 ```json
 {

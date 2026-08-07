@@ -5,7 +5,7 @@ on every PR via the dedicated benchmark step (see .github/workflows/ci.yml).
 
 Results are compared against a stored baseline (tests/benchmarks/baseline.json)
 and fail CI when any benchmark regresses beyond the configured threshold
-(default +15%). See docs/benchmarking.md for the full workflow.
+(default +15%). See docs/performance.md for the full workflow.
 
 Add a new benchmark only if it:
   * Has no network dependency

@@ -1,384 +1,191 @@
 # Troubleshooting
 
-## InkyPi Service not running
+## InkyPi service not running
 
-Check the status of the service:
 ```bash
-sudo systemctl status inkypi.service
+sudo systemctl status inkypi.service   # look for "Active: active (running)"
+journalctl -u inkypi -n 100            # recent logs
+journalctl -u inkypi -f                # tail
+sudo systemctl restart inkypi.service
+sudo /usr/local/bin/inkypi -d          # run manually to see errors directly in the terminal
 ```
 
-If the service is running, this should output `Active: active (running)`:
+If the journal shows `Install in progress — refusing to start`, an earlier `install.sh` run left `/var/lib/inkypi/.install-in-progress` in place — rerun `install.sh` to let it complete and clear the lockfile, or remove it manually with `sudo rm /var/lib/inkypi/.install-in-progress` if you're certain no install is running.
+
+## Log rotation
+
+On a long-running Pi, the systemd journal can grow large enough to fill an SD card.
+
 ```bash
-● inkypi.service - InkyPi App
-     Loaded: loaded (/etc/systemd/system/inkypi.service; enabled; preset: enabled)
-     Active: active (running) since Sun 2024-12-22 20:48:53 GMT; 28s ago
-   Main PID: 48333 (bash)
-      Tasks: 6 (limit: 166)
-        CPU: 6.333s
-     CGroup: /system.slice/inkypi.service
-             ├─48333 bash /usr/local/bin/inkypi -d
-             └─48336 python -u /home/pi/inky/src/inkypi.py -d
+journalctl --disk-usage          # check current usage
+sudo journalctl --vacuum-size=50M  # one-off cleanup
 ```
 
-If the service is not running, check the logs for any errors or issues.
+Persistent cap — add to `/etc/systemd/journald.conf`:
 
-If the journal shows `Install in progress — refusing to start` (JTN-607), an earlier `install.sh` run left the `/var/lib/inkypi/.install-in-progress` lockfile in place — rerun `install.sh` to let it complete and clear the lockfile, or manually remove it with `sudo rm /var/lib/inkypi/.install-in-progress` if you are certain no install is running.
-
-## Debugging
-
-View the latest logs for the InkyPi service:
-```bash
-journalctl -u inkypi -n 100
-```
-
-Tail the logs:
-```bash
-journalctl -u inkypi -f
-```
-
-## Log Rotation
-
-On a long-running Pi (weeks or months of 24/7 uptime), the systemd journal can quietly grow large enough to fill an SD card. A few commands help you keep it in check.
-
-**Check current journal disk usage:**
-```bash
-journalctl --disk-usage
-```
-
-**Set a persistent size cap** by adding these lines to `/etc/systemd/journald.conf`:
 ```ini
 SystemMaxUse=50M
 RuntimeMaxUse=50M
 ```
-Then restart the journal daemon to apply:
-```bash
-sudo systemctl restart systemd-journald
-```
 
-**Vacuum old logs immediately** (one-off cleanup):
-```bash
-sudo journalctl --vacuum-size=50M
-```
+Then `sudo systemctl restart systemd-journald`. `install.sh`/`update.sh` apply these caps automatically on a fresh install/update if no explicit journald settings already exist. The in-memory log buffer used in `--dev` mode (max 1,000 entries) is never written to disk and doesn't affect journal size.
 
-> **Note:** The in-memory log buffer used in dev mode (`--dev`) holds at most 1,000 entries and is never written to disk, so it has no impact on journal size.
+## Intermittent Wi-Fi / SSH drops
 
-The InkyPi install and update scripts automatically enable persistent journald storage and apply `50M` caps for both `SystemMaxUse` and `RuntimeMaxUse` when no explicit journald settings already exist.
-
-## Intermittent Wi-Fi reachability / SSH drops
-
-If the Pi appears online but drops SSH or misses pings intermittently, check whether Wi-Fi power saving is enabled on `wlan0`:
+Check whether Wi-Fi power saving is enabled on `wlan0` (`2` = disabled, recommended for an always-on Pi):
 
 ```bash
 nmcli -g 802-11-wireless.powersave connection show "$(nmcli -g GENERAL.CONNECTION device show wlan0 | head -n 1)"
-```
-
-`2` means disabled, which is the recommended setting for an always-on Pi. InkyPi now hardens NetworkManager-based installs and updates by writing a NetworkManager config drop-in and disabling Wi-Fi powersave on the active `wlan0` profile when possible.
-
-To inspect the current link and roaming state:
-
-```bash
 nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS dev show wlan0
 cat /proc/net/wireless
 journalctl -b | grep -Ei 'wlan0|brcmfmac|CTRL-EVENT|deauth|disassoc'
 ```
 
-If you still see drops after power-save hardening, compare signal strength across nearby APs with the same SSID and consider pinning the Pi to the strongest BSSID.
+InkyPi's install/update hardens NetworkManager-based systems by disabling Wi-Fi powersave on the active `wlan0` profile automatically. If drops persist, compare signal strength across nearby APs with the same SSID and pin to the strongest BSSID.
 
-## Restart the InkyPi Service
+## API key not configured
 
-```bash
-sudo systemctl restart inkypi.service
+Some plugins require API keys in `.env` at the project root — see [api_keys.md](api_keys.md).
+
+## Clock/sunrise/sunset time is wrong
+
+Set the correct timezone on the Settings page of the web UI.
+
+## Failed to retrieve weather data (OpenWeatherMap 401)
+
+```
+ERROR - root - Failed to retrieve weather data: b'{"cod":401, ...requires a separate subscription to the One Call by Call plan...}'
 ```
 
+The Weather plugin uses OpenWeatherMap's One Call API 3.0, which needs its own (free-tier) subscription — see [api_keys.md](api_keys.md).
 
-## Run InkyPi Manually
+## No EEPROM detected (Inky displays)
 
-If the InkyPi service is not running, try manually running the startup script to diagnose. This should output the logs to the terminal and make it easier to troubleshoot any errors:
-
-```bash
-sudo /usr/local/bin/inkypi -d
 ```
-
-## API Key not configured
-
-Some plugins require API Keys to be configured in order to run. These need to be configured in a .env file at the root of the project. See [API Keys](api_keys.md) for details.
-
-## Clock/Sunset/Sunrise Time is wrong
-
-If the displayed time is incorrect, your timezone setting may not be configured. You can update this in the Settings page of the Web UI.
-
-## Failed to retrieve weather data
-
-```bash
-Failed to retrieve weather data
-ERROR - root - Failed to retrieve weather data: b'{"cod":401, "message": "Please note that using One Call 3.0 requires a separate subscription to the One Call by Call plan. Learn more here https://openweathermap.org/price. If you have a valid subscription to the One Call by Call plan, but still receive this error, then please see https://openweathermap.org/faq#error401 for more info."}'
-```
-
-InkyPi uses the One Call API 3.0 API which requires a subscription but is free for up to 1,000 requests a day. See [API Keys](api_keys.md) for instructions.
-
-## No EEPROM detected
-
-```bash
 RuntimeError: No EEPROM detected! You must manually initialise your Inky board.
 ```
 
-InkyPi uses the [inky python library](https://github.com/pimoroni/inky) from Pimoroni to detect and interface with Inky displays. However, the auto-detect functionality does not work on some boards, which requires manual setup (see [Manual Setup](https://github.com/pimoroni/inky?tab=readme-ov-file#manual-setup)).
+InkyPi uses the [inky](https://github.com/pimoroni/inky) library's auto-detect (`inky.auto.auto()` in `src/display/inky_display.py`), which doesn't work on some boards. See Pimoroni's [manual setup instructions](https://github.com/pimoroni/inky?tab=readme-ov-file#manual-setup) and replace the `auto()` call in `InkyDisplay.initialize_display()` with a direct import of your panel's Inky module (e.g. `from inky.inky_ac073tc1a import Inky` for the 7.3" Inky Impression), then restart the service.
 
-Manually import and instantiate the correct Inky module in src/display_manager.py. For the 7.3 Inky Impression, modify the file as follows:
-```
-@@ -1,5 +1,5 @@
- import os
--from inky.auto import auto
-+from inky.inky_ac073tc1a import Inky
- from utils.image_utils import resize_image, change_orientation
- from plugins.plugin_registry import get_plugin_instance
-
-@@ -8,7 +8,7 @@ class DisplayManager:
-     def __init__(self, device_config):
-         """Manages the display and rendering of images."""
-         self.device_config = device_config
--        self.inky_display = auto()
-+        self.inky_display = Inky()
-         self.inky_display.set_border(self.inky_display.BLACK)
-```
-
-Then restart the inkypi service:
-```
-sudo systemctl restart inkypi.service
-```
-
-## Waveshare e-Paper EPD Devices
+## Waveshare e-Paper devices
 
 ### Missing modules
 
-Ensure that the necessary modeules are available in the python environment. Waveshare requires:
-
-- gpiozero
-- lgpio
-- RPi.GPIO
-
-in addition to the libraries that are normally installed for Inky screens.
+In addition to the libraries used for Inky screens, Waveshare needs `gpiozero`, `lgpio`, `RPi.GPIO`.
 
 ### Screen not updating
 
-Verify SPI configuration using `ls /dev/sp*`.  There should be two entries for _spidev0.0_ and _spidev0.1_.  
+`ls /dev/sp*` should show both `spidev0.0` and `spidev0.1`. If only the first is present, check `/boot/firmware/config.txt` for `dtoverlay=spi0-0cs` — the standard InkyPi install adds this. Delete it for default behavior, or replace it with `dtoverlay=spi0-2cs`.
 
-If only the first is visible, check _/boot/firmware/config.txt_. The regular install of InkyPi adds `dtoverlay=spi0-0cs` to the this file.  If it is there, either delete it (for default behaviour) or specifically add `dtoverlay=spi0-2cs`.
+### Failed to download Waveshare driver
 
-### ERROR: Failed to download Waveshare driver
+`install.sh` fetches the EPD driver from the [Waveshare e-Paper GitHub repo](https://github.com/waveshareteam/e-Paper/tree/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd) based on the `-W` argument. Double-check the display model is correct and that a driver file exists at that path.
 
-The installation script attempts to fetch the EPD driver library based on the -W argument provided. Please double-check that:
-- You’ve entered the correct display model.
-- The corresponding driver file exists in the [waveshare e-Paper github repository](https://github.com/waveshareteam/e-Paper/tree/master/RaspberryPi_JetsonNano/python/lib/waveshare_epd).
+Some displays (e.g. `epd4in0e`) live under [`E-paper_Separate_Program`](https://github.com/waveshareteam/e-Paper/tree/master/E-paper_Separate_Program) instead. If yours is there, manually copy `epdXinX.py` and `epdconfig.py` into `InkyPi/src/display/waveshare_epd/`, plus the matching `DEV_config*` file for your board (grab all of them if unsure which applies). Example for `epd13in3E` on a Pi Zero 2 W:
 
-Note: Some displays, such as the epd4in0e, are not included in the main library path above. Instead, they may be located under the [E-paper_Separate_Program](https://github.com/waveshareteam/e-Paper/tree/master/E-paper_Separate_Program) path. If your model is there, look under:
-```bash
-/RaspberryPi_JetsonNano/python/lib/waveshare_epd/
-```
-
-In this case, you’ll need to manually copy both the epdXinX.py and epdconfig.py files into:
-```bash
-InkyPi/src/display/waveshare_epd/
-```
-
-For example, to copy the driver and epdconfig files for epd13in3E (Waveshare Spectra 6 (E6) Full Color 13.3 inch display):
 ```bash
 cd InkyPi/src/display/waveshare_epd/
 curl -L -O https://raw.githubusercontent.com/waveshareteam/e-Paper/refs/heads/master/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epd13in3E.py
 curl -L -O https://raw.githubusercontent.com/waveshareteam/e-Paper/refs/heads/master/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/epdconfig.py
-```
-
-Additionally, you'll need the DEV_config* files in the same directory for your system. If you don’t know which file applies to your hardware, you can download all available DEV config files.
-For example, for the epd13in3E display & Pi Zero 2 W, pull the following file:
-```bash
 curl -L -O https://raw.githubusercontent.com/waveshareteam/e-Paper/refs/heads/master/E-paper_Separate_Program/13.3inch_e-Paper_E/RaspberryPi/python/lib/DEV_Config_64_b.so
 ```
 
-Once the files are in place, rerun the installation script. The script will detect the driver locally and skip the download step.
+Rerun the install script once the files are in place — it detects the local driver and skips the download.
 
-## Today's Newspaper not found
+## Today's newspaper not found
 
-Daily newspaper front pages are sourced from [Freedom Forum](https://frontpages.freedomforum.org/gallery). The list of available newspapers may change periodically. InkyPi maintains an up-to-date list of newspapers provided by Freedom Forum, but there may be times when the list becomes outdated.
+The Newspaper plugin sources front pages from [Freedom Forum](https://frontpages.freedomforum.org/gallery); their list of available newspapers changes periodically and InkyPi's copy can lag. Open an issue with the newspaper name if you hit this.
 
-If you encounter this error, please feel free to open an Issue, including the name of the newspaper you were trying to access, and we'll work to update the list.
+## Known issues during Pi Zero W installation
 
-Also consider supporting the important work of Freedom Forum, an organization dedicated to promoting and protecting free press and the First Amendment: https://www.freedomforum.org/take-action/
+The **original** 32-bit Pi Zero W (not the Zero 2 W) has known install issues — see this [GitHub issue](https://github.com/fatihak/InkyPi/issues/5) for community discussion.
 
-## Known Issues during Pi Zero W Installation
+**Pip connection errors** (`RemoteDisconnected('Remote end closed connection without response')`):
 
-Due to limitations with the Pi Zero W, there are some known issues during the InkyPi installation process. For more details and community discussion, refer to this [GitHub Issue](https://github.com/fatihak/InkyPi/issues/5).
-
-### Pip Installation Error
-
-#### Error message
-```bash
-WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))':
-```
-
-#### Recommended solution
-Manually install the required pip packages in the inkypi virtual environment:
 ```bash
 source "/usr/local/inkypi/venv_inkypi/bin/activate"
 pip install -r install/requirements.txt
 deactivate
-```
-Restart the inkypi service to apply the changes:
-```bash
 sudo systemctl restart inkypi.service
 ```
 
-### Numpy ImportError
+**Numpy ImportError** (`should not try to import numpy from its source directory`):
 
-#### Error message
-```bash
-ImportError: Error importing numpy: you should not try to import numpy from
-its source directory; please exit the numpy source tree, and relaunch
-your python interpreter from there.
-```
-
-#### Recommended solution
-To resolve this issue, manually reinstall the Pillow library in the inkypi virtual environment:
 ```bash
 sudo su
 source "/usr/local/inkypi/venv_inkypi/bin/activate"
 pip uninstall Pillow
 pip install Pillow
 deactivate
-```
-
-Restart the inkypi service to apply the changes:
-```bash
 sudo systemctl restart inkypi.service
 ```
 
-## Plugin Development Troubleshooting
+## Plugin development troubleshooting
 
-> See also: [Building InkyPi Plugins](building_plugins.md) for the full plugin authoring guide.
+> See also: [building_plugins.md](building_plugins.md).
 
-### API Key Validation Failures
+### API key validation failures
 
-**Symptom:** The plugin error toast reads something like `"OPEN_WEATHER_MAP_SECRET API key not configured"`, `"GITHUB_SECRET API key not configured"`, or `"GOOGLE_AI_SECRET API key not configured"`. The display either retains the previous image or shows blank.
+**Symptom:** error toast like `"OPEN_WEATHER_MAP_SECRET API key not configured"`. Display keeps the previous image or shows blank.
 
-**Likely cause:** The required secret is missing from the `.env` file at the project root, or the file itself does not exist. All API-backed plugins call `device_config.load_env_key("<KEY_NAME>")` and raise a `RuntimeError` when the result is falsy.
+**Cause:** the secret is missing from `.env`, or the file doesn't exist. API-backed plugins call `device_config.load_env_key("<KEY_NAME>")` and raise `RuntimeError` when it's falsy.
 
-**How to verify:**
+**Verify:**
 ```bash
 grep -E 'OPEN_WEATHER_MAP_SECRET|GITHUB_SECRET|GOOGLE_AI_SECRET|OPEN_AI_SECRET|NASA_SECRET' /usr/local/inkypi/.env
 ```
 
-**Fix:** Add the missing key to `.env` (create the file if needed) and restart the service. See [API Keys](api_keys.md) for per-plugin key names and where to obtain them.
+**Fix:** add the key (see [api_keys.md](api_keys.md)), restart the service.
 
----
+### Plugin fetch timeouts (Newspaper, Comic, RSS)
 
-### Plugin Fetch Timeouts (Newspaper, Comic, RSS)
+**Symptom:** `requests.exceptions.ReadTimeout`/`ConnectionError` in the journal; plugin-specific error toasts.
 
-**Symptom:** The journal shows `requests.exceptions.ReadTimeout` or `requests.exceptions.ConnectionError`. The Newspaper plugin may raise `"Newspaper front cover not found."`, the Comic plugin `"Failed to retrieve latest comic."`, and the RSS plugin `"Failed to parse RSS feed: …"`.
+**Cause:** upstream source is slow/unreachable, or DNS resolution failed. Default HTTP timeout is 20s.
 
-**Likely cause:** The upstream source (Freedom Forum, GoComics, the RSS feed URL) is temporarily unreachable or slow. On a Pi Zero the default HTTP timeout (20 s) can be hit during high-load periods. DNS resolution failures also surface as `ConnectionError`.
+**Verify:** `journalctl -u inkypi -n 50 | grep -E 'Timeout|ConnectionError|Failed to'`, then `curl -I <feed_url>` from the Pi.
 
-**How to verify:**
+**Fix:** retry after a few minutes; confirm network access (`ping 8.8.8.8`); raise `INKYPI_HTTP_TIMEOUT_DEFAULT_S` in `.env` if a feed is reliably slow (see [http.md](http.md)).
+
+### Image dimension mismatch
+
+**Symptom:** journal shows `dimension_mismatch | plugin_id=... expected=800x480 actual=480x800 — skipping display push`. Display isn't updated.
+
+**Cause:** `generate_image()` returned an image whose size doesn't match the device resolution (`OutputDimensionMismatch` in `src/utils/output_validator.py`). A 90° transposition auto-corrects; anything else raises.
+
+**Fix:** call `self.get_oriented_dimensions(device_config)` for the correct `(width, height)` and use that when creating the image.
+
+### Memory pressure on Pi Zero
+
+**Symptom:** service killed silently, or `MemoryError`/`Killed` in the journal. Chromium-based plugins (Weather, Calendar, AI Text, and other HTML-rendered plugins) are most affected — headless Chromium costs ~150–200 MB on a 512 MB device.
+
+**Verify:** `journalctl -u inkypi -n 50 | grep -E 'Killed|MemoryError|OOM'`, `free -m`.
+
+**Fix:** `sudo systemctl enable --now zramswap` if not active; increase refresh interval; avoid back-to-back Chromium-heavy plugins in one playlist; consider a Pi Zero 2 W over the original Zero W.
+
+### Screenshot plugin failures (Chromium not found / sandbox error)
+
+**Symptom:** `"Failed to take screenshot, please check logs."`; journal shows `"No supported browser found"` or a Chromium exit code like `status=127`.
+
+**Verify:** `which chromium chromium-headless-shell google-chrome`, `journalctl -u inkypi -n 50 | grep -i 'screenshot\|chromium\|browser'`.
+
+**Fix:** `sudo apt-get install -y chromium-browser; sudo systemctl restart inkypi.service`. If Chromium crashes rather than being missing, check `/dev/shm` is writable — InkyPi already sets `--disable-dev-shm-usage` to route temp files to `/tmp`, so ensure `/tmp` has ≥64 MB free.
+
+### Jinja2 template render errors
+
+**Symptom:** `UndefinedError` (`'dict object' has no attribute 'foo'`) on the settings page, or blank/garbled HTML. HTML-escaped text (`&lt;b&gt;` instead of `<b>`) where markup was expected.
+
+**Cause:** a template variable wasn't added to `generate_settings_template()`'s return dict (or `render_image()`'s `template_params`); or autoescape is on for `.html` templates and a value with intentional markup wasn't wrapped in `{{ value | safe }}`.
+
+**Verify:** `journalctl -u inkypi -n 50 | grep -i 'UndefinedError\|TemplateSyntaxError\|jinja'`, or run the dev server and hit the settings page for the full traceback.
+
+**Fix:** add the missing key before rendering; use `{{ value | safe }}` only for trusted, intentionally-markup values; validate a template offline with:
 ```bash
-journalctl -u inkypi -n 50 | grep -E 'Timeout|ConnectionError|Failed to'
+python -c "from jinja2 import Environment; Environment().parse(open('src/plugins/<id>/render/<file>.html').read())"
 ```
-Try the URL manually from the Pi: `curl -I <feed_url>`.
-
-**Fix:** Retry after a few minutes. For persistent issues, check that the Pi has network access (`ping 8.8.8.8`) and that the source service is operational. Increase the HTTP timeout via `INKYPI_HTTP_TIMEOUT_DEFAULT_S` in `.env` if the feed is reliably slow.
-
----
-
-### Image Dimension Mismatch (`OutputDimensionMismatch`)
-
-**Symptom:** The journal contains a log line like:
-
-```
-plugin_lifecycle: dimension_mismatch | plugin_id=my_plugin instance=… expected=800x480 actual=480x800 — skipping display push
-```
-
-The display is not updated; the previous image is retained.
-
-**Likely cause:** The plugin's `generate_image` method returned an image whose size does not match the device resolution stored in `device.json`. This is validated by `OutputDimensionMismatch` in `src/utils/output_validator.py`. A 90-degree transposition is auto-corrected, but any other size mismatch raises the exception.
-
-**How to verify:**
-```bash
-journalctl -u inkypi -n 100 | grep dimension_mismatch
-```
-
-**Fix:** In your plugin call `self.get_oriented_dimensions(device_config)` to obtain the correct `(width, height)` for the current orientation, and use that tuple when creating the `PIL.Image` object or calling `render_image`.
-
----
-
-### Memory Pressure on Pi Zero
-
-**Symptom:** The service is killed silently (`Main process exited`) or the journal shows `MemoryError` / Python `Killed`. Chromium-based plugins (Weather, Calendar, AI Text) are most affected. The Pi Zero W has only 512 MB of RAM shared with the OS.
-
-**Likely cause:** Launching a headless Chromium instance for `render_image` consumes ~150–200 MB. Under memory pressure the Linux OOM killer terminates either Chromium or the InkyPi process.
-
-**How to verify:**
-```bash
-journalctl -u inkypi -n 50 | grep -E 'Killed|MemoryError|OOM'
-free -m
-```
-
-**Fix:**
-1. Enable zram swap if not already active: `sudo systemctl enable --now zramswap`.
-2. Increase the plugin refresh interval to reduce how often Chromium is launched.
-3. Limit simultaneous playlist plugins to avoid back-to-back Chromium launches.
-4. Consider a Pi Zero 2 W (512 MB with a faster CPU) for Chromium-heavy plugin sets.
-
----
-
-### Screenshot Plugin Failures (Chromium Not Found / Sandbox Error)
-
-**Symptom:** The error toast or journal reads `"Failed to take screenshot, please check logs."`. The journal may contain `"No supported browser found. Install Chromium or Google Chrome."` or a non-zero Chromium exit code such as `status=127`.
-
-**Likely cause:** The Screenshot, Weather, Calendar, and AI Text plugins all depend on a headless Chromium binary (via `src/utils/image_utils.py`). If Chromium is not installed, or if the binary is present but the `--no-sandbox` flag is blocked by the OS, `take_screenshot` returns `None`.
-
-**How to verify:**
-```bash
-which chromium chromium-headless-shell google-chrome 2>/dev/null
-journalctl -u inkypi -n 50 | grep -i 'screenshot\|chromium\|browser'
-```
-
-**Fix:**
-```bash
-sudo apt-get install -y chromium-browser
-sudo systemctl restart inkypi.service
-```
-If Chromium is present but crashes, check that `/dev/shm` is writable: `ls -la /dev/shm`. On constrained systems the `--disable-dev-shm-usage` flag (already set by InkyPi) moves temp files to `/tmp`; ensure `/tmp` has at least 64 MB free.
-
----
-
-### Jinja2 Template Render Errors
-
-**Symptom:** Plugin settings page shows a Jinja2 `UndefinedError` such as `'dict object' has no attribute 'foo'`, or the rendered HTML is blank/garbled. In some cases a value that should appear as plain text is HTML-escaped (e.g., `&lt;b&gt;` instead of `<b>`).
-
-**Likely cause:** Two common issues:
-1. A template variable expected by `settings.html` or `render/` templates was not added to the dict returned by `generate_settings_template` (or `template_params` in `render_image`).
-2. Autoescape is enabled for `.html` files (see `base_plugin.py`). Any string that contains HTML and is passed as a template variable will be escaped unless wrapped with `{{ value | safe }}`.
-
-**How to verify:**
-```bash
-journalctl -u inkypi -n 50 | grep -i 'UndefinedError\|TemplateSyntaxError\|jinja'
-```
-Run the dev server and navigate to the plugin settings page to see the full traceback in the terminal.
-
-**Fix:**
-- For missing variables: add the key to `generate_settings_template` before calling `render_image` or returning the template dict.
-- For escaped HTML: use `{{ value | safe }}` only when the value is trusted and intentionally contains markup.
-- For syntax errors: run `python -c "from jinja2 import Environment; env = Environment(); env.parse(open('src/plugins/<id>/render/<file>.html').read())"` to validate the template offline.
-
----
 
 ## Colors look washed out or incorrect
 
-Some color inaccuracies are expected due to the physical limitations of e-ink displays, especially on multi-color panels with a limited color palette and dithering.
+Expected to some degree on e-ink, especially multi-color panels with dithering. The Settings page exposes Saturation/Contrast/Sharpness/Brightness (applied via Pillow's `ImageEnhance`) — experiment to find what suits your panel.
 
-InkyPi provides several image enhancement controls in the Settings page that can help improve how images appear on your display: Saturation, Contrast, Sharpness, Brightness. These adjustments are applied to images using the Pillow ImageEnhance module before they are displayed. You can experiment with these values to find what looks best for your specific panel and content.
-
-For more details on how each setting behaves, see the [Pillow documentation](https://pillow.readthedocs.io/en/stable/reference/ImageEnhance.html).
-
-### Inky Driver Saturation
-
-For Inky displays from Pimoroni, there is an additional option for `Inky Driver Saturation` in the Settings page. This controls the saturation of the palette to which an image is dithered to in the Inky library. Try setting this to '0' which seems to improve the quality of images displayed.
-
-See [this response](https://github.com/pimoroni/inky/issues/225#issuecomment-3213935144) from the Pimoroni team for more details.
+For Pimoroni Inky displays, there's also an `Inky Driver Saturation` setting controlling the palette dithering saturation in the `inky` library — try `0` first, per [this note from Pimoroni](https://github.com/pimoroni/inky/issues/225#issuecomment-3213935144).

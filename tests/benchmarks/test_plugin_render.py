@@ -5,7 +5,7 @@ plugin Python code, HTML templating, and image post-processing.  They are
 deterministic, hermetic, and network-free (all I/O is mocked).  Each benchmark
 should complete well under 1 second on a CI runner.
 
-See also: docs/benchmarking.md for the production benchmarking workflow.
+See also: docs/performance.md for the production benchmarking workflow.
 """
 
 from __future__ import annotations

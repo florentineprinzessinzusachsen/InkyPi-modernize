@@ -1,119 +1,58 @@
 # Dependency Management
 
-InkyPi uses a two-layer approach: loose `.in` source files that express intent,
-and `pip-compile --generate-hashes` lockfiles that pin every transitive dep with
-cryptographic hashes.
+Two independent pipelines, both producing hash-pinned lockfiles that `install/install.sh` installs with `pip install --require-hashes` — a tampered wheel is rejected even if the version number looks correct.
 
-## Why hashes matter
+| Layer | Source of truth | Lockfile | Tool |
+|---|---|---|---|
+| Runtime deps | `pyproject.toml` (`[project.dependencies]`) | `uv.lock` → exported to `install/requirements.txt` | [uv](https://docs.astral.sh/uv/) |
+| Dev/CI deps | `install/requirements-dev.in` | `install/requirements-dev.txt` | `pip-compile` |
 
-Supply-chain attacks on PyPI are real. Typosquatted packages (`colorama` vs
-`colourama`), post-release tampering, and compromised mirrors have all been used
-to inject malicious code. `pip install --require-hashes` verifies every wheel's
-SHA-256 before execution, so a tampered artifact is rejected even if the version
-number looks correct.
+`install/requirements.in` still exists as a legacy reference but is **not** the source of truth for runtime deps — edit `pyproject.toml` instead.
 
-Example attack surface without hashes:
+## Runtime dependencies (uv)
 
-- `pyyaml` — a popular dep; a mirror serving a backdoored wheel would pass a
-  plain `pip install pyyaml==6.0.1` without complaint.
-- `requests`, `urllib3` — network libraries; ideal injection vectors.
-- Any transitive dep added silently by an upstream package.
+`uv lock` produces one universal, hash-pinned resolution covering every platform InkyPi supports (Linux x86_64/aarch64/armv7l/armv6l and macOS arm64/x86_64) from a single run — including `sys_platform` guards (e.g. `inky`, `cysystemd` are Linux-only) and multi-arch wheel hashes, with no manual per-platform patching required. This replaced an earlier pip-compile-based flow that had to be run per-Python-version and needed a hand-maintained block of manually-fetched hashes appended to `requirements.txt` for Linux-only packages, because pip-compile run on macOS can't resolve `sys_platform == "linux"` dependencies at all.
 
-## File layout
+After changing a dependency in `pyproject.toml`:
 
-| File | Purpose |
-|------|---------|
-| `install/requirements.in` | Human-maintained runtime constraints (`>=X.Y,<X+1`) |
-| `install/requirements-dev.in` | Human-maintained dev/CI constraints |
-| `install/requirements.txt` | **Generated** lockfile — hashed, exact pins, do not edit by hand |
-| `install/requirements-dev.txt` | **Generated** dev lockfile — hashed, exact pins, do not edit by hand |
+```bash
+uv lock
 
-## How to bump a dependency
+uv export --format requirements.txt --no-dev --no-emit-project \
+    --output-file install/requirements.txt
+```
 
-1. Edit the relevant `.in` file (e.g. loosen or tighten a bound).
-2. Regenerate the lockfile:
+Commit both `uv.lock` and `install/requirements.txt`.
 
-   ```bash
-   pip-compile --generate-hashes --no-strip-extras --allow-unsafe \
-       install/requirements.in -o install/requirements.txt
-   ```
+To upgrade a package within an already-satisfied range (e.g. after a CVE) without touching everything else:
 
-   Or for dev deps:
+```bash
+uv lock --upgrade-package requests
+uv export --format requirements.txt --no-dev --no-emit-project --output-file install/requirements.txt
+```
 
+A bare `uv lock` does **not** float an already-satisfied range to the latest version — it keeps resolutions stable. `--upgrade-package` is required to pick up a newer version inside an existing bound.
+
+Verify everything is in sync (same check CI runs):
+
+```bash
+bash scripts/check_requirements_drift.sh
+```
+
+`install/install.sh` still installs from `install/requirements.txt` with `--require-hashes` — no behavior change on the Pi, only the tool that regenerates the file changed.
+
+## Dev/CI dependencies (pip-compile)
+
+This pipeline is separate and not part of the uv migration.
+
+1. Edit `install/requirements-dev.in`.
+2. Regenerate:
    ```bash
    pip-compile --generate-hashes --no-strip-extras --allow-unsafe \
        install/requirements-dev.in -o install/requirements-dev.txt
    ```
-
-3. Commit **both** the `.in` and the generated `.txt`.
-
-## How to add a new dependency
-
-1. Add it to the appropriate `.in` file with a semver cap (e.g. `newlib>=1.2,<2`).
-2. Run pip-compile as above.
 3. Commit both files.
 
-## How to upgrade after a CVE
+`install/requirements-dev.txt` is manually maintained against `requirements-dev.in` — nothing checks they stay in sync automatically, so regenerate deliberately rather than hand-editing the `.txt`. Regenerating via `pip-compile` on macOS **drops every `sys_platform == "linux"`-gated entry** (e.g. `memray`) — verify by grepping the output for `sys_platform` and diff the count against `requirements-dev.in`; restore any dropped entry's hash block from git history if needed.
 
-Use `--upgrade-package` to re-resolve only the affected package (and its
-transitive deps) without upgrading everything else:
-
-```bash
-pip-compile --generate-hashes --no-strip-extras --allow-unsafe \
-    --upgrade-package requests \
-    install/requirements.in -o install/requirements.txt
-```
-
-## `--require-hashes` in install.sh
-
-`install/install.sh` passes `--require-hashes` to pip when installing runtime
-deps. This means pip will refuse to install any package whose wheel hash does not
-appear in `install/requirements.txt`. If a new package needs to be added, the
-lockfile must be regenerated (see above) before the installer will accept it.
-
-## Linux-only packages (inky, cysystemd and their transitive deps)
-
-`inky`, `cysystemd`, `gpiod`, `gpiodevice`, `smbus2`, and `spidev` are hardware
-drivers that only ship Linux wheels (or build from source on Linux). pip-compile
-cannot include them in the lockfile when run on macOS because the `sys_platform
-== "linux"` condition is False at compile time.
-
-These packages are appended manually to the bottom of `install/requirements.txt`
-with `; sys_platform == "linux"` markers and all their PyPI hashes. pip skips
-them silently on macOS/Windows because the environment marker is False. On Linux
-(the Pi), pip installs and hash-verifies them.
-
-To update a Linux-only package:
-1. Find all new hashes on PyPI: `curl https://pypi.org/pypi/<pkg>/<ver>/json | python3 -c "import json,sys; [print(u['digests']['sha256']) for u in json.load(sys.stdin)['urls']]"`
-2. Edit the manually-appended block at the bottom of `install/requirements.txt`.
-3. Update `install/requirements.in` with the new version pin.
-4. Run `pip-compile --generate-hashes ...` to re-lock the rest of the file.
-5. Manually re-append the Linux-only block.
-
-## Cross-platform note (Pi Zero 2 W — armv7l)
-
-`pip-compile` is run on a development machine (typically x86_64 or arm64 macOS).
-When `--generate-hashes` is used, pip-compile fetches the metadata for **all**
-wheels published for each package version on PyPI and records every hash. This
-means the resulting lockfile contains hashes for `manylinux_2_17_armv7l` wheels
-alongside `macosx_arm64` and `linux_x86_64` wheels.
-
-When pip runs on the Pi with `--require-hashes`, it downloads only the armv7l
-wheel (or falls back to the sdist), looks up its hash in the lockfile, and
-verifies it — this works correctly because the lockfile already contains that
-hash.
-
-If a package publishes no armv7l wheel and no universal sdist, pip will fail at
-install time. In that case:
-
-1. Check whether the package builds from source on armv7l.
-2. If not, find an alternative package or pin to a version that does publish
-   armv7l wheels.
-3. Document the constraint in `requirements.in` with an inline comment.
-
-Packages with `sys_platform == "linux"` guards in `requirements.in` (`inky`,
-`cysystemd`) only ship Linux wheels and cannot install on macOS/Windows; they
-are excluded from the pip-compile lockfile on macOS and manually appended with
-hashes (see "Linux-only packages" section above). `pi-heif`, by contrast, ships
-macOS/Windows wheels and is NOT platform-guarded — it resolves normally via
-pip-compile on all dev platforms.
+Before changing a dev tool's config schema (e.g. `[tool.mutmut]`), check the pinned version in `requirements-dev.txt` — an in-flight dependency bump PR isn't proof the bump has landed.

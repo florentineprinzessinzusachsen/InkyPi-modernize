@@ -11,17 +11,11 @@ This project uses various fonts and icons, each with specific licensing terms. B
 
 
 ## Icons
+
+All built-in plugin icons (plugin picker, dashboard nav) are inline SVGs from the [Phosphor Icons](https://phosphoricons.com/) set (MIT licensed), mapped per-plugin in `src/templates/macros/icons.html`. `icon.png` is only used as a fallback for a plugin not in that map — chiefly third-party plugins (see [building_plugins.md](building_plugins.md)). The raster icons below are still shipped as files and carry their own attribution requirements:
+
 | Name | Attribution |
 |---------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| <img src="../src/plugins/clock/icon.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/clock" title="clock icons">Clock icons created by dmitri13 - Flaticon</a>|
-| <img src="../src/plugins/image_upload/icon.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/picture" title="picture icons">Picture icons created by Pixel perfect - Flaticon</a>|
-| <img src="../src/plugins/newspaper/icon.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/paper" title="paper icons">Paper icons created by Freepik - Flaticon</a>|
-| <img src="../src/plugins/weather/icon.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/sunny" title="sunny icons">Sunny icons created by kosonicon - Flaticon</a>|
-| <img src="../src/static/icons/display.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/music-and-multimedia" title="music and multimedia icons">Music and multimedia icons created by Archival - Flaticon</a>|
-| <img src="../src/static/icons/edit.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/modify" title="modify icons">Modify icons created by Freepik - Flaticon</a>|
-| <img src="../src/static/icons/playlist.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/picture" title="picture icons">Picture icons created by Pixel perfect - Flaticon</a>|
-| <img src="../src/static/icons/remove.png" width="32" height="32"> |<a href="https://www.flaticon.com/free-icons/delete" title="delete icons">Delete icons created by Pixel perfect - Flaticon</a>|
-| <img src="../src/static/icons/settings.png" width="32" height="32"> |<a href="https://www.flaticon.com/free-icons/settings" title="settings icons">Settings icons created by Phoenix Group - Flaticon</a>|
 | <img src="../src/plugins/weather/icons/01d.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/gradient" title="gradient icons">Gradient icons created by jeremie ROBERRINI-NEVEU - Flaticon</a>|
 | <img src="../src/plugins/weather/icons/01n.png" width="32" height="32"> | <a href="https://www.flaticon.com/packs/weather-app-8" title="color fill">Color fill created by Arkinasi - Flaticon</a>|
 | <img src="../src/plugins/weather/icons/02d.png" width="32" height="32"> | <a href="https://www.flaticon.com/free-icons/cloudy" title="cloudy icons">Cloudy icons created by berkahicon - Flaticon</a><br><a href="https://www.flaticon.com/free-icons/gradient" title="gradient icons">Gradient icons created by jeremie ROBERRINI-NEVEU - Flaticon</a>|

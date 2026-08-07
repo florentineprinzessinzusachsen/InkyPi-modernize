@@ -3,7 +3,7 @@
 Each plugin that makes HTTP requests should call get_http_session() rather than
 creating a bare requests.Session() or using the module-level requests.get().
 This test patches get_http_session and confirms the wpotd plugin calls it, which
-exercises the adoption pattern required by docs/http_performance.md.
+exercises the adoption pattern required by docs/http.md.
 """
 
 from unittest.mock import MagicMock, patch

@@ -6,14 +6,14 @@ def test_plugin_static_image_route(client):
     base = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "src", "plugins")
     )
-    plugin_dir = os.path.join(base, "ai_text")
-    icon_src = os.path.join(plugin_dir, "icon.png")
+    plugin_dir = os.path.join(base, "base_plugin", "frames")
+    icon_src = os.path.join(plugin_dir, "blank.png")
 
-    # Ensure icon exists in repo
-    assert os.path.exists(icon_src), "Expected plugin icon to exist in repository"
+    # Ensure the asset exists in repo
+    assert os.path.exists(icon_src), "Expected plugin asset to exist in repository"
 
     # Request through route
-    resp = client.get("/images/ai_text/icon.png")
+    resp = client.get("/images/base_plugin/frames/blank.png")
     assert resp.status_code == 200
     assert resp.data[:8] != b"", "Non-empty body"
     # Content-Type should be an image type
@@ -25,7 +25,7 @@ def test_plugin_static_image_route_with_relative_src_dir(client, tmp_path, monke
     monkeypatch.setenv("SRC_DIR", "src")
     monkeypatch.chdir(tmp_path)
 
-    resp = client.get("/images/ai_text/icon.png")
+    resp = client.get("/images/base_plugin/frames/blank.png")
     assert resp.status_code == 200
     assert "image" in (resp.headers.get("Content-Type") or "")
 
@@ -48,12 +48,15 @@ def test_plugin_image_allows_nested_subpath(client):
 
 def test_plugin_image_rejects_parent_traversal(client):
     """../ in the filename must not escape the plugin directory."""
-    resp = client.get("/images/ai_text/..%2ficon.png")
+    resp = client.get("/images/ai_text/..%2fbase_plugin%2fframes%2fblank.png")
     # Werkzeug rejects %2f in <path:...> before we see it (404/308); either
     # way the route must never return an image from outside the plugin dir.
     assert resp.status_code in (404, 308, 400)
 
-    resp = client.get("/images/ai_text/../clock/icon.png")
+    # Target a file that genuinely exists one directory up, so a passing
+    # assertion proves traversal is blocked structurally — not just that the
+    # (nonexistent) destination happened to 404 on its own.
+    resp = client.get("/images/ai_text/../base_plugin/frames/blank.png")
     assert resp.status_code in (404, 308, 400)
 
 
@@ -78,6 +81,6 @@ def test_plugin_image_rejects_absolute_plugin_id(client):
 
 def test_plugin_image_rejects_dot_segments(client):
     """Single-dot segments in filename are rejected."""
-    resp = client.get("/images/ai_text/./icon.png")
+    resp = client.get("/images/base_plugin/./frames/blank.png")
     # Werkzeug may normalize or 308; either way we never serve arbitrary files.
     assert resp.status_code in (200, 308, 404)
