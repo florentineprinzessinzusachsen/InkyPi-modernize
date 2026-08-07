@@ -154,6 +154,13 @@ def test_validate_device_config_called_on_read(tmp_path, monkeypatch):
     import config as config_mod
     import utils.config_schema as schema_mod
 
+    # This test writes straight to the prod path (device.json) and doesn't
+    # care about dev/prod selection — clear INKYPI_ENV so it isn't found by
+    # the CI job's ambient INKYPI_ENV=dev, which (correctly, post JTN-259)
+    # now stops Config from falling back to an existing device.json while
+    # dev mode is active instead of bootstrapping device_dev.json.
+    monkeypatch.delenv("INKYPI_ENV", raising=False)
+    monkeypatch.delenv("FLASK_ENV", raising=False)
     monkeypatch.setattr(config_mod.Config, "BASE_DIR", str(tmp_path))
     monkeypatch.setattr(
         config_mod.Config, "current_image_file", str(tmp_path / "current_image.png")
@@ -230,6 +237,13 @@ def test_validation_with_jsonschema_available(tmp_path, monkeypatch):
     }
     config_file.write_text(json.dumps(cfg_data))
 
+    # This test writes straight to the prod path (device.json) and doesn't
+    # care about dev/prod selection — clear INKYPI_ENV so it isn't found by
+    # the CI job's ambient INKYPI_ENV=dev, which (correctly, post JTN-259)
+    # now stops Config from falling back to an existing device.json while
+    # dev mode is active instead of bootstrapping device_dev.json.
+    monkeypatch.delenv("INKYPI_ENV", raising=False)
+    monkeypatch.delenv("FLASK_ENV", raising=False)
     monkeypatch.setattr(config_mod.Config, "BASE_DIR", str(tmp_path))
     monkeypatch.setattr(
         config_mod.Config, "current_image_file", str(tmp_path / "current_image.png")
@@ -285,6 +299,13 @@ def test_validation_without_jsonschema(tmp_path, monkeypatch):
     import config as config_mod
     import utils.config_schema as schema_mod
 
+    # This test writes straight to the prod path (device.json) and doesn't
+    # care about dev/prod selection — clear INKYPI_ENV so it isn't found by
+    # the CI job's ambient INKYPI_ENV=dev, which (correctly, post JTN-259)
+    # now stops Config from falling back to an existing device.json while
+    # dev mode is active instead of bootstrapping device_dev.json.
+    monkeypatch.delenv("INKYPI_ENV", raising=False)
+    monkeypatch.delenv("FLASK_ENV", raising=False)
     monkeypatch.setattr(config_mod.Config, "BASE_DIR", str(tmp_path))
     monkeypatch.setattr(
         config_mod.Config, "current_image_file", str(tmp_path / "current_image.png")
