@@ -38,11 +38,22 @@ PROVIDER_LABELS = {"vbb": "VBB", "bvg": "BVG", "db": "DB"}
 
 DEPARTURES_DURATION_MIN = 60
 DEPARTURES_RESULTS = 15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
-MAX_FETCHED_DEPARTURES = 12  # raw per-stop fetch cap, ahead of display truncation below
+# Sanity ceiling on how many departures a single stop ever keeps, regardless
+# of the current layout's computed target (_target_capacities_for_stops) -
+# guards a pathological shape, not something expected to bind in practice.
+DEPARTURES_ABSOLUTE_MAX = 40
 # Ceiling for the learned per-stop `results` cap below - comfortably inside
 # what the API already handles today (the settings wizard's stop/line picker
 # queries at results=100, see abfahrtzeitenLinesForStop in plugin_schema.js).
 DEPARTURES_RESULTS_CEILING = 80
+# Only shrink a learned `results` cap once it's at least this many times
+# bigger than what was actually needed this render, and even then leave this
+# much headroom above that need - both exist so normal minute-to-minute
+# service fluctuation can't bounce the cap up and down every render; it only
+# reacts to a real, sustained drop in what a stop needs (e.g. more stops
+# added, shrinking every row's capacity).
+DEPARTURES_SHRINK_MARGIN = 3
+DEPARTURES_SHRINK_HEADROOM = 1.5
 REQUEST_TIMEOUT = 6  # kept short so a hung provider fails fast within the executor's 60s attempt budget
 
 # Filename prefix for the on-disk "learned results cap" cache - see
@@ -189,6 +200,30 @@ def _group_into_rows(items, max_per_row=3):
     return result
 
 
+def _target_capacities_for_stops(stop_count):
+    """Pre-fetch per-stop departure target, one entry per stop_groups index.
+
+    Row assignment (which stop lands in which row, and how wide that row is)
+    depends only on how many stops are configured and their order - not on
+    any fetched departure data - so it's computable before the network fetch,
+    by running the exact same _group_into_rows balancing used later in
+    generate_image over a list of placeholder indices. `+1` matches
+    generate_image's own deliberate one-row overfetch (see its comment on
+    stop["departures"][:capacity + 1]) so what's fetched here always covers
+    what actually gets rendered.
+    """
+    if stop_count <= 0:
+        return []
+    rows = _group_into_rows(list(range(stop_count)))
+    grid_rows = len(rows)
+    capacities = [0] * stop_count
+    for row in rows:
+        capacity = _capacity_for_row(len(row), grid_rows) + 1
+        for idx in row:
+            capacities[idx] = capacity
+    return capacities
+
+
 class Abfahrtzeiten(BasePlugin):
     def build_settings_schema(self):
         return schema(
@@ -224,7 +259,14 @@ class Abfahrtzeiten(BasePlugin):
             raise RuntimeError("At least one stop is required. Add a stop in the plugin settings.")
 
         stop_groups = _group_by_stop(entries)
-        stops, any_succeeded, fetch_errors = self._fetch_all(stop_groups, device_config)
+        # Computed before fetching - see _target_capacities_for_stops - so
+        # each stop's departures fetch knows how many departures the CURRENT
+        # grid shape can actually show for it, instead of fetching toward a
+        # fixed guess unrelated to the real on-screen budget.
+        target_capacities = _target_capacities_for_stops(len(stop_groups))
+        stops, any_succeeded, fetch_errors = self._fetch_all(
+            stop_groups, device_config, target_capacities
+        )
 
         if not any_succeeded:
             # All stops almost always fail for the same underlying reason (one
@@ -277,15 +319,18 @@ class Abfahrtzeiten(BasePlugin):
             raise RuntimeError("Failed to render Abfahrtzeiten image, please check logs.")
         return image
 
-    def _fetch_all(self, stop_groups, device_config):
+    def _fetch_all(self, stop_groups, device_config, target_capacities):
         stops = []
         any_succeeded = False
         fetch_errors = []
         session = get_http_session()
 
-        def fetch_one(group):
+        def fetch_one(group, target_capacity):
             try:
-                return group, self._fetch_stop_departures(session, group, device_config), None
+                departures = self._fetch_stop_departures(
+                    session, group, device_config, target_capacity
+                )
+                return group, departures, None
             except Exception as e:
                 logger.warning(f"Abfahrtzeiten: departures fetch failed for stop {group['stopId']} ({group['provider']}): {e}")
                 # Keep the raw exception text out of the per-stop dict (it's
@@ -302,7 +347,7 @@ class Abfahrtzeiten(BasePlugin):
         # or fail any of the others - same isolation as the sequential
         # version, just concurrent.
         with ThreadPoolExecutor(max_workers=min(len(stop_groups), 8) or 1) as executor:
-            results = list(executor.map(fetch_one, stop_groups))
+            results = list(executor.map(fetch_one, stop_groups, target_capacities))
 
         for group, rows, error in results:
             stops.append({
@@ -317,10 +362,22 @@ class Abfahrtzeiten(BasePlugin):
                 fetch_errors.append(error)
         return stops, any_succeeded, fetch_errors
 
-    def _fetch_stop_departures(self, session, group, device_config):
+    def _fetch_stop_departures(self, session, group, device_config, target_capacity):
+        """Fetches, filters, and adaptively re-pages one stop's departures.
+
+        `target_capacity` is how many departures the CURRENT render's grid
+        shape can actually show for this stop (see
+        _target_capacities_for_stops in generate_image) - not a fixed guess.
+        Two independent adaptive mechanisms both key off it: the learned
+        `results` page size (_load_learned_results / _store_learned_results),
+        grown or shrunk to match what this stop actually needs; and how many
+        matched departures are kept at all, which now tracks target_capacity
+        directly instead of the old fixed MAX_FETCHED_DEPARTURES guess.
+        """
         base = PROVIDER_BASES[group["provider"]]
         provider, stop_id = group["provider"], group["stopId"]
         results_cap = _load_learned_results(device_config, provider, stop_id)
+        effective_target = max(1, min(target_capacity, DEPARTURES_ABSOLUTE_MAX))
         resp = session.get(
             f"{base}/stops/{quote(str(stop_id), safe='')}/departures",
             params={"duration": DEPARTURES_DURATION_MIN, "results": results_cap},
@@ -331,7 +388,12 @@ class Abfahrtzeiten(BasePlugin):
         raw_departures = data.get("departures", [])
 
         rows = []
-        for dep in raw_departures:
+        # Tracks how many raw (pre-filter) entries it took, in the order the
+        # API returned them, to accumulate `effective_target` matches - used
+        # below to decide whether results_cap has more headroom than this
+        # stop actually needs.
+        raw_scanned_for_target = None
+        for i, dep in enumerate(raw_departures, start=1):
             line = (dep.get("line") or {}).get("name")
             direction = dep.get("direction")
             if (line, direction) not in group["filters"]:
@@ -354,20 +416,28 @@ class Abfahrtzeiten(BasePlugin):
                 "platform": dep.get("platform"),
                 "cancelled": _is_cancelled(dep),
             })
+            if raw_scanned_for_target is None and len(rows) >= effective_target:
+                raw_scanned_for_target = i
 
         rows.sort(key=lambda r: r["sort_time"])
-        matched = rows[:MAX_FETCHED_DEPARTURES]
+        matched = rows[:effective_target]
 
-        # Adaptive page size: grow the learned cap only when it was actually
-        # the bottleneck (the raw response came back full, i.e. there may be
-        # more we didn't ask for) and it still wasn't enough. If the raw
-        # response came back short of results_cap, this stop's schedule is
-        # just genuinely sparse in the next hour - asking for a bigger page
-        # wouldn't produce more matches, so leave the cap alone.
-        if len(matched) < MAX_FETCHED_DEPARTURES and len(raw_departures) >= results_cap:
+        if len(matched) < effective_target and len(raw_departures) >= results_cap:
+            # The results cap - not a genuinely sparse schedule - left this
+            # stop short of what the current layout can display. Grow it.
             grown = _grow_results_cap(results_cap)
             if grown > results_cap:
                 _store_learned_results(device_config, provider, stop_id, grown)
+        elif (
+            raw_scanned_for_target is not None
+            and results_cap > raw_scanned_for_target * DEPARTURES_SHRINK_MARGIN
+        ):
+            shrunk = max(
+                DEPARTURES_RESULTS,
+                round(raw_scanned_for_target * DEPARTURES_SHRINK_HEADROOM),
+            )
+            if shrunk < results_cap:
+                _store_learned_results(device_config, provider, stop_id, shrunk)
 
         return matched
 

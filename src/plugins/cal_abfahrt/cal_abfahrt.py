@@ -97,11 +97,23 @@ VALID_LABEL = re.compile(r"^[A-Za-z0-9_]+$")
 
 DEPARTURES_DURATION_MIN = 60
 DEPARTURES_RESULTS = 15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
-MAX_FETCHED_DEPARTURES = 12  # per-stop cap, ahead of the layout's own truncation
+# Sanity ceiling on how many departures a single stop ever keeps, regardless
+# of the current layout's computed capacity (_board_departure_capacity /
+# _grid_departure_capacity) - guards a pathological _content_box() result,
+# not something expected to bind for any real panel size/layout.
+DEPARTURES_ABSOLUTE_MAX = 40
 # Ceiling for the learned per-stop `results` cap below - comfortably inside
 # what the API already handles today (the settings wizard's stop/line picker
 # queries at results=100, see abfahrtzeitenLinesForStop in plugin_schema.js).
 DEPARTURES_RESULTS_CEILING = 80
+# Only shrink a learned `results` cap once it's at least this many times
+# bigger than what was actually needed this render, and even then leave this
+# much headroom above that need - both exist so normal minute-to-minute
+# service fluctuation can't bounce the cap up and down every render; it only
+# reacts to a real, sustained drop in what a stop needs (e.g. more stops
+# added to a grid layout, shrinking every card's row budget).
+DEPARTURES_SHRINK_MARGIN = 3
+DEPARTURES_SHRINK_HEADROOM = 1.5
 DEPARTURES_TIMEOUT = 6  # short so a hung provider fails fast inside the executor's budget
 CALENDAR_TIMEOUT = 20
 
@@ -362,6 +374,36 @@ def _fit_days(days, available_px, row_px, day_px, min_body_px=0):
     return kept
 
 
+def _board_departure_capacity(content_h):
+    """Row budget for the merged board layout's departure column.
+
+    A pure function of the panel's available height alone - the calendar and
+    departure panes are independent side-by-side columns (see
+    CalAbfahrt._layout_board), so this doesn't depend on how many calendar
+    days end up shown. Pulled out so the pre-fetch learning target in
+    _fetch_stop_departures and the post-fetch truncation in _layout_board use
+    the exact same number instead of two formulas that could drift apart.
+    """
+    metrics = LAYOUT_METRICS["board"]
+    return max(1, (content_h - metrics["dep_chrome"]) // metrics["dep_row"])
+
+
+def _grid_departure_capacity(stop_count, content_h):
+    """Per-card row budget for the grid layout - see CalAbfahrt._layout_grid.
+
+    Depends on how many stops are configured (more stops -> more grid rows ->
+    a shorter card each), not on any fetched data, so - like
+    _board_departure_capacity - it's computable before any network fetch.
+    """
+    if stop_count <= 0:
+        return 1
+    metrics = LAYOUT_METRICS["grid"]
+    columns = 1 if stop_count <= 1 else (2 if stop_count <= 6 else 3)
+    grid_rows = max(1, math.ceil(stop_count / columns))
+    card_h = (content_h - (grid_rows - 1) * metrics["card_gap"]) / grid_rows
+    return max(1, int((card_h - metrics["card_chrome"]) // metrics["dep_row_min"]))
+
+
 class CalAbfahrt(BasePlugin):
     # ------------------------------------------------------------------
     # Settings page
@@ -486,17 +528,34 @@ class CalAbfahrt(BasePlugin):
         # flaky network is handled below.
         auths = [self._auth_for_entry(entry, device_config) for entry in calendars]
 
+        # Computed before fetching (depends only on settings/resolution, not
+        # on fetched data) so each stop's departures fetch knows how many
+        # departures the CURRENT layout can actually show, instead of
+        # fetching toward a fixed guess unrelated to the real screen budget -
+        # see _fetch_stop_departures's target_capacity parameter.
+        dimensions = self.get_oriented_dimensions(device_config)
+        content_w, content_h = self._content_box(dimensions, settings)
+        target_capacity = (
+            _grid_departure_capacity(len(stop_groups), content_h)
+            if layout == "grid"
+            else _board_departure_capacity(content_h)
+        )
+
         events, stops, failures = self._fetch_all(
-            calendars, auths, stop_groups, tz, range_start, range_end, device_config
+            calendars,
+            auths,
+            stop_groups,
+            tz,
+            range_start,
+            range_end,
+            device_config,
+            target_capacity,
         )
 
         if failures and not events and not stops_have_departures(stops):
             raise RuntimeError(
                 f"Unable to load any calendar or departure data: {failures[0]}"
             )
-
-        dimensions = self.get_oriented_dimensions(device_config)
-        content_w, content_h = self._content_box(dimensions, settings)
 
         days = self._group_events_into_days(events, now, strings, time_format)
         template_params = {
@@ -566,7 +625,7 @@ class CalAbfahrt(BasePlugin):
         ]
         rows.sort(key=lambda r: r["sort_time"])
 
-        capacity = max(1, (content_h - metrics["dep_chrome"]) // metrics["dep_row"])
+        capacity = _board_departure_capacity(content_h)
         return {
             "days": _fit_days(
                 days,
@@ -586,9 +645,7 @@ class CalAbfahrt(BasePlugin):
         columns = 1 if count <= 1 else (2 if count <= 6 else 3)
         grid_rows = max(1, math.ceil(count / columns)) if count else 1
 
-        card_h = (content_h - (grid_rows - 1) * metrics["card_gap"]) / grid_rows
-        capacity = int((card_h - metrics["card_chrome"]) // metrics["dep_row_min"])
-        capacity = max(1, capacity)
+        capacity = _grid_departure_capacity(count, content_h)
 
         cards = [
             {
@@ -636,7 +693,15 @@ class CalAbfahrt(BasePlugin):
     # ------------------------------------------------------------------
 
     def _fetch_all(
-        self, calendars, auths, stop_groups, tz, range_start, range_end, device_config
+        self,
+        calendars,
+        auths,
+        stop_groups,
+        tz,
+        range_start,
+        range_end,
+        device_config,
+        target_capacity,
     ):
         """Runs every calendar and every stop request through ONE pool.
 
@@ -670,7 +735,13 @@ class CalAbfahrt(BasePlugin):
                 for entry, auth in zip(calendars, auths, strict=True)
             ]
             stop_futures = [
-                executor.submit(self._fetch_stop_departures, group, session, device_config)
+                executor.submit(
+                    self._fetch_stop_departures,
+                    group,
+                    session,
+                    device_config,
+                    target_capacity,
+                )
                 for group in stop_groups
             ]
 
@@ -796,10 +867,30 @@ class CalAbfahrt(BasePlugin):
 
         return parsed
 
-    def _fetch_stop_departures(self, group, session, device_config):
+    def _fetch_stop_departures(self, group, session, device_config, target_capacity):
+        """Fetches, filters, and adaptively re-pages one stop's departures.
+
+        `target_capacity` is how many departures the CURRENT render's layout
+        can actually show for this stop (see _board_departure_capacity /
+        _grid_departure_capacity in generate_image) - not a fixed guess. Two
+        independent adaptive mechanisms both key off it:
+
+          * the learned `results` page size (_load_learned_results /
+            _store_learned_results), grown when the page - not a genuinely
+            sparse schedule - left this stop short of target_capacity, and
+            shrunk back when it's clearly bigger than this stop needs (e.g.
+            after more stops got added to a grid layout, shrinking every
+            card's row budget);
+          * how many matched departures are kept at all, which now tracks
+            target_capacity directly instead of the old fixed
+            MAX_FETCHED_DEPARTURES guess - a spacious single-stop board can
+            show more than that guess allowed for; a cramped many-stop grid
+            card can hold far fewer.
+        """
         base = PROVIDER_BASES[group["provider"]]
         provider, stop_id = group["provider"], group["stopId"]
         results_cap = _load_learned_results(device_config, provider, stop_id)
+        effective_target = max(1, min(target_capacity, DEPARTURES_ABSOLUTE_MAX))
         response = session.get(
             f"{base}/stops/{quote(str(stop_id), safe='')}/departures",
             params={**DEPARTURES_QUERY, "results": results_cap},
@@ -810,7 +901,12 @@ class CalAbfahrt(BasePlugin):
         raw_departures = data.get("departures", [])
 
         rows = []
-        for departure in raw_departures:
+        # Tracks how many raw (pre-filter) entries it took, in the order the
+        # API returned them, to accumulate `effective_target` matches - used
+        # below to decide whether results_cap has more headroom than this
+        # stop actually needs.
+        raw_scanned_for_target = None
+        for i, departure in enumerate(raw_departures, start=1):
             line = (departure.get("line") or {}).get("name")
             direction = departure.get("direction")
             if (line, direction) not in group["filters"]:
@@ -837,20 +933,28 @@ class CalAbfahrt(BasePlugin):
                     "cancelled": _is_cancelled(departure),
                 }
             )
+            if raw_scanned_for_target is None and len(rows) >= effective_target:
+                raw_scanned_for_target = i
 
         rows.sort(key=lambda r: r["sort_time"])
-        matched = rows[:MAX_FETCHED_DEPARTURES]
+        matched = rows[:effective_target]
 
-        # Adaptive page size: grow the learned cap only when it was actually
-        # the bottleneck (the raw response came back full, i.e. there may be
-        # more we didn't ask for) and it still wasn't enough. If the raw
-        # response came back short of results_cap, this stop's schedule is
-        # just genuinely sparse in the next hour - asking for a bigger page
-        # wouldn't produce more matches, so leave the cap alone.
-        if len(matched) < MAX_FETCHED_DEPARTURES and len(raw_departures) >= results_cap:
+        if len(matched) < effective_target and len(raw_departures) >= results_cap:
+            # The results cap - not a genuinely sparse schedule - left this
+            # stop short of what the current layout can display. Grow it.
             grown = _grow_results_cap(results_cap)
             if grown > results_cap:
                 _store_learned_results(device_config, provider, stop_id, grown)
+        elif (
+            raw_scanned_for_target is not None
+            and results_cap > raw_scanned_for_target * DEPARTURES_SHRINK_MARGIN
+        ):
+            shrunk = max(
+                DEPARTURES_RESULTS,
+                round(raw_scanned_for_target * DEPARTURES_SHRINK_HEADROOM),
+            )
+            if shrunk < results_cap:
+                _store_learned_results(device_config, provider, stop_id, shrunk)
 
         return matched
 
