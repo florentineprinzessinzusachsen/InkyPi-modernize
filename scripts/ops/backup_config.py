@@ -29,14 +29,14 @@ def _default_output_path() -> str:
 def _detect_instances_dir() -> str:
     """Auto-detect plugin images directory relative to this script."""
     scripts_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(scripts_dir)
+    project_root = os.path.dirname(os.path.dirname(scripts_dir))
     return os.path.join(project_root, "src", "static", "images", "plugins")
 
 
 def _detect_config_dir() -> str:
     """Detect default config directory relative to this script."""
     scripts_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(scripts_dir)
+    project_root = os.path.dirname(os.path.dirname(scripts_dir))
     return os.path.join(project_root, "src", "config")
 
 

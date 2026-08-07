@@ -2,7 +2,7 @@
 
 VENV_DIR=".venv"
 REQUIREMENTS_FILE="install/requirements-dev.txt"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && cd .. && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" && cd ../.. && pwd)"
 SRC_DIR="src"
 SRC_ABS="${REPO_ROOT}/${SRC_DIR}"
 

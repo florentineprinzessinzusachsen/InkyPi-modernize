@@ -418,9 +418,9 @@ def main(argv: list[str] | None = None) -> int:
     # Resolve config path
     config_path = args.config
     if config_path is None:
-        # Try to find it relative to this script's location (scripts/ -> repo root)
+        # Try to find it relative to this script's location (scripts/ops/ -> repo root)
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.dirname(script_dir)
+        repo_root = os.path.dirname(os.path.dirname(script_dir))
         candidates = [
             os.path.join(repo_root, "src", "config", "device.json"),
             os.path.join(repo_root, "src", "config", "device_dev.json"),

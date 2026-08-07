@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REQ_TXT="${REPO_ROOT}/install/requirements.txt"
 
 cd "${REPO_ROOT}"
