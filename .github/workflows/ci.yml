@@ -166,7 +166,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ '3.11', '3.12', '3.13' ]
+        # Full 3-version matrix only on the nightly schedule / a manual
+        # dispatch; every PR and push to main runs the single pinned version
+        # (matches the rest of ci.yml's setup-python calls) to keep the
+        # common case fast. The nightly run still catches cross-version drift.
+        python-version: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && fromJSON('["3.11","3.12","3.13"]') || fromJSON('["3.12"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -386,6 +390,10 @@ jobs:
 
   preflash-validate:
     name: Pre-flash validate
+    # Not in ci-gate's needs list — this is a broad advisory sweep (14
+    # opt-in lanes across two OSes), not a merge gate. Nightly + manual
+    # dispatch only, so it stops costing every PR its 45-minute budget x2.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -478,7 +486,12 @@ jobs:
           if-no-files-found: error
 
   security:
-    name: Security and SBOM
+    name: SBOM
+    # Dependency vulnerability scanning now lives solely in Trivy
+    # (.github/workflows/trivy.yml — SARIF results surface in the Security
+    # tab, unlike the JSON artifact pip-audit produced here) and
+    # dependency-review.yml. This job now only generates the SBOM attached
+    # to GitHub releases.
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -495,15 +508,9 @@ jobs:
         run: |
           python -m pip install -U pip wheel
           pip install -r install/requirements.txt -r install/requirements-dev.txt
-      - name: Run pip-audit against hashed lockfiles
-        run: |
-          mkdir -p artifacts/security
-          python -m pip_audit -r install/requirements.txt --format=json \
-            --output artifacts/security/pip-audit-runtime.json
-          python -m pip_audit -r install/requirements-dev.txt --format=json \
-            --output artifacts/security/pip-audit-dev.json
       - name: Generate SBOM
         run: |
+          mkdir -p artifacts/security
           python_path="$(python -c 'import sys; print(sys.executable)')"
           python -m cyclonedx_py environment "$python_path" --of JSON \
             -o artifacts/security/sbom.json
@@ -517,6 +524,9 @@ jobs:
 
   flake-detection:
     name: Flake detection
+    # Not in ci-gate's needs list. Flakiness is a pattern-over-many-runs
+    # signal, not a per-PR one — nightly + manual dispatch only.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 35

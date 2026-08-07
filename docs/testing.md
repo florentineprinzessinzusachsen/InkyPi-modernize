@@ -122,7 +122,7 @@ Asserts three invariants: (1) after stopping, `systemctl is-enabled inkypi.servi
 
 ## CI
 
-GitHub Actions runs the pytest matrix, pre-flash validation matrix, coverage gate, security/SBOM checks, flake detection, and the browser-smoke job. Nightly scheduled jobs run the soak and mutation lanes. Workflow: `.github/workflows/ci.yml`.
+GitHub Actions runs pytest (single Python version), coverage gate, SBOM generation, and the browser-smoke job on every push/PR. The pre-flash validation matrix (both OSes) and flake detection are advisory sweeps, not merge gates, and only run on the nightly schedule or a manual `workflow_dispatch` — same cadence as the soak and mutation lanes and the full 3-version pytest matrix. Dependency vulnerability scanning lives in Trivy (`.github/workflows/trivy.yml`), not in `ci.yml`. Workflow: `.github/workflows/ci.yml`.
 
 ### CI memory budgets
 
