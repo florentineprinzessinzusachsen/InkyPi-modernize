@@ -12,12 +12,26 @@ Guidance for Claude Code when working in this repository. This file is a referen
 
 - **A dependabot PR's branch can look alive (or dead) when it isn't.** Run `git remote prune origin` before trusting `git branch -r`. A branch with no PR in `gh pr list --search` may still have one (that endpoint misses matches) — confirm via `gh api repos/<owner>/<repo>/pulls?state=all&head=<owner>:<branch>` before deleting.
 - **When a dependabot PR won't auto-rebase** after `@dependabot rebase`, resolve it yourself: fetch it (`git fetch origin pull/<N>/head:<branch>`), merge `main` into it inside an isolated `git worktree` (never the main checkout if it has uncommitted work), resolve conflicts, fast-forward local `main` to the merge commit, push, then close the PR referencing the commit.
-- **Check a tool's actually-installed version before touching its config schema** — an in-flight PR isn't proof a bump landed. E.g. `[tool.mutmut]` uses 2.x key names (`paths_to_mutate`/`tests_dir`/`runner`/`dict_synonyms`) because the pin (`install/requirements-dev.txt`) is still mutmut 2.5.1, which ignores unknown keys silently instead of erroring.
+- **Check a tool's actually-installed version before touching its config schema** — an in-flight PR isn't proof a bump landed. E.g. `[tool.mutmut]` uses 3.x key names (`source_paths` etc — `paths_to_mutate`/`tests_dir`/`runner`/`dict_synonyms` are 2.x and gone) because `install/requirements-dev.txt` pins `mutmut==3.6.0`.
 - **`uv lock` doesn't float an already-satisfied range to latest** — it keeps resolutions stable. To pick up a newer version within an existing range (e.g. `numpy>=2.0,<3`), run `uv lock --upgrade-package <name>`; a bare `uv lock` only reacts to a changed constraint.
 
 ## Working conventions
 
-- **Once a change is tested and confirmed working, commit, push, and deploy without waiting to be asked.** Commit at each verified milestone, push to `origin main`, then if `frame` is reachable (`ssh -o ConnectTimeout=3 -o BatchMode=yes frame true`), deploy: `sudo git -C /opt/InkyPi pull` then `sudo systemctl restart inkypi.service` (confirm `active`/`running`). If `frame` isn't reachable, still commit and push, skip deploy. Overrides the general ask-before-push/deploy default for this repo.
+- **Once a change is tested and confirmed working, commit, push, and deploy without waiting to be asked.** Commit at each verified milestone, push to `origin main`, then if `frame` is reachable (`ssh -o ConnectTimeout=3 -o BatchMode=yes frame true`), deploy with the sequence below. If `frame` isn't reachable, still commit and push, skip deploy. Overrides the general ask-before-push/deploy default for this repo.
+  - **`main.css` always locally diverges from git before you can pull — this is expected, not damage.** `install.sh`/`update.sh` (`build_css_bundle()` in `install/_common.sh`) run `build_css.py --minify`, which overwrites the git-tracked `src/static/styles/main.css` **in place** with a minified rebuild. That happens on every install/update, so the working tree on `frame` is never clean relative to git's unminified, formatted version — a bare `git pull` reliably fails with "local changes would be overwritten". `install/do_update.sh` already works around this (`git checkout -- src/static/styles/main.css` before every checkout); do the same manually:
+    ```bash
+    sudo git -C /opt/InkyPi checkout -- src/static/styles/main.css
+    sudo git -C /opt/InkyPi pull
+    ```
+  - **A `git pull` alone does not update what the browser actually receives.** `base.html` serves the hash-named bundle in `src/static/dist/` (gitignored, built by `build_assets.py` from the *just-rebuilt* `main.css`) instead of `main.css`/individual `<script>` tags whenever `dist/manifest.json` exists — which it does on any installed Pi. Skipping the rebuild silently leaves the live site on old CSS/JS after a pull that touched `src/static/styles/partials/*.css` or `src/static/scripts/*.js`, even though templates (server-rendered per request) update immediately. Rebuild both, then restart:
+    ```bash
+    sudo /usr/local/inkypi/venv_inkypi/bin/python /opt/InkyPi/scripts/build_css.py --minify
+    sudo /usr/local/inkypi/venv_inkypi/bin/python /opt/InkyPi/scripts/build_assets.py
+    sudo systemctl restart inkypi.service
+    ```
+    Confirm `active`/`running`, and that `curl -s http://frame/ | grep -o 'common\.[a-f0-9]*\.min\.css'` shows a new hash if CSS changed.
+  - This lightweight path (pull + rebuild bundle + restart) is for iterating on `main` — it skips `update.sh`'s apt/pip/dependency-sync machinery. If a change touched Python dependencies (`pyproject.toml`, `install/requirements*.in`) or install/update scripts themselves, use the real update path instead: `sudo INKYPI_UPDATE_CHANNEL=edge bash /opt/InkyPi/install/do_update.sh` — it fetches, resets hard to `origin/main`, then runs the full `update.sh` (deps + CSS/asset bundle + restart) for you. Slower (dependency install), but it's the one path proven to leave `frame` fully in sync.
+  - **Port numbers differ: dev server is `:8080`, the deployed Pi serves on `:80`** (waitress, per `journalctl -u inkypi`). Don't reuse a `localhost:8080` check against `frame`.
 - Only run the test suite when explicitly asked. For verifying a change, prefer something narrow — a single test file, a manual dev-server check, or a compile/syntax check.
 - `src/config/device_dev.json` and `src/static/images/current_image.png` are gitignored — dev-server use writes to both freely, no need to diff or revert them.
 - Always `lsof -i :<port>` before killing a bound process. Restarting this project's own dev server yourself after a code change needs no confirmation.
