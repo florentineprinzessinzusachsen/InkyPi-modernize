@@ -129,6 +129,17 @@ class Config:
     # File paths relative to the script's directory (default; can be overridden)
     config_file = os.path.join(BASE_DIR, "config", _DEVICE_JSON)
 
+    # Frozen snapshot of the built-in default, captured once at class-definition
+    # time (JTN-259). _determine_config_path() uses this — not a value
+    # recomputed from self.BASE_DIR — to decide whether config_file has been
+    # explicitly overridden. Recomputing from self.BASE_DIR made the check
+    # spuriously true whenever a caller (e.g. a test) monkeypatched BASE_DIR
+    # without also updating config_file: the untouched class default no longer
+    # matched the freshly-rebuilt "default", so step 2 mistook it for an
+    # explicit override and returned it outright, before the INKYPI_ENV check
+    # in step 3 ever ran.
+    _DEFAULT_CONFIG_FILE = config_file
+
     # Image paths — canonical defaults live in utils.paths; kept as class
     # attributes for backward compatibility (worker.py sets them on the class
     # before constructing a child-process Config).
@@ -239,11 +250,12 @@ class Config:
         # default it means nobody has explicitly overridden it, so we must fall through to
         # the INKYPI_ENV check (step 3).  Only treat config_file as an explicit override
         # when it has been changed from the original default (e.g. by CLI or a subclass).
-        _base_default = os.path.join(base_dir, "config", _DEVICE_JSON)
+        # Compare against the frozen _DEFAULT_CONFIG_FILE (captured once at class
+        # definition), not a value rebuilt from self.BASE_DIR — see its docstring.
         class_override = cast(str, getattr(type(self), "config_file", ""))
         if (
             class_override is not None
-            and class_override != _base_default
+            and class_override != type(self)._DEFAULT_CONFIG_FILE
             and os.path.isfile(class_override)
         ):
             logger.info(

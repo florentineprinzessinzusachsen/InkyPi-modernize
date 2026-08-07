@@ -50,10 +50,18 @@ jobs:
             --ignore-packages recurring-ical-events
       - name: Restore benchmark baseline cache
         id: bench-cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: /tmp/bench-baseline.json
-          key: benchmark-baseline-${{ runner.os }}-py3.12
+          # GitHub Actions cache entries are immutable once saved — reusing
+          # this exact key every run would mean the save at job-end silently
+          # no-ops forever after the first successful one, freezing the
+          # "self-updating" baseline at whatever it was that first time. Save
+          # under a per-run key instead (below) and restore via prefix match
+          # so each run picks up the most recent save.
+          key: benchmark-baseline-${{ runner.os }}-py3.12-${{ github.run_id }}
+          restore-keys: |
+            benchmark-baseline-${{ runner.os }}-py3.12-
       - name: Run perf benchmarks
         env:
           SKIP_BROWSER: '1'
@@ -68,9 +76,14 @@ jobs:
           python -m pytest tests/benchmarks/ --benchmark-only \
             --benchmark-columns=min,mean,median,stddev,ops \
             --benchmark-json=/tmp/bench-current.json -q
-          # Compare against CI-cached baseline if available, otherwise
-          # fall back to the repo-committed baseline. Both paths are blocking
-          # so cache misses cannot silently hide PR regressions.
+          # Compare against the CI-cached baseline (a recent same-runner
+          # measurement) when available — blocking, since it's a reliable
+          # signal. On a cache miss, fall back to the repo-committed baseline
+          # but treat it as advisory-only: that file is a point-in-time
+          # snapshot that isn't refreshed automatically, so drift from
+          # runner/environment changes alone can exceed the threshold with no
+          # code regression involved (see perf_budget_gate.py below for the
+          # blocking check that doesn't depend on any baseline).
           if [ -f /tmp/bench-baseline.json ]; then
             echo "Using CI cached benchmark baseline." | tee /tmp/benchmark-compare.txt
             cp /tmp/bench-baseline.json /tmp/bench-effective-baseline.json
@@ -79,21 +92,30 @@ jobs:
               --current /tmp/bench-current.json \
               | tee -a /tmp/benchmark-compare.txt
           else
-            echo "No CI baseline cache found — using repo baseline as blocking fallback." \
+            echo "No CI baseline cache found — using repo baseline as an advisory fallback (not blocking)." \
               | tee /tmp/benchmark-compare.txt
             cp tests/benchmarks/baseline.json /tmp/bench-effective-baseline.json
             python scripts/perf/benchmark_compare.py \
+              --advisory \
               --baseline /tmp/bench-effective-baseline.json \
               --current /tmp/bench-current.json \
               | tee -a /tmp/benchmark-compare.txt
           fi
           # JTN-738: hard performance budgets on plugin render latency and
-          # cold-start startup time.
+          # cold-start startup time. Unlike the comparison above, this has no
+          # baseline to go stale — always blocking.
           python scripts/perf/perf_budget_gate.py --bench-json /tmp/bench-current.json
-          # On main branch pushes, update the cached baseline for future PRs
+          # On main branch pushes, refresh the local file; the cache step
+          # below saves it under a fresh per-run key.
           if [ "$GITHUB_REF_VALUE" = "refs/heads/main" ]; then
             cp /tmp/bench-current.json /tmp/bench-baseline.json
           fi
+      - name: Save benchmark baseline cache
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/bench-baseline.json
+          key: benchmark-baseline-${{ runner.os }}-py3.12-${{ github.run_id }}
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4

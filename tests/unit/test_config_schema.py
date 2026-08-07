@@ -138,19 +138,26 @@ def test_unknown_extra_fields_pass():
 
 
 def test_real_device_dev_json_validates():
-    """The checked-in device_dev.json must pass schema validation."""
+    """The checked-in dev config template must pass schema validation.
+
+    src/config/device_dev.json is gitignored and per-developer (Config()
+    bootstraps it from this template on first dev run — see
+    Config._determine_config_path()), so it isn't guaranteed to exist in a
+    fresh checkout or CI. install/config_base/device_dev.json is the actual
+    checked-in template and is what this regression guard needs to cover.
+    """
     dev_json_path = os.path.join(
         os.path.dirname(__file__),  # tests/unit/
         "..",
         "..",
-        "src",
-        "config",
+        "install",
+        "config_base",
         "device_dev.json",
     )
     dev_json_path = os.path.abspath(dev_json_path)
     assert os.path.isfile(
         dev_json_path
-    ), f"device_dev.json not found at {dev_json_path}"
+    ), f"device_dev.json template not found at {dev_json_path}"
 
     with open(dev_json_path) as fh:
         cfg = json.load(fh)

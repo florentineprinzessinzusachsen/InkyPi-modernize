@@ -524,17 +524,22 @@ def test_plugin_health_registry_failure_still_returns_dict(client, monkeypatch):
 
 
 def test_is_private_address_classifier():
-    """_is_private_address covers loopback, RFC1918, link-local, and public IPs."""
-    import blueprints.diagnostics as diag
+    """is_private_address covers loopback, RFC1918, link-local, and public IPs.
 
-    assert diag._is_private_address("127.0.0.1") is True
-    assert diag._is_private_address("10.0.0.1") is True
-    assert diag._is_private_address("192.168.5.5") is True
-    assert diag._is_private_address("169.254.1.1") is True
-    assert diag._is_private_address("::1") is True
-    assert diag._is_private_address("fc00::1") is True
-    assert diag._is_private_address("8.8.8.8") is False
-    assert diag._is_private_address("1.2.3.4") is False
-    assert diag._is_private_address("") is False
-    assert diag._is_private_address(None) is False
-    assert diag._is_private_address("not-an-ip") is False
+    diagnostics.py delegates its access gate to utils.access_control (shared
+    with /api/logs and /download-logs) rather than defining its own
+    classifier — see that module's is_private_address.
+    """
+    from utils.access_control import is_private_address
+
+    assert is_private_address("127.0.0.1") is True
+    assert is_private_address("10.0.0.1") is True
+    assert is_private_address("192.168.5.5") is True
+    assert is_private_address("169.254.1.1") is True
+    assert is_private_address("::1") is True
+    assert is_private_address("fc00::1") is True
+    assert is_private_address("8.8.8.8") is False
+    assert is_private_address("1.2.3.4") is False
+    assert is_private_address("") is False
+    assert is_private_address(None) is False
+    assert is_private_address("not-an-ip") is False

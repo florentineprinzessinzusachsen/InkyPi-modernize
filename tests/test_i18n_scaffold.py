@@ -21,7 +21,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "scripts" / "i18n_assets"
 
 
 # ---------------------------------------------------------------------------

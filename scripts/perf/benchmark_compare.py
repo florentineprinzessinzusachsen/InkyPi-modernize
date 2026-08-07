@@ -78,6 +78,16 @@ def main() -> int:
         default=None,
         help="Regression threshold percentage (default: 15, or BENCHMARK_THRESHOLD_PCT env var)",
     )
+    parser.add_argument(
+        "--advisory",
+        action="store_true",
+        help=(
+            "Report regressions but always exit 0. Use when --baseline is a "
+            "known-stale fallback (e.g. no CI cache available) rather than a "
+            "recent same-runner measurement, so environment drift can't be "
+            "mistaken for a code regression."
+        ),
+    )
     args = parser.parse_args()
 
     threshold = args.threshold
@@ -100,9 +110,17 @@ def main() -> int:
 
     print()
     if failures:
+        verdict = "ADVISORY" if args.advisory else "FAILED"
         print(
-            f"FAILED: {len(failures)} benchmark(s) exceeded +{threshold:.0f}% regression threshold"
+            f"{verdict}: {len(failures)} benchmark(s) exceeded +{threshold:.0f}% "
+            "regression threshold"
         )
+        if args.advisory:
+            print(
+                "Not blocking: baseline is a fallback, not a recent same-runner "
+                "measurement — see --advisory help."
+            )
+            return 0
         return 1
 
     print(f"PASSED: All benchmarks within +{threshold:.0f}% threshold")

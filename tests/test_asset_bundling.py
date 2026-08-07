@@ -36,7 +36,7 @@ def _run_build_assets(
     env_code = f"""
 import sys, importlib
 from pathlib import Path
-sys.path.insert(0, str(Path(r"{REPO_ROOT}") / "scripts"))
+sys.path.insert(0, str(Path(r"{REPO_ROOT}") / "scripts" / "build"))
 sys.path.insert(0, str(Path(r"{SRC_ROOT}")))
 
 import build_assets as ba

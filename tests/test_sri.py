@@ -22,7 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
-SCRIPTS_ROOT = REPO_ROOT / "scripts"
+SCRIPTS_ROOT = REPO_ROOT / "scripts" / "i18n_assets"
 CDN_MANIFEST_PATH = SRC_ROOT / "static" / "cdn_manifest.json"
 
 # Make src importable
