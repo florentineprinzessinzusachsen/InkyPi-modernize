@@ -225,7 +225,9 @@ class Config:
         1. INKYPI_CONFIG_FILE env var if it exists
         2. Explicit class attribute override (e.g., set by CLI) if it exists
         3. INKYPI_ENV=dev implies device_dev.json if present
-        4. device.json if present
+        4. device.json if present — skipped when INKYPI_ENV=dev, so an
+           incidentally-existing device.json can never override an explicit
+           dev request (step 6 bootstraps device_dev.json instead)
         5. device_dev.json if present
         6. Bootstrap from install/config_base/ — device_dev.json (mock display)
            when INKYPI_ENV=dev, otherwise device.json
@@ -268,15 +270,22 @@ class Config:
         env_mode = (
             os.getenv("INKYPI_ENV", "").strip() or os.getenv("FLASK_ENV", "").strip()
         ).lower()
-        if env_mode in ("dev", "development") and os.path.isfile(dev_path):
+        dev_mode_requested = env_mode in ("dev", "development")
+        if dev_mode_requested and os.path.isfile(dev_path):
             logger.info(
                 "config_loaded: Using dev config due to INKYPI_ENV",
                 extra={"source": "env_mode", "path": dev_path, "mode": env_mode},
             )
             return dev_path
 
-        # 4) Prefer prod if it exists
-        if os.path.isfile(prod_path):
+        # 4) Prefer prod if it exists — but not when dev mode was explicitly
+        # requested and device_dev.json just hasn't been bootstrapped yet
+        # (step 6 handles that). Without this guard, an incidentally-existing
+        # device.json (e.g. bootstrapped earlier by an unrelated process, or
+        # left over from a prior run) would silently win over an explicit
+        # INKYPI_ENV=dev, routing at real hardware detection instead of the
+        # mock display step 6 would otherwise bootstrap.
+        if not dev_mode_requested and os.path.isfile(prod_path):
             logger.info(
                 "config_loaded: Using prod config",
                 extra={"source": "file", "path": prod_path},
@@ -297,7 +306,7 @@ class Config:
         # "inky") — otherwise a fresh checkout with INKYPI_ENV=dev and no
         # config files yet on disk silently ends up probing for real EPD/Inky
         # hardware instead of using the mock display.
-        if env_mode in ("dev", "development"):
+        if dev_mode_requested:
             template_path = os.path.abspath(
                 os.path.join(
                     base_dir, "..", "install", "config_base", "device_dev.json"

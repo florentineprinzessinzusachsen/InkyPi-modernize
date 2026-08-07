@@ -64,6 +64,12 @@ UI_BROWSER_TESTS = {
     # Sidebar update indicator + quick-update modal flow (shows on update
     # available, click opens modal, confirm POSTs, cancel no-POST, hash nav).
     "test_sidebar_update_indicator.py",
+    # Inline "Add API key" modal on the plugin page — was missing from this
+    # set, so it bypassed the Playwright-availability collection-skip below
+    # and relied only on its own importorskip("playwright.sync_api"), which
+    # checks the package, not whether a browser binary is actually installed
+    # — real failure (not skip) in jobs that don't install one.
+    "test_plugin_inline_api_key_modal.py",
 }
 A11Y_BROWSER_TESTS = {
     "test_a11y_sweep.py",
