@@ -407,7 +407,7 @@ def test_update_control_shapes(client, monkeypatch, tmp_path):
     monkeypatch.setattr(
         mod,
         "_start_update_fallback_thread",
-        lambda script_path, target_tag=None: None,
+        lambda script_path, target_tag=None, channel=None: None,
     )
     monkeypatch.setattr(
         updates_mod,

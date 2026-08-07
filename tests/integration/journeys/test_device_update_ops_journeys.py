@@ -308,7 +308,7 @@ def test_jtn_725_update_failure_recovery_journey(
     started = threading.Event()
     rollback_targets: list[str | None] = []
 
-    def _fake_runner(script_path, target_tag=None):
+    def _fake_runner(script_path, target_tag=None, channel=None):
         rollback_targets.append(target_tag)
         started.set()
         settings_mod._set_update_state(False, None)

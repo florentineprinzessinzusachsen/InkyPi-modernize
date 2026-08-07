@@ -10,7 +10,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    if: github.repository == 'jtn0123/InkyPi'
+    if: github.repository == 'florentineprinzessinzusachsen/InkyPi-modernize'
     outputs:
       released: ${{ steps.resolve_tag.outputs.released }}
       tag: ${{ steps.resolve_tag.outputs.tag }}
@@ -150,18 +150,8 @@ jobs:
             echo "No release found for ${TAG}, skipping SBOM upload"
           fi
 
-  wheelhouse:
-    name: Build wheelhouse release assets
-    needs: release
-    if: needs.release.outputs.released == 'true'
-    uses: ./.github/workflows/build-wheelhouse.yml
-    with:
-      tag: ${{ needs.release.outputs.tag }}
-
-  pi-image:
-    name: Build pre-installed Pi image
-    needs: release
-    if: needs.release.outputs.released == 'true'
-    uses: ./.github/workflows/build-pi-image.yml
-    with:
-      tag: ${{ needs.release.outputs.tag }}
+  # Wheelhouse and pre-installed Pi image builds are parked for this fork:
+  # both assume jtn0123/InkyPi (build-pi-image.yml clones it directly) and
+  # haven't been ported/verified here yet. See build-wheelhouse.yml /
+  # build-pi-image.yml for the disabled `release: types: [published]`
+  # triggers — re-enable both there and re-add these jobs together.

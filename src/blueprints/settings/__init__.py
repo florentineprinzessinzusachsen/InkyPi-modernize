@@ -120,6 +120,19 @@ MAX_RESPONSE_BYTES = 512 * 1024
 # smuggle a value past the validator.
 _TAG_RE = re.compile(r"^v?\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$", re.ASCII)
 
+# A previous-version breadcrumb (see _read_prev_version in _updates.py) can
+# also be a bare git commit SHA when the update that recorded it ran on the
+# "edge" channel (tracks origin/main, which has no semver tag to describe).
+# Same regex is mirrored byte-for-byte in install/rollback.sh.
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$", re.ASCII)
+
+# Update channels: "stable" (default) resolves the latest GitHub Release
+# semver tag; "edge" tracks the tip of origin/main directly. Kept as a
+# frozenset (not just used inline) so both the version-check and the
+# update-trigger code paths validate against the exact same allow-list.
+_UPDATE_CHANNELS = frozenset({"stable", "edge"})
+_DEFAULT_UPDATE_CHANNEL = "stable"
+
 # Simple in-process rate limiter (per remote addr)
 _logs_limiter = SlidingWindowLimiter(120, 60)
 
@@ -542,6 +555,12 @@ def _validate_target_tag_arg(target_tag: str | None) -> str | None:
     if not isinstance(target_tag, str) or not target_tag:
         raise ValueError(f"Invalid target tag format: {target_tag!r}")
 
+    # A bare git SHA is a legitimate rollback target on the "edge" channel
+    # (see _read_prev_version) — the dev/macOS non-systemd rollback fallback
+    # reuses this same target_tag plumbing to carry it through.
+    if _SHA_RE.fullmatch(target_tag):
+        return target_tag
+
     version = target_tag[1:] if target_tag.startswith("v") else target_tag
     core, separator, suffix = version.partition("-")
     parts = core.split(".")
@@ -552,6 +571,21 @@ def _validate_target_tag_arg(target_tag: str | None) -> str | None:
     ):
         raise ValueError(f"Invalid target tag format: {target_tag!r}")
     return target_tag
+
+
+def _validate_channel_arg(channel: str | None) -> str:
+    """Return ``channel`` if it's a recognised update channel, else the default.
+
+    Same rationale as ``_validate_target_tag_arg``: this check must live in
+    the same function frame as the ``subprocess.Popen``/``systemd-run`` call
+    site that consumes the result (JTN-319 / CodeQL py/command-line-injection).
+    Unlike the tag validator this never raises — an unrecognised channel
+    silently falls back to "stable" (the safe default) rather than failing
+    the whole update request.
+    """
+    if isinstance(channel, str) and channel in _UPDATE_CHANNELS:
+        return channel
+    return _DEFAULT_UPDATE_CHANNEL
 
 
 def _update_target_version_path() -> str:
@@ -572,7 +606,9 @@ def _write_update_target_version(target_tag: str | None) -> None:
         fh.write(f"{target_tag}\n")
 
 
-def _start_update_via_systemd(target_tag: str | None = None) -> str:
+def _start_update_via_systemd(
+    target_tag: str | None = None, channel: str | None = None
+) -> str:
     """Launch the update script in a transient systemd unit.
 
     Returns the ``inkypi-update-<ts>`` unit name actually passed to
@@ -585,12 +621,13 @@ def _start_update_via_systemd(target_tag: str | None = None) -> str:
     Security (JTN-319 / CodeQL py/command-line-injection):
         All argv elements passed to ``subprocess.Popen`` are either string
         literals, values derived from hardcoded constants, or — for
-        ``target_tag`` — matched against the strict ``_TAG_RE`` semver regex
+        ``target_tag``/``channel`` — matched against a strict regex/allow-list
         in the same function frame so CodeQL's built-in regex sanitiser
         recognition can see the guard.
     """
     sanitized_target_tag = _validate_target_tag_arg(target_tag)
     _write_update_target_version(sanitized_target_tag)
+    sanitized_channel = _validate_channel_arg(channel)
 
     # 2. Resolve PROJECT_DIR from a hardcoded default and validate it has the
     #    shape of an absolute POSIX path.  Anything user-controlled (env var)
@@ -623,11 +660,13 @@ def _start_update_via_systemd(target_tag: str | None = None) -> str:
         "--property=StandardOutput=journal",
         "--property=StandardError=journal",
         f"--setenv=PROJECT_DIR={project_dir}",
+        f"--setenv=INKYPI_UPDATE_CHANNEL={sanitized_channel}",
         "/bin/bash",
         script_path,
     ]
-    # All argv elements above are literals or trusted paths. The optional target
-    # tag is passed via a fixed breadcrumb file read by do_update.sh.
+    # All argv elements above are literals, trusted paths, or a value checked
+    # against _UPDATE_CHANNELS above. The optional target tag is passed via a
+    # fixed breadcrumb file read by do_update.sh.
     subprocess.Popen(cmd)  # noqa: S603
     return f"{unit_name}.service"
 
@@ -720,8 +759,11 @@ def _log_and_publish(msg: str, level: str = "info") -> None:
         pass
 
 
-def _run_real_update(script_path: str, target_tag: str | None = None) -> None:
+def _run_real_update(
+    script_path: str, target_tag: str | None = None, channel: str | None = None
+) -> None:
     sanitized_target_tag = _validate_target_tag_arg(target_tag)
+    sanitized_channel = _validate_channel_arg(channel)
     # ``_validate_update_script_path`` returns the canonicalised realpath; the
     # original (possibly symlinked) input is dropped so the value flowing into
     # Popen is provably under a trusted install root.
@@ -730,6 +772,7 @@ def _run_real_update(script_path: str, target_tag: str | None = None) -> None:
     cmd: list[str] = ["/bin/bash", script_path]
     if sanitized_target_tag is not None:
         cmd.append(sanitized_target_tag)
+    env = {**os.environ, "INKYPI_UPDATE_CHANNEL": sanitized_channel}
     proc = subprocess.Popen(  # noqa: S603  # shell=False; trusted path/validated tag.
         cmd,
         stdout=subprocess.PIPE,
@@ -737,6 +780,7 @@ def _run_real_update(script_path: str, target_tag: str | None = None) -> None:
         text=True,
         bufsize=1,
         universal_newlines=True,
+        env=env,
     )
     for line in proc.stdout or []:
         _log_and_publish(line.rstrip())
@@ -748,8 +792,12 @@ def _run_real_update(script_path: str, target_tag: str | None = None) -> None:
         _log_and_publish(f"web_update: failed with return code {rc}", "error")
 
 
-def _run_simulated_update(target_tag: str | None = None) -> None:
+def _run_simulated_update(
+    target_tag: str | None = None, channel: str | None = None
+) -> None:
     messages = ["Simulated update starting..."]
+    if channel and channel != _DEFAULT_UPDATE_CHANNEL:
+        messages.append(f"Requested channel: {channel}")
     if target_tag:
         messages.append(f"Requested target version: {target_tag}")
     messages.extend(
@@ -766,7 +814,11 @@ def _run_simulated_update(target_tag: str | None = None) -> None:
         time.sleep(0.5)
 
 
-def _update_runner(script_path: str | None, target_tag: str | None = None) -> None:
+def _update_runner(
+    script_path: str | None,
+    target_tag: str | None = None,
+    channel: str | None = None,
+) -> None:
     try:
         _log_and_publish("web_update: starting")
         if (
@@ -781,9 +833,9 @@ def _update_runner(script_path: str | None, target_tag: str | None = None) -> No
                 "yes",
             )
             if allow_real:
-                _run_real_update(script_path, target_tag=target_tag)
+                _run_real_update(script_path, target_tag=target_tag, channel=channel)
             else:
-                _run_simulated_update(target_tag=target_tag)
+                _run_simulated_update(target_tag=target_tag, channel=channel)
         else:
             for i in range(6):
                 _log_and_publish(f"step {i + 1}/6")
@@ -798,13 +850,15 @@ def _update_runner(script_path: str | None, target_tag: str | None = None) -> No
 
 
 def _start_update_fallback_thread(
-    script_path: str | None, target_tag: str | None = None
+    script_path: str | None,
+    target_tag: str | None = None,
+    channel: str | None = None,
 ) -> None:
     # Development/macOS path: run a simulated update and pipe output into our logger
     # to make it visible in inkypi.service logs and the UI viewer.
     t = threading.Thread(
         target=_update_runner,
-        args=(script_path, target_tag),
+        args=(script_path, target_tag, channel),
         name="update-fallback",
         daemon=True,
     )
@@ -812,7 +866,9 @@ def _start_update_fallback_thread(
 
 
 # --- Version check via GitHub Releases API ---
-_GITHUB_REPO = os.getenv("INKYPI_GITHUB_REPO", "jtn0123/InkyPi")
+_GITHUB_REPO = os.getenv(
+    "INKYPI_GITHUB_REPO", "florentineprinzessinzusachsen/InkyPi-modernize"
+)
 
 
 class _VersionCache(TypedDict):
@@ -901,6 +957,68 @@ def _check_latest_version(force_refresh: bool = False) -> str | None:
         reason = str(exc) or exc.__class__.__name__
         logger.info("Version check via GitHub API failed: %s", reason)
         _VERSION_CACHE["last_error"] = f"Couldn't reach GitHub: {reason}"
+    return None
+
+
+class _EdgeCache(TypedDict):
+    sha: str | None
+    checked_at: float
+    release_notes: str | None
+    last_error: str | None
+
+
+_EDGE_CACHE: _EdgeCache = {
+    "sha": None,
+    "checked_at": 0.0,
+    "release_notes": None,
+    "last_error": None,
+}
+_EDGE_CACHE_TTL = 3600  # 1 hour, matches _VERSION_CACHE_TTL
+
+
+def _check_latest_edge_commit(force_refresh: bool = False) -> str | None:
+    """Fetch the tip commit SHA of ``origin/main`` for the bleeding-edge channel.
+
+    Mirrors ``_check_latest_version``'s caching/error-reporting shape but
+    reads ``GET /repos/{repo}/commits/main`` instead of the releases API —
+    there's no release/tag involved, "latest" on this channel just means
+    "whatever main currently points at".
+    """
+    now = time.time()
+    if (
+        not force_refresh
+        and _EDGE_CACHE["sha"]
+        and (now - float(_EDGE_CACHE["checked_at"] or 0)) < _EDGE_CACHE_TTL
+    ):
+        cached_sha = _EDGE_CACHE["sha"]
+        if cached_sha is not None:
+            return cached_sha
+    try:
+        resp = http_get(
+            f"https://api.github.com/repos/{_GITHUB_REPO}/commits/main",
+            timeout=5,
+            headers={"Accept": "application/vnd.github.v3+json"},
+            use_cache=False,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        sha = data.get("sha")
+        if isinstance(sha, str) and _SHA_RE.fullmatch(sha):
+            _EDGE_CACHE["sha"] = sha
+            _EDGE_CACHE["checked_at"] = now
+            commit_info = data.get("commit")
+            message = (
+                commit_info.get("message") if isinstance(commit_info, dict) else None
+            )
+            _EDGE_CACHE["release_notes"] = message if isinstance(message, str) else None
+            _EDGE_CACHE["last_error"] = None
+            return sha
+        logger.warning("GitHub commits API returned an unexpected sha: %r", sha)
+        _EDGE_CACHE["last_error"] = "GitHub returned an unexpected response."
+    except Exception as exc:
+        reason = str(exc) or exc.__class__.__name__
+        logger.info("Edge version check via GitHub API failed: %s", reason)
+        _EDGE_CACHE["last_error"] = f"Couldn't reach GitHub: {reason}"
     return None
 
 

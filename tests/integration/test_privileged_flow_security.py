@@ -293,7 +293,7 @@ def test_authenticated_session_can_start_update_with_csrf(
     monkeypatch.setattr(
         settings_mod,
         "_start_update_fallback_thread",
-        lambda script_path, target_tag=None: None,
+        lambda script_path, target_tag=None, channel=None: None,
     )
 
     resp = privileged_client.post(

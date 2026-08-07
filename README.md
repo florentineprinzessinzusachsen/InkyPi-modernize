@@ -4,7 +4,7 @@
 
 ### Your content, on paper. An open-source E-Ink display powered by Raspberry Pi.
 
-[![CI](https://github.com/jtn0123/InkyPi/actions/workflows/ci.yml/badge.svg)](https://github.com/jtn0123/InkyPi/actions/workflows/ci.yml)
+[![CI](https://github.com/florentineprinzessinzusachsen/InkyPi-modernize/actions/workflows/ci.yml/badge.svg)](https://github.com/florentineprinzessinzusachsen/InkyPi-modernize/actions/workflows/ci.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=jtn0123_InkyPi&metric=alert_status)](https://sonarcloud.io/summary/overall?id=jtn0123_InkyPi)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-green)](./LICENSE)
@@ -53,8 +53,8 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/jtn0123/InkyPi.git
-cd InkyPi
+git clone https://github.com/florentineprinzessinzusachsen/InkyPi-modernize.git
+cd InkyPi-modernize
 sudo bash install/install.sh
 ```
 
@@ -283,7 +283,7 @@ When installing, use `-W` with your model name (without `.py`): `sudo bash insta
 
 ## Issues
 
-Check the [troubleshooting guide](./docs/troubleshooting.md) first. If you're still stuck, open an issue on [GitHub Issues](https://github.com/jtn0123/InkyPi/issues).
+Check the [troubleshooting guide](./docs/troubleshooting.md) first. If you're still stuck, open an issue on [GitHub Issues](https://github.com/florentineprinzessinzusachsen/InkyPi-modernize/issues).
 
 > Pi Zero W users: see [Known Issues during Pi Zero W Installation](./docs/troubleshooting.md#known-issues-during-pi-zero-w-installation).
 

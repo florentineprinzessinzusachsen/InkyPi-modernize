@@ -82,41 +82,67 @@ if [ -z "$PREV_TAG" ]; then
   exit 10
 fi
 
-# Defense-in-depth: the same strict semver regex used by the Flask caller in
-# src/blueprints/settings/__init__.py::_TAG_RE and by do_update.sh.  Matching
-# the *bash* flavor here deliberately — keep this byte-for-byte aligned with
-# do_update.sh's validator so an attacker cannot bypass validation by writing
-# a crafted value into prev_version.
-if ! [[ "$PREV_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
-  echo "ERROR: prev_version contents failed semver validation: $PREV_TAG" >&2
+# Defense-in-depth: the same strict semver-or-SHA regexes used by the Flask
+# caller in src/blueprints/settings/__init__.py (_TAG_RE / _SHA_RE) and by
+# do_update.sh.  Matching the *bash* flavor here deliberately — keep this
+# byte-for-byte aligned with those validators so an attacker cannot bypass
+# validation by writing a crafted value into prev_version.  A bare SHA is
+# recorded when the outgoing update ran on the "edge" channel (tracks
+# origin/main, which has no semver tag to describe it).
+IS_SHA=0
+if [[ "$PREV_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+  IS_SHA=0
+elif [[ "$PREV_TAG" =~ ^[0-9a-f]{7,40}$ ]]; then
+  IS_SHA=1
+else
+  echo "ERROR: prev_version contents failed validation: $PREV_TAG" >&2
   echo "  Refusing to check out an arbitrary revision." >&2
   exit 11
 fi
 
 echo "Previous version: $PREV_TAG"
 
-# ---------------------------------------------------------------------------
-# Ensure the tag is available locally; fetch it if needed.
-# ---------------------------------------------------------------------------
-if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
-  echo "Tag $PREV_TAG not present locally — fetching from origin..."
-  if ! git -C "$REPO_DIR" fetch origin "refs/tags/$PREV_TAG:refs/tags/$PREV_TAG" --no-tags 2>/dev/null; then
-    # Fall back to a full tag fetch.
-    git -C "$REPO_DIR" fetch origin --tags --prune || true
+if [ "$IS_SHA" -eq 1 ]; then
+  # -----------------------------------------------------------------------
+  # SHA rollback (edge channel): ensure the commit is reachable, then check
+  # it out directly. Unlike a tag there's no dedicated ref to fetch by name —
+  # a plain fetch of main is enough since the SHA was recorded off the tip
+  # of origin/main by a prior do_update.sh run. If origin's history was
+  # rewritten/GC'd since then, this can fail — an accepted limitation of an
+  # opt-in bleeding-edge channel.
+  # -----------------------------------------------------------------------
+  if ! git -C "$REPO_DIR" rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
+    echo "Commit $PREV_TAG not present locally — fetching origin/main..."
+    git -C "$REPO_DIR" fetch origin main || true
+    if ! git -C "$REPO_DIR" rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
+      echo "ERROR: Commit $PREV_TAG is not available locally and could not be fetched." >&2
+      exit 12
+    fi
   fi
-  if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
-    echo "ERROR: Tag $PREV_TAG is not available locally and could not be fetched." >&2
-    exit 12
-  fi
-fi
 
-# ---------------------------------------------------------------------------
-# Check out the previous tag.
-# ---------------------------------------------------------------------------
-echo "Rolling back to $PREV_TAG..."
-# Trailing `--` makes it unambiguous that $PREV_TAG is a revision, not a
-# pathspec.  Mirrors the pattern used in do_update.sh.
-git -C "$REPO_DIR" checkout "refs/tags/$PREV_TAG" --
+  echo "Rolling back to $PREV_TAG..."
+  git -C "$REPO_DIR" checkout "$PREV_TAG" --
+else
+  # -----------------------------------------------------------------------
+  # Ensure the tag is available locally; fetch it if needed.
+  # -----------------------------------------------------------------------
+  if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
+    echo "Tag $PREV_TAG not present locally — fetching from origin..."
+    if ! git -C "$REPO_DIR" fetch origin "refs/tags/$PREV_TAG:refs/tags/$PREV_TAG" --no-tags 2>/dev/null; then
+      # Fall back to a full tag fetch.
+      git -C "$REPO_DIR" fetch origin --tags --prune || true
+    fi
+    if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
+      echo "ERROR: Tag $PREV_TAG is not available locally and could not be fetched." >&2
+      exit 12
+    fi
+  fi
+
+  echo "Rolling back to $PREV_TAG..."
+  # Trailing `--` makes it unambiguous that $PREV_TAG is a revision, not a
+  # pathspec.  Mirrors the pattern used in do_update.sh.
+  git -C "$REPO_DIR" checkout "refs/tags/$PREV_TAG" --
+fi
 
 # ---------------------------------------------------------------------------
 # Delegate to update.sh for deps, CSS build, and service restart.

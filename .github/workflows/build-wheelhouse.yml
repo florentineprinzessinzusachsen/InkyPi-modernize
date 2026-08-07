@@ -20,8 +20,11 @@ on:
         description: Release tag to build wheels for (e.g. v0.28.1)
         required: true
         type: string
-  release:
-    types: [published]
+  # Parked for this fork: wheelhouse builds haven't been ported/verified
+  # here yet (release.yml no longer calls this workflow). Re-enable once
+  # ported. workflow_call/workflow_dispatch above still work for manual runs.
+  # release:
+  #   types: [published]
   # Manual trigger so maintainers can rebuild wheels for an existing tag
   # without cutting a new release. JTN-745: manual rebuilds still attach to
   # the tagged release so historical gaps (for example v0.51.8 armv7l) can be

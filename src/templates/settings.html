@@ -318,6 +318,20 @@
                             </button>
                         </div>
                     </div>
+                    {# Channel picker: "stable" resolves the latest GitHub
+                       Release; "edge" tracks the tip of origin/main directly.
+                       Persisted immediately on change via
+                       /settings/update_channel (see actions.js) rather than
+                       going through the big /save_settings form — this is
+                       part of the update subsystem, not a device-wide
+                       setting. #}
+                    <div class="form-group update-channel-group">
+                        <label for="updateChannelSelect" class="form-label">Update channel</label>
+                        <select id="updateChannelSelect" class="form-input">
+                            <option value="stable" {% if device_settings.get('update_channel', 'stable') == 'stable' %}selected{% endif %}>Stable (releases)</option>
+                            <option value="edge" {% if device_settings.get('update_channel', 'stable') == 'edge' %}selected{% endif %}>Bleeding edge (main)</option>
+                        </select>
+                    </div>
                     {# Handoff parity: `.update-version-row` holds just the
                        Installed → Latest tiles. Release notes live below as a
                        plain <details>, and `.update-actions` sits on its own
@@ -742,6 +756,7 @@
             rollbackUpdateUrl: {{ url_for('settings.start_rollback') | tojson }},
             updateStatusUrl: {{ url_for('settings.update_status') | tojson }},
             versionUrl: {{ url_for('settings.api_version') | tojson }},
+            updateChannelUrl: {{ url_for('settings.set_update_channel') | tojson }},
         };
         document.addEventListener('DOMContentLoaded', () => {
             window.InkyPiSettingsPage.create(window.__INKYPI_SETTINGS_BOOT__).init();

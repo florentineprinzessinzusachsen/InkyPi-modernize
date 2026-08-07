@@ -7,6 +7,7 @@ from flask import Response, current_app, jsonify, request
 from werkzeug.exceptions import BadRequest
 
 import blueprints.settings as _mod
+from blueprints import version_info as _version_info
 from blueprints.settings._update_status import read_last_update_failure
 from utils.backend_errors import (
     ClientInputError,
@@ -35,19 +36,20 @@ def _prev_version_path() -> str:
 
 
 def _read_prev_version() -> str | None:
-    """Return the tag recorded in ``/var/lib/inkypi/prev_version`` or ``None``.
+    """Return the tag/SHA recorded in ``/var/lib/inkypi/prev_version`` or ``None``.
 
-    Applies the same strict semver regex as ``_TAG_RE`` to refuse malformed
-    records — defense-in-depth for the UI: if the file got corrupted we
-    simply hide the rollback button rather than advertising an unusable
-    target.
+    Applies the same strict semver-or-SHA regexes as ``_TAG_RE``/``_SHA_RE``
+    to refuse malformed records — defense-in-depth for the UI: if the file
+    got corrupted we simply hide the rollback button rather than advertising
+    an unusable target. A bare SHA is recorded when the outgoing update ran
+    on the "edge" channel, which has no semver tag to describe it.
     """
     try:
         with open(_prev_version_path(), encoding="utf-8") as fh:
             raw = fh.read().strip()
     except OSError:
         return None
-    if not raw or not _mod._TAG_RE.fullmatch(raw):
+    if not raw or not (_mod._TAG_RE.fullmatch(raw) or _mod._SHA_RE.fullmatch(raw)):
         return None
     return raw
 
@@ -57,8 +59,11 @@ def start_update() -> tuple[object, int] | Response:
     """Trigger InkyPi update via systemd-run when available, with dev fallback.
 
     Accepts optional JSON body ``{"target_version": "v1.2.0"}`` to update to a
-    specific tag.  Returns JSON immediately; progress is visible in the Logs
-    panel via /api/logs.
+    specific tag, and/or ``{"channel": "stable"|"edge"}`` to pick the update
+    channel (defaults to the persisted ``update_channel`` device setting).
+    ``edge`` tracks the tip of ``origin/main`` and cannot be combined with an
+    explicit ``target_version``. Returns JSON immediately; progress is
+    visible in the Logs panel via /api/logs.
     """
     with route_error_boundary(
         "start update",
@@ -111,6 +116,33 @@ def start_update() -> tuple[object, int] | Response:
                     field="target_version",
                 )
 
+        device_config = current_app.config["DEVICE_CONFIG"]
+        if "channel" in body:
+            raw_channel = body.get("channel")
+            if not isinstance(raw_channel, str) or raw_channel not in _mod._UPDATE_CHANNELS:
+                raise ClientInputError(
+                    "channel must be one of: stable, edge",
+                    status=400,
+                    code="validation_error",
+                    field="channel",
+                )
+            channel = raw_channel
+        else:
+            channel = device_config.get_config(
+                "update_channel", _mod._DEFAULT_UPDATE_CHANNEL
+            )
+            if channel not in _mod._UPDATE_CHANNELS:
+                channel = _mod._DEFAULT_UPDATE_CHANNEL
+
+        if channel == "edge" and target_tag is not None:
+            raise ClientInputError(
+                "target_version cannot be combined with the edge channel — "
+                "edge always tracks the tip of main.",
+                status=400,
+                code="validation_error",
+                field="target_version",
+            )
+
         script_path = _mod._get_update_script_path()
         use_systemd = _mod._systemd_available()
 
@@ -152,7 +184,9 @@ def start_update() -> tuple[object, int] | Response:
                 # the real unit name it passed to systemd-run so we can record
                 # the same value in ``_UPDATE_STATE["unit"]`` without
                 # regenerating ``int(time.time())`` out of phase.
-                real_unit = _mod._start_update_via_systemd(target_tag=target_tag)
+                real_unit = _mod._start_update_via_systemd(
+                    target_tag=target_tag, channel=channel
+                )
                 # Defensive: the contract is ``-> str`` but tests (and earlier
                 # callers) may mock this as returning None / MagicMock.  Only
                 # record the value when it's a real ``.service`` string so the
@@ -165,9 +199,13 @@ def start_update() -> tuple[object, int] | Response:
                 _mod.logger.exception(
                     "systemd-run failed; falling back to thread runner"
                 )
-                _mod._start_update_fallback_thread(script_path, target_tag=target_tag)
+                _mod._start_update_fallback_thread(
+                    script_path, target_tag=target_tag, channel=channel
+                )
         else:
-            _mod._start_update_fallback_thread(script_path, target_tag=target_tag)
+            _mod._start_update_fallback_thread(
+                script_path, target_tag=target_tag, channel=channel
+            )
 
         return json_success(
             message="Update started. Watch the Logs panel for progress.",
@@ -462,14 +500,27 @@ def start_rollback() -> tuple[object, int] | Response:
         raise
 
 
+def _resolve_channel(device_config) -> str:
+    """Resolve the effective channel: explicit ``?channel=`` wins, else the
+    persisted device setting, else "stable"."""
+    requested = request.args.get("channel")
+    if isinstance(requested, str) and requested in _mod._UPDATE_CHANNELS:
+        return requested
+    saved = device_config.get_config("update_channel", _mod._DEFAULT_UPDATE_CHANNEL)
+    return saved if saved in _mod._UPDATE_CHANNELS else _mod._DEFAULT_UPDATE_CHANNEL
+
+
 @_mod.settings_bp.route("/api/version", methods=["GET"])  # type: ignore
 def api_version() -> Response:
     """Return current and latest version info.
 
     Accepts ``?force=1`` to bypass the in-process cache so the "Check for
     updates" button always hits GitHub instead of serving a possibly-stale
-    result from an earlier page load. Returns ``check_succeeded`` / ``check_error``
-    so the UI can distinguish "you're on latest" from "we couldn't reach GitHub".
+    result from an earlier page load. Accepts ``?channel=stable|edge`` to
+    override the persisted channel for this one check (falls back to the
+    persisted ``update_channel`` device setting when omitted). Returns
+    ``check_succeeded`` / ``check_error`` so the UI can distinguish
+    "you're on latest" from "we couldn't reach GitHub".
     """
     with route_error_boundary(
         "version check",
@@ -477,20 +528,66 @@ def api_version() -> Response:
         hint="Check release metadata retrieval and semver parsing.",
     ):
         force_refresh = request.args.get("force", "").lower() in ("1", "true", "yes")
-        current = current_app.config.get("APP_VERSION", "unknown")
-        latest = _mod._check_latest_version(force_refresh=force_refresh)
-        update_available = False
-        if latest and current != "unknown":
-            update_available = _mod._semver_gt(latest, current)
-        check_error = _mod._VERSION_CACHE.get("last_error")
+        device_config = current_app.config["DEVICE_CONFIG"]
+        channel = _resolve_channel(device_config)
+
+        if channel == "edge":
+            current = _version_info._GIT_SHA
+            latest = _mod._check_latest_edge_commit(force_refresh=force_refresh)
+            update_available = False
+            if latest and current != "unknown":
+                update_available = not (
+                    latest.startswith(current) or current.startswith(latest)
+                )
+            check_error = _mod._EDGE_CACHE.get("last_error")
+            release_notes = _mod._EDGE_CACHE.get("release_notes")
+        else:
+            current = current_app.config.get("APP_VERSION", "unknown")
+            latest = _mod._check_latest_version(force_refresh=force_refresh)
+            update_available = False
+            if latest and current != "unknown":
+                update_available = _mod._semver_gt(latest, current)
+            check_error = _mod._VERSION_CACHE.get("last_error")
+            release_notes = _mod._VERSION_CACHE.get("release_notes")
+
         return jsonify(
             {
                 "current": current,
                 "latest": latest,
+                "channel": channel,
                 "update_available": update_available,
                 "update_running": bool(_mod._UPDATE_STATE.get("running")),
-                "release_notes": _mod._VERSION_CACHE.get("release_notes"),
+                "release_notes": release_notes,
                 "check_succeeded": latest is not None,
                 "check_error": check_error if latest is None else None,
             }
         )
+
+
+@_mod.settings_bp.route("/settings/update_channel", methods=["POST"])  # type: ignore
+def set_update_channel() -> tuple[object, int] | Response:
+    """Persist the update channel preference ("stable" or "edge").
+
+    Kept separate from the general /save_settings form since this is part
+    of the update subsystem (immediate-apply, no page reload needed) rather
+    than a device-wide setting.
+    """
+    with route_error_boundary(
+        "set update channel",
+        logger=_mod.logger,
+        hint="Provide a JSON body with a valid channel value.",
+    ):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            raise ClientInputError("Request body must be a JSON object", status=400)
+        channel = body.get("channel")
+        if not isinstance(channel, str) or channel not in _mod._UPDATE_CHANNELS:
+            raise ClientInputError(
+                "channel must be one of: stable, edge",
+                status=400,
+                code="validation_error",
+                field="channel",
+            )
+        device_config = current_app.config["DEVICE_CONFIG"]
+        device_config.update_value("update_channel", channel, write=True)
+        return json_success(channel=channel)

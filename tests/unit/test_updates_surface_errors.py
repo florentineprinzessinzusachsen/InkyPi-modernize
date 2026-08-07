@@ -308,7 +308,9 @@ class TestStartUpdateRejectsEmptyTargetVersion:
         try:
             resp = client.post("/settings/update", json={})
             assert resp.status_code == 200
-            fallback_mock.assert_called_once_with(None, target_tag=None)
+            fallback_mock.assert_called_once_with(
+                None, target_tag=None, channel="stable"
+            )
         finally:
             mod._set_update_state(False, None)
 

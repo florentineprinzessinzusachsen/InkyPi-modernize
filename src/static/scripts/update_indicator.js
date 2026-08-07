@@ -52,12 +52,18 @@
   function showIndicator(btn, data) {
     if (!btn) return;
     btn.hidden = false;
-    const label = "Update available: v" + String(data.latest).replace(/^v/, "");
+    // Edge channel's "latest"/"current" are short git SHAs, not semver tags
+    // — don't prepend the "v" a stable-channel version implies.
+    const isEdge = data.channel === "edge";
+    const label =
+      "Update available: " +
+      (isEdge ? String(data.latest) : "v" + String(data.latest).replace(/^v/, ""));
     btn.setAttribute("aria-label", label);
     btn.setAttribute("title", label);
     btn.dataset.latest = data.latest || "";
     btn.dataset.current = data.current || "";
     btn.dataset.releaseNotes = data.release_notes || "";
+    btn.dataset.channel = data.channel || "stable";
   }
 
   function hideIndicator(btn) {
@@ -87,15 +93,14 @@
     if (!modal || !btn) return;
     const latestEl = modal.querySelector("#quickUpdateLatest");
     const currentEl = modal.querySelector("#quickUpdateCurrent");
+    const isEdge = btn.dataset.channel === "edge";
+    const format = (value) =>
+      value ? (isEdge ? String(value) : "v" + String(value).replace(/^v/, "")) : "\u2014";
     if (latestEl) {
-      latestEl.textContent = btn.dataset.latest
-        ? "v" + String(btn.dataset.latest).replace(/^v/, "")
-        : "\u2014";
+      latestEl.textContent = format(btn.dataset.latest);
     }
     if (currentEl) {
-      currentEl.textContent = btn.dataset.current
-        ? "v" + String(btn.dataset.current).replace(/^v/, "")
-        : "\u2014";
+      currentEl.textContent = format(btn.dataset.current);
     }
   }
 

@@ -1602,11 +1602,15 @@ class TestReleaseWorkflow:
         assert "steps.resolve_tag.outputs.tag" in self.content
         assert "steps.resolve_tag.outputs.released" in self.content
 
-    def test_release_invokes_reusable_wheelhouse_workflow(self):
-        assert "uses: ./.github/workflows/build-wheelhouse.yml" in self.content
-        assert "needs: release" in self.content
-        assert "needs.release.outputs.released == 'true'" in self.content
-        assert "tag: ${{ needs.release.outputs.tag }}" in self.content
+    def test_release_wheelhouse_and_pi_image_jobs_parked(self):
+        # Wheelhouse/Pi-image builds are parked for this fork (both assume
+        # jtn0123/InkyPi and haven't been ported/verified here) — release.yml
+        # no longer chains them after a successful release. A comment points
+        # at build-wheelhouse.yml/build-pi-image.yml for how to re-enable
+        # both together once ported.
+        assert "uses: ./.github/workflows/build-wheelhouse.yml" not in self.content
+        assert "uses: ./.github/workflows/build-pi-image.yml" not in self.content
+        assert "parked" in self.content.lower()
 
 
 class TestInstallationDocPreBuiltImage:

@@ -148,9 +148,33 @@ fi
 echo "Repository root: $REPO_DIR"
 
 # ---------------------------------------------------------------------------
+# Update channel: "stable" (default) resolves the latest semver release tag;
+# "edge" tracks the tip of origin/main directly. Passed in via
+# INKYPI_UPDATE_CHANNEL (systemd-run --setenv, or Popen env= in the dev
+# fallback path — see src/blueprints/settings/__init__.py::_start_update_via_systemd).
+# Validated here independently of the Flask-side check (defense-in-depth,
+# same posture as the TARGET_TAG regex re-check below) — an unrecognised
+# value silently falls back to "stable" rather than aborting the update.
+# ---------------------------------------------------------------------------
+UPDATE_CHANNEL="${INKYPI_UPDATE_CHANNEL:-stable}"
+if ! [[ "$UPDATE_CHANNEL" =~ ^(stable|edge)$ ]]; then
+  echo "Warning: unrecognised INKYPI_UPDATE_CHANNEL=$UPDATE_CHANNEL, defaulting to stable" >&2
+  UPDATE_CHANNEL="stable"
+fi
+echo "Update channel: $UPDATE_CHANNEL"
+
+# ---------------------------------------------------------------------------
 # Save current version for rollback breadcrumb
 # ---------------------------------------------------------------------------
-CURRENT_VERSION=$(git_repo describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+if [ "$UPDATE_CHANNEL" = "edge" ]; then
+  # No semver tag to describe HEAD on the edge channel (this fork may have
+  # zero tags reachable from main at all) — record the short commit SHA
+  # instead. src/blueprints/settings/_updates.py::_read_prev_version and
+  # install/rollback.sh both accept this shape as well as a semver tag.
+  CURRENT_VERSION=$(git_repo rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")
+else
+  CURRENT_VERSION=$(git_repo describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+fi
 # JTN-787: honour INKYPI_LOCKFILE_DIR so tests can redirect state writes
 # without needing write access to /var/lib. Production callers do not set it.
 # Failure to create the state dir (e.g. running as non-root on a fresh box)
@@ -194,80 +218,109 @@ echo "Fetching latest from origin..."
 git_repo fetch origin --tags --prune
 
 # ---------------------------------------------------------------------------
-# Determine target tag
+# Determine target and check it out
 # ---------------------------------------------------------------------------
-TARGET_TAG="${1:-}"
-if [ -z "$TARGET_TAG" ] && [ -r "$TARGET_VERSION_FILE" ]; then
-  TARGET_TAG=$(head -n 1 "$TARGET_VERSION_FILE" | tr -d '\r\n')
-fi
-if [ -z "$TARGET_TAG" ]; then
-  # Find the latest semver tag (v1.2.3 format).  Use awk instead of
-  # ``grep -E | head -1``: under ``set -euo pipefail`` a no-match grep
-  # exits 1, which (via pipefail) aborts the script before the empty
-  # check below can emit the intended error message.  awk returns 0 on
-  # no match, so the ``if [ -z ... ]`` block correctly catches it.
-  TARGET_TAG=$(git_repo tag --sort=-v:refname \
-    | awk '/^v?[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }')
-  if [ -z "$TARGET_TAG" ]; then
-    echo "ERROR: No semver tags found in repository." >&2
+if [ "$UPDATE_CHANNEL" = "edge" ]; then
+  # Edge always means "tip of origin/main" — no tag resolution, no
+  # TARGET_VERSION_FILE override (that breadcrumb only carries a semver tag
+  # for the stable channel; src/blueprints/settings/_updates.py::start_update
+  # rejects target_version + channel=edge together before we ever get here).
+  NEW_SHA=$(git_repo rev-parse --short=12 origin/main 2>/dev/null || echo "")
+  if [ -z "$NEW_SHA" ]; then
+    echo "ERROR: origin/main not found after fetch — was the fetch refspec widened?" >&2
     exit 1
   fi
-fi
+  echo "Target: origin/main ($NEW_SHA)"
 
-# Defense-in-depth: validate the tag format even though the Flask caller
-# (src/blueprints/settings/__init__.py::_start_update_via_systemd) already
-# enforces a strict semver regex before exec. See JTN-319.
-if ! [[ "$TARGET_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
-  echo "ERROR: Invalid target tag format: $TARGET_TAG" >&2
-  exit 1
-fi
+  if [ "$CURRENT_VERSION" = "$NEW_SHA" ]; then
+    echo "Already at $NEW_SHA — re-running update.sh for dependency sync."
+  else
+    # Same dirty-tree handling as the stable path below (JTN-787 / JTN-K2).
+    _current_step="reset_generated_artifacts"
+    git_repo checkout -- src/static/styles/main.css 2>/dev/null || true
 
-echo "Target version: $TARGET_TAG"
+    _current_step="stash_local_modifications"
+    if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then
+      echo "Stashing local modifications before reset (recover with 'git stash pop')..."
+      git_repo stash push --message "auto-stash by do_update.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)" --quiet || true
+    fi
 
-# ---------------------------------------------------------------------------
-# Checkout target
-# ---------------------------------------------------------------------------
-if [ "$CURRENT_VERSION" = "$TARGET_TAG" ]; then
-  echo "Already at $TARGET_TAG — re-running update.sh for dependency sync."
+    _current_step="git_checkout_edge"
+    echo "Checking out main and resetting to origin/main..."
+    git_repo checkout main --
+    git_repo reset --hard origin/main
+  fi
 else
-  # JTN-787: Reset the narrow allowlist of generated build artifacts before
-  # checkout so a dirty working tree cannot abort the update with
-  # "Your local changes to the following files would be overwritten by
-  # checkout". The CSS bundle is rebuilt by update.sh (build_css_bundle)
-  # immediately after this exec, so discarding it here is safe.
-  #
-  # Keep this allowlist to exactly one known-generated path — do NOT expand
-  # it, because every additional path is a chance to silently throw away
-  # legitimate user changes.
-  _current_step="reset_generated_artifacts"
-  git_repo checkout -- src/static/styles/main.css 2>/dev/null || true
-
-  # JTN-K2: On dev installs the repo at /home/$user/InkyPi may have
-  # additional tracked-file modifications beyond the narrow CSS reset
-  # above (local debugging edits, work-in-progress fixes, etc.). Without
-  # this stash, the checkout below aborts with "Your local changes
-  # would be overwritten by checkout" and the update silently fails.
-  #
-  # Tracked-only — do NOT pass --include-untracked, which would stash
-  # the runtime ``src/config/device.json`` that the live service reads.
-  # Stashed entries remain in ``git stash list`` so the user can recover
-  # via ``git stash pop`` after the update.  No-op if the tree is clean.
-  _current_step="stash_local_modifications"
-  # ``git diff --quiet`` only reports unstaged worktree changes; staged
-  # modifications (``git add``-ed but not committed) would still abort the
-  # checkout with "Your local changes would be overwritten by checkout".
-  # Stash when either side is dirty.
-  if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then
-    echo "Stashing local modifications before checkout (recover with 'git stash pop')..."
-    git_repo stash push --message "auto-stash by do_update.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)" --quiet || true
+  TARGET_TAG="${1:-}"
+  if [ -z "$TARGET_TAG" ] && [ -r "$TARGET_VERSION_FILE" ]; then
+    TARGET_TAG=$(head -n 1 "$TARGET_VERSION_FILE" | tr -d '\r\n')
+  fi
+  if [ -z "$TARGET_TAG" ]; then
+    # Find the latest semver tag (v1.2.3 format).  Use awk instead of
+    # ``grep -E | head -1``: under ``set -euo pipefail`` a no-match grep
+    # exits 1, which (via pipefail) aborts the script before the empty
+    # check below can emit the intended error message.  awk returns 0 on
+    # no match, so the ``if [ -z ... ]`` block correctly catches it.
+    TARGET_TAG=$(git_repo tag --sort=-v:refname \
+      | awk '/^v?[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }')
+    if [ -z "$TARGET_TAG" ]; then
+      echo "ERROR: No semver tags found in repository." >&2
+      exit 1
+    fi
   fi
 
-  _current_step="git_checkout"
-  echo "Checking out $TARGET_TAG..."
-  # Pass the tag via an explicit revision argument before ``--`` so it
-  # cannot be interpreted as a flag by git checkout, and add a trailing
-  # ``--`` to make clear nothing after it is a pathspec.
-  git_repo checkout "refs/tags/$TARGET_TAG" --
+  # Defense-in-depth: validate the tag format even though the Flask caller
+  # (src/blueprints/settings/__init__.py::_start_update_via_systemd) already
+  # enforces a strict semver regex before exec. See JTN-319.
+  if ! [[ "$TARGET_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+    echo "ERROR: Invalid target tag format: $TARGET_TAG" >&2
+    exit 1
+  fi
+
+  echo "Target version: $TARGET_TAG"
+
+  if [ "$CURRENT_VERSION" = "$TARGET_TAG" ]; then
+    echo "Already at $TARGET_TAG — re-running update.sh for dependency sync."
+  else
+    # JTN-787: Reset the narrow allowlist of generated build artifacts before
+    # checkout so a dirty working tree cannot abort the update with
+    # "Your local changes to the following files would be overwritten by
+    # checkout". The CSS bundle is rebuilt by update.sh (build_css_bundle)
+    # immediately after this exec, so discarding it here is safe.
+    #
+    # Keep this allowlist to exactly one known-generated path — do NOT expand
+    # it, because every additional path is a chance to silently throw away
+    # legitimate user changes.
+    _current_step="reset_generated_artifacts"
+    git_repo checkout -- src/static/styles/main.css 2>/dev/null || true
+
+    # JTN-K2: On dev installs the repo at /home/$user/InkyPi may have
+    # additional tracked-file modifications beyond the narrow CSS reset
+    # above (local debugging edits, work-in-progress fixes, etc.). Without
+    # this stash, the checkout below aborts with "Your local changes
+    # would be overwritten by checkout" and the update silently fails.
+    #
+    # Tracked-only — do NOT pass --include-untracked, which would stash
+    # the runtime ``src/config/device.json`` that the live service reads.
+    # Stashed entries remain in ``git stash list`` so the user can recover
+    # via ``git stash pop`` after the update.  No-op if the tree is clean.
+    _current_step="stash_local_modifications"
+    # ``git diff --quiet`` only reports unstaged worktree changes; staged
+    # modifications (``git add``-ed but not committed) would still abort the
+    # checkout with "Your local changes would be overwritten by checkout".
+    # Stash when either side is dirty.
+    if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then
+      echo "Stashing local modifications before checkout (recover with 'git stash pop')..."
+      git_repo stash push --message "auto-stash by do_update.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)" --quiet || true
+    fi
+
+    _current_step="git_checkout"
+    echo "Checking out $TARGET_TAG..."
+    # Pass the tag via an explicit revision argument before ``--`` so it
+    # cannot be interpreted as a flag by git checkout, and add a trailing
+    # ``--`` to make clear nothing after it is a pathspec.
+    git_repo checkout "refs/tags/$TARGET_TAG" --
+  fi
 fi
 
 # ---------------------------------------------------------------------------

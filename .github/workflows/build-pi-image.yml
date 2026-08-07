@@ -36,8 +36,12 @@ on:
         description: Release tag to build an image for (e.g. v0.42.3)
         required: true
         type: string
-  release:
-    types: [published]
+  # Parked for this fork: this workflow clones jtn0123/InkyPi directly
+  # (see the checkout step below) and hasn't been ported/verified for this
+  # repo yet (release.yml no longer calls this workflow). Re-enable once
+  # ported. workflow_call/workflow_dispatch above still work for manual runs.
+  # release:
+  #   types: [published]
   # Manual trigger so maintainers can rebuild against an existing tag
   # without cutting a new release.
   workflow_dispatch:

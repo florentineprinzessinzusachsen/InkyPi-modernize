@@ -189,7 +189,9 @@ class TestStartUpdateEdge:
         try:
             resp = client.post("/settings/update", json={"target_version": "v1.2.3"})
             assert resp.status_code == 200
-            fallback_mock.assert_called_once_with(None, target_tag="v1.2.3")
+            fallback_mock.assert_called_once_with(
+                None, target_tag="v1.2.3", channel="stable"
+            )
         finally:
             mod._set_update_state(False, None)
 
@@ -255,7 +257,9 @@ class TestStartUpdateEdge:
         try:
             resp = client.post("/settings/update", json={"target_version": "v2.0.0"})
             assert resp.status_code == 200
-            fallback_mock.assert_called_once_with("/fake.sh", target_tag="v2.0.0")
+            fallback_mock.assert_called_once_with(
+                "/fake.sh", target_tag="v2.0.0", channel="stable"
+            )
         finally:
             mod._set_update_state(False, None)
 
@@ -349,7 +353,7 @@ class TestUpdateRunnerHelpers:
         mod._start_update_fallback_thread("/fake/do_update.sh", target_tag="v3.0.0")
 
         assert thread_args["target"] is mod._update_runner
-        assert thread_args["args"] == ("/fake/do_update.sh", "v3.0.0")
+        assert thread_args["args"] == ("/fake/do_update.sh", "v3.0.0", None)
         assert thread_args["name"] == "update-fallback"
         assert thread_args["daemon"] is True
         assert thread_args["started"] is True
@@ -376,7 +380,7 @@ class TestStartUpdateTOCTOURace:
         monkeypatch.setattr(mod, "_systemd_available", lambda: False)
         monkeypatch.setattr(mod, "_get_update_script_path", lambda: None)
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None: None
+            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
         )
 
         lock_held_when_running_flipped: list[bool] = []
@@ -416,7 +420,7 @@ class TestStartUpdateTOCTOURace:
         monkeypatch.setattr(mod, "_systemd_available", lambda: False)
         monkeypatch.setattr(mod, "_get_update_script_path", lambda: None)
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None: None
+            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
         )
 
         results: list[int] = []

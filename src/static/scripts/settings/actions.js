@@ -270,10 +270,13 @@
         renderVersionCheckResult(elements, data);
         if (!silent) {
           if (data.update_available) {
-            showResponseModal(
-              "success",
-              `Update available: v${String(data.latest).replace(/^v/, "")}`
-            );
+            // Edge channel's "latest" is a short git SHA, not a semver tag —
+            // don't prepend the "v" a stable-channel version implies.
+            const label =
+              data.channel === "edge"
+                ? String(data.latest)
+                : `v${String(data.latest).replace(/^v/, "")}`;
+            showResponseModal("success", `Update available: ${label}`);
           } else if (data.latest) {
             showResponseModal("success", "You're on the latest version.");
           } else {
@@ -350,6 +353,7 @@
       kind,
       startingLabel,
       failureMessage,
+      body,
     }) {
       if (!url) {
         showResponseModal("failure", `${kind} is not available on this build.`);
@@ -357,7 +361,12 @@
       }
       try {
         setHeaderButtonsDisabled(true);
-        const resp = await fetch(url, { method: "POST" });
+        const init = { method: "POST" };
+        if (body) {
+          init.headers = { "Content-Type": "application/json" };
+          init.body = JSON.stringify(body);
+        }
+        const resp = await fetch(url, init);
         const data = await resp.json();
         if (!resp.ok || !data.success) {
           showResponseModal("failure", data.error || failureMessage);
@@ -374,12 +383,40 @@
     }
 
     async function startUpdate() {
+      const channelSelect = document.getElementById("updateChannelSelect");
+      const body = channelSelect ? { channel: channelSelect.value } : undefined;
       await runUpdateAction({
         url: config.startUpdateUrl,
         kind: "Update",
         startingLabel: "Update started.",
         failureMessage: "Failed to start update",
+        body,
       });
+    }
+
+    async function setUpdateChannel(channel) {
+      if (!config.updateChannelUrl) return;
+      try {
+        const resp = await fetch(config.updateChannelUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+          showResponseModal(
+            "failure",
+            data.error || "Failed to save update channel"
+          );
+          return;
+        }
+        // Refresh the version tiles/"Update now" state against the newly
+        // selected channel; silent since this isn't a user-initiated check.
+        await checkForUpdates({ force: true, silent: true });
+      } catch (e) {
+        console.warn("Failed to save update channel:", e);
+        showResponseModal("failure", "Failed to save update channel");
+      }
     }
 
     async function startRollback() {
@@ -522,6 +559,9 @@
       document
         .getElementById("startUpdateBtn")
         ?.addEventListener("click", startUpdate);
+      document
+        .getElementById("updateChannelSelect")
+        ?.addEventListener("change", (e) => setUpdateChannel(e.target.value));
       document.getElementById("whatsNewBtn")?.addEventListener("click", openWhatsNew);
       document
         .getElementById("closeWhatsNewModalBtn")
@@ -571,6 +611,7 @@
       hydrateVersionCheckFromCache,
       importConfig,
       refreshUpdateStatus,
+      setUpdateChannel,
       startRollback,
       startUpdate,
       stop,
