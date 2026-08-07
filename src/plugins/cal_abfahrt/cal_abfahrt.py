@@ -96,18 +96,22 @@ logger = logging.getLogger(__name__)
 VALID_LABEL = re.compile(r"^[A-Za-z0-9_]+$")
 
 DEPARTURES_DURATION_MIN = 60
-DEPARTURES_RESULTS = 15  # pre-filter cap; the API returns every line at the stop
+DEPARTURES_RESULTS = 15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
 MAX_FETCHED_DEPARTURES = 12  # per-stop cap, ahead of the layout's own truncation
+# Ceiling for the learned per-stop `results` cap below - comfortably inside
+# what the API already handles today (the settings wizard's stop/line picker
+# queries at results=100, see abfahrtzeitenLinesForStop in plugin_schema.js).
+DEPARTURES_RESULTS_CEILING = 80
 DEPARTURES_TIMEOUT = 6  # short so a hung provider fails fast inside the executor's budget
 CALENDAR_TIMEOUT = 20
 
 # Query flags that strip parts of the departures response this panel never
 # reads. `remarks` is deliberately NOT disabled - it is the second of the two
 # signals for a cancelled trip (see _is_cancelled) and dropping it would trade
-# correctness for a few more KB.
+# correctness for a few more KB. `results` is deliberately absent - it's
+# per-stop and learned, see _load_learned_results below.
 DEPARTURES_QUERY = {
     "duration": DEPARTURES_DURATION_MIN,
-    "results": DEPARTURES_RESULTS,
     "pretty": "false",
     "linesOfStops": "false",
     "subStops": "false",
@@ -119,6 +123,10 @@ MAX_WORKERS = 8
 # Filename prefix for the on-disk ICS conditional-GET cache - see the module
 # docstring's "Calendar fetches use HTTP conditional GET" note.
 _ICS_CACHE_PREFIX = "_cal_abfahrt_ics_cache_"
+
+# Filename prefix for the on-disk "learned results cap" cache - see
+# _load_learned_results's docstring.
+_DEPARTURES_CACHE_PREFIX = "_cal_abfahrt_departures_cache_"
 
 
 def _calendar_cache_path(device_config, url):
@@ -164,6 +172,53 @@ def _store_calendar_cache(device_config, url, etag, last_modified, body, expande
         os.replace(tmp_path, path)
     except (OSError, AttributeError) as e:
         logger.debug("Could not write calendar cache for %s: %s", url, e)
+
+
+def _departures_cache_path(device_config, provider, stop_id):
+    digest = hashlib.sha256(f"{provider}:{stop_id}".encode()).hexdigest()[:32]
+    return os.path.join(
+        device_config.plugin_image_dir, f"{_DEPARTURES_CACHE_PREFIX}{digest}.json"
+    )
+
+
+def _load_learned_results(device_config, provider, stop_id):
+    """Returns the learned `results` page size for one stop, or the default.
+
+    A stop shared by several frequent lines (trams, buses) can crowd a
+    less-frequent line (e.g. one direction of a ring S-Bahn line) out of the
+    default DEPARTURES_RESULTS page entirely - the API returns its next N
+    departures across every line at the stop, not per configured filter. This
+    persists a per-stop page size that _fetch_stop_departures grows once it
+    actually observes that DEPARTURES_RESULTS wasn't enough, so the fix
+    applies only to stops that need it rather than paying a bigger page for
+    every stop up front. Best-effort like the calendar cache above: a
+    missing/corrupt file just means "start from the default again".
+    """
+    try:
+        with open(_departures_cache_path(device_config, provider, stop_id), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError, AttributeError):
+        return DEPARTURES_RESULTS
+    value = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(value, int) or value <= 0:
+        return DEPARTURES_RESULTS
+    return min(value, DEPARTURES_RESULTS_CEILING)
+
+
+def _store_learned_results(device_config, provider, stop_id, results):
+    try:
+        path = _departures_cache_path(device_config, provider, stop_id)
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump({"results": results}, f)
+        os.replace(tmp_path, path)
+    except (OSError, AttributeError) as e:
+        logger.debug("Could not write departures cache for %s/%s: %s", provider, stop_id, e)
+
+
+def _grow_results_cap(current):
+    """Returns a bigger page size to try next time, capped at the ceiling."""
+    return min(DEPARTURES_RESULTS_CEILING, max(current + 5, round(current * 1.5)))
 
 
 def _serialize_expanded_events(window_date, events):
@@ -615,7 +670,7 @@ class CalAbfahrt(BasePlugin):
                 for entry, auth in zip(calendars, auths, strict=True)
             ]
             stop_futures = [
-                executor.submit(self._fetch_stop_departures, group, session)
+                executor.submit(self._fetch_stop_departures, group, session, device_config)
                 for group in stop_groups
             ]
 
@@ -741,18 +796,21 @@ class CalAbfahrt(BasePlugin):
 
         return parsed
 
-    def _fetch_stop_departures(self, group, session):
+    def _fetch_stop_departures(self, group, session, device_config):
         base = PROVIDER_BASES[group["provider"]]
+        provider, stop_id = group["provider"], group["stopId"]
+        results_cap = _load_learned_results(device_config, provider, stop_id)
         response = session.get(
-            f"{base}/stops/{quote(str(group['stopId']), safe='')}/departures",
-            params=DEPARTURES_QUERY,
+            f"{base}/stops/{quote(str(stop_id), safe='')}/departures",
+            params={**DEPARTURES_QUERY, "results": results_cap},
             timeout=DEPARTURES_TIMEOUT,
         )
         response.raise_for_status()
         data = response.json()
+        raw_departures = data.get("departures", [])
 
         rows = []
-        for departure in data.get("departures", []):
+        for departure in raw_departures:
             line = (departure.get("line") or {}).get("name")
             direction = departure.get("direction")
             if (line, direction) not in group["filters"]:
@@ -781,7 +839,20 @@ class CalAbfahrt(BasePlugin):
             )
 
         rows.sort(key=lambda r: r["sort_time"])
-        return rows[:MAX_FETCHED_DEPARTURES]
+        matched = rows[:MAX_FETCHED_DEPARTURES]
+
+        # Adaptive page size: grow the learned cap only when it was actually
+        # the bottleneck (the raw response came back full, i.e. there may be
+        # more we didn't ask for) and it still wasn't enough. If the raw
+        # response came back short of results_cap, this stop's schedule is
+        # just genuinely sparse in the next hour - asking for a bigger page
+        # wouldn't produce more matches, so leave the cap alone.
+        if len(matched) < MAX_FETCHED_DEPARTURES and len(raw_departures) >= results_cap:
+            grown = _grow_results_cap(results_cap)
+            if grown > results_cap:
+                _store_learned_results(device_config, provider, stop_id, grown)
+
+        return matched
 
     # ------------------------------------------------------------------
     # Calendar plumbing
