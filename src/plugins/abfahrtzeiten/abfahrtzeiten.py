@@ -46,14 +46,21 @@ DEPARTURES_ABSOLUTE_MAX = 40
 # what the API already handles today (the settings wizard's stop/line picker
 # queries at results=100, see abfahrtzeitenLinesForStop in plugin_schema.js).
 DEPARTURES_RESULTS_CEILING = 80
-# Only shrink a learned `results` cap once it's at least this many times
-# bigger than what was actually needed this render, and even then leave this
-# much headroom above that need - both exist so normal minute-to-minute
-# service fluctuation can't bounce the cap up and down every render; it only
-# reacts to a real, sustained drop in what a stop needs (e.g. more stops
-# added, shrinking every row's capacity).
-DEPARTURES_SHRINK_MARGIN = 3
-DEPARTURES_SHRINK_HEADROOM = 1.5
+# Whenever a render finds its target, the learned cap is nudged toward
+# `raw_scanned_for_target * DEPARTURES_HEADROOM` (extra room above the exact
+# minimum, so next render's inevitably-slightly-different service pattern -
+# a bidirectional line interleaves both directions, so how many raw entries
+# it takes to find N matches shifts with the time of day - doesn't
+# immediately fall short again), moving only DEPARTURES_SMOOTHING of the way
+# there each cycle rather than snapping straight to the ideal. That damping
+# is what keeps ordinary cycle-to-cycle timetable noise from bouncing the cap
+# up and down every render, while still converging on the real typical need
+# within a handful of cycles - unlike a fixed "only shrink once 3x+
+# oversized" cliff, which left a cap that had ratcheted up to survive one
+# unusually unfavorable cycle sitting well above the typical need
+# indefinitely, with nothing ever pulling it back down.
+DEPARTURES_HEADROOM = 1.3
+DEPARTURES_SMOOTHING = 0.5
 REQUEST_TIMEOUT = 6  # kept short so a hung provider fails fast within the executor's 60s attempt budget
 
 # Filename prefix for the on-disk "learned results cap" cache - see
@@ -424,20 +431,34 @@ class Abfahrtzeiten(BasePlugin):
 
         if len(matched) < effective_target and len(raw_departures) >= results_cap:
             # The results cap - not a genuinely sparse schedule - left this
-            # stop short of what the current layout can display. Grow it.
+            # stop short of what the current layout can display, and there's
+            # no observed "where would the target have landed" to converge
+            # toward (see the elif below) since it was never reached. Grow
+            # blindly.
             grown = _grow_results_cap(results_cap)
             if grown > results_cap:
+                logger.info(
+                    f"Abfahrtzeiten: departures cap for {provider}/{stop_id} grown "
+                    f"{results_cap} -> {grown} (only {len(matched)}/{effective_target} "
+                    "matches within the page)"
+                )
                 _store_learned_results(device_config, provider, stop_id, grown)
-        elif (
-            raw_scanned_for_target is not None
-            and results_cap > raw_scanned_for_target * DEPARTURES_SHRINK_MARGIN
-        ):
-            shrunk = max(
-                DEPARTURES_RESULTS,
-                round(raw_scanned_for_target * DEPARTURES_SHRINK_HEADROOM),
+        elif raw_scanned_for_target is not None:
+            # Target was reached - nudge the cap toward what this cycle
+            # actually needed (with headroom), rather than only correcting
+            # once grossly oversized. See DEPARTURES_HEADROOM/_SMOOTHING.
+            ideal = max(DEPARTURES_RESULTS, round(raw_scanned_for_target * DEPARTURES_HEADROOM))
+            nudged = round(
+                DEPARTURES_SMOOTHING * results_cap + (1 - DEPARTURES_SMOOTHING) * ideal
             )
-            if shrunk < results_cap:
-                _store_learned_results(device_config, provider, stop_id, shrunk)
+            nudged = max(DEPARTURES_RESULTS, min(nudged, DEPARTURES_RESULTS_CEILING))
+            if nudged != results_cap:
+                logger.info(
+                    f"Abfahrtzeiten: departures cap for {provider}/{stop_id} adjusted "
+                    f"{results_cap} -> {nudged} (needed {raw_scanned_for_target} raw "
+                    f"entries for {effective_target} matches this cycle)"
+                )
+                _store_learned_results(device_config, provider, stop_id, nudged)
 
         return matched
 
