@@ -1,6 +1,6 @@
 """Tests for the PR memory-diff comment formatter."""
 
-from scripts.format_memory_diff import format_comment
+from scripts.perf.format_memory_diff import format_comment
 
 
 def test_format_comment_groups_allocator_noise_by_package():

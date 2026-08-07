@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 
 
 def main(limit: int = 20) -> int:
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    base_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     src_dir = os.path.join(base_dir, "src")
 
     import sys

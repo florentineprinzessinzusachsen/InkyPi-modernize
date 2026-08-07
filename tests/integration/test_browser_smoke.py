@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from scripts.ui_audit import TOP_LEVEL_ROUTES, discover_plugin_ids
+from scripts.render_qa.ui_audit import TOP_LEVEL_ROUTES, discover_plugin_ids
 
 REQUIRE_BROWSER_SMOKE = os.getenv("REQUIRE_BROWSER_SMOKE", "").lower() in ("1", "true")
 pytestmark = pytest.mark.skipif(

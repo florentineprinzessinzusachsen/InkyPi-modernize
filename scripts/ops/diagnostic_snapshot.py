@@ -42,7 +42,9 @@ def _detect_log_path() -> str | None:
     """Return the first plausible log file path, or None."""
     candidates = [
         os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
             "inkypi.log",
         ),
         "/var/log/inkypi.log",

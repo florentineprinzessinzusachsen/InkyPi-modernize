@@ -4,7 +4,7 @@ import json
 import subprocess
 
 import pytest
-from scripts import perf_budget_gate as gate
+from scripts.perf import perf_budget_gate as gate
 
 
 def test_plugin_render_budget_passes_under_threshold():

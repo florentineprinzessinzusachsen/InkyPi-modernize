@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scripts import mutation_check
+from scripts.checks import mutation_check
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CI_YAML = REPO_ROOT / ".github" / "workflows" / "ci.yml"

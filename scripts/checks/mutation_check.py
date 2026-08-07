@@ -77,7 +77,13 @@ MUTANTS: tuple[Mutant, ...] = (
         file="scripts/install_testing/preflash_smoke.py",
         old="            if lines.count(overlay) != 1:\n",
         new="            if lines.count(overlay) != 2:\n",
-        commands=((str(PYTHON), "scripts/install_testing/preflash_smoke.py", "install-idempotency"),),
+        commands=(
+            (
+                str(PYTHON),
+                "scripts/install_testing/preflash_smoke.py",
+                "install-idempotency",
+            ),
+        ),
     ),
 )
 
