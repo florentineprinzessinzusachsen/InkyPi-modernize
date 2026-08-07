@@ -1,6 +1,6 @@
 """Smoke-test render endpoint (JTN-613).
 
-Opt-in helper endpoint used by ``scripts/test_install_memcap.sh`` Phase 4 to
+Opt-in helper endpoint used by ``scripts/install_testing/test_install_memcap.sh`` Phase 4 to
 exercise the plugin render path in a live web-only container so that the peak
 RSS sample actually reflects a real ``generate_image()`` call — not just the
 idle web server.

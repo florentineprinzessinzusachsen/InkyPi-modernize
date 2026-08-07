@@ -60,10 +60,10 @@ def _read_pythonpath_from_shell(
     # resolve to a version that is not installed, causing
     # "pyenv: python: command not found" even though the running interpreter
     # is perfectly healthy. The behavior under test is PYTHONPATH propagation
-    # from scripts/venv.sh, which is independent of which interpreter is used.
+    # from scripts/dev/venv.sh, which is independent of which interpreter is used.
     python_bin = shlex.quote(sys.executable)
     command = (
-        "source scripts/venv.sh >/dev/null 2>&1 && "
+        "source scripts/dev/venv.sh >/dev/null 2>&1 && "
         f"{python_bin} - <<'PY'\n"
         "import os\n"
         "print(os.environ.get('PYTHONPATH', ''))\n"
@@ -79,7 +79,7 @@ def _read_pythonpath_from_shell(
 
 
 def test_venv_shell_sets_pythonpath():
-    """Ensure scripts/venv.sh can be sourced to set PYTHONPATH without side effects."""
+    """Ensure scripts/dev/venv.sh can be sourced to set PYTHONPATH without side effects."""
 
     env = _base_env()
     result = _read_pythonpath_from_shell(env)
@@ -99,7 +99,7 @@ def test_venv_shell_sets_pythonpath():
 
 
 def test_plugin_import_with_pythonpath():
-    """Simulate a fresh process using scripts/venv.sh output and ensure ai_image imports."""
+    """Simulate a fresh process using scripts/dev/venv.sh output and ensure ai_image imports."""
 
     env = _base_env()
     result = _read_pythonpath_from_shell(env)

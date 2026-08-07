@@ -18,7 +18,7 @@ of the suite doesn't pay the Chromium startup cost.  A sibling
 
 Updating baselines
 ------------------
-Run ``python scripts/update_snapshots.py`` or pass
+Run ``python scripts/render_qa/update_snapshots.py`` or pass
 ``REQUIRE_BROWSER_SMOKE=1 ... --update-snapshots`` before running pytest. See
 ``tests/snapshots/README.md`` for the full workflow (including the docker
 one-liner that matches the CI environment).

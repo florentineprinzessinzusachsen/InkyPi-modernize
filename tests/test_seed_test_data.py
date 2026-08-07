@@ -1,4 +1,4 @@
-"""Tests for scripts/seed_test_data.py."""
+"""Tests for scripts/ops/seed_test_data.py."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import pytest
 
 
 def _load_script():
-    scripts_dir = Path(__file__).parent.parent / "scripts"
+    scripts_dir = Path(__file__).parent.parent / "scripts" / "ops"
     spec = importlib.util.spec_from_file_location(
         "seed_test_data", scripts_dir / "seed_test_data.py"
     )

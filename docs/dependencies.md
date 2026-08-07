@@ -36,7 +36,7 @@ A bare `uv lock` does **not** float an already-satisfied range to the latest ver
 Verify everything is in sync (same check CI runs):
 
 ```bash
-bash scripts/check_requirements_drift.sh
+bash scripts/checks/check_requirements_drift.sh
 ```
 
 `install/install.sh` still installs from `install/requirements.txt` with `--require-hashes` — no behavior change on the Pi, only the tool that regenerates the file changed.

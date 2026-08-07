@@ -104,7 +104,7 @@ def cdn_sri(key: str) -> str:
     """Return the pre-computed SRI hash for CDN asset *key*.
 
     The hash is read from ``src/static/cdn_manifest.json`` which is populated
-    by ``scripts/update_cdn_sri.py``.  Returns an empty string if the key is
+    by ``scripts/i18n_assets/update_cdn_sri.py``.  Returns an empty string if the key is
     absent so that missing entries never crash the page.
     """
     manifest = _load_cdn_manifest()

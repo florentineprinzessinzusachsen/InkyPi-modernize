@@ -54,7 +54,7 @@ Updating baselines
 ------------------
 Run inside the same Ubuntu 24.04 container the ``Browser smoke`` CI job
 uses (see ``tests/snapshots/README.md`` for the docker one-liner), with
-``--update-snapshots``.  The ``scripts/update_snapshots.py`` wrapper also
+``--update-snapshots``.  The ``scripts/render_qa/update_snapshots.py`` wrapper also
 regenerates these baselines alongside the plugin ones.
 
 Baselines live under ``tests/snapshots/layout/<page>/<page>_<viewport>.png``.

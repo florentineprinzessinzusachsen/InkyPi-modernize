@@ -104,7 +104,7 @@ class TestRequirementsLockfile:
         Checks presence rather than an exact version: this stub-only package
         gets bumped periodically by dependabot like any other dev dependency,
         and the real invariant (strict mypy passing on the modules in
-        mypy.ini's strict subset) is enforced directly by scripts/lint.sh /
+        mypy.ini's strict subset) is enforced directly by scripts/checks/lint.sh /
         CI — not by freezing this test to whatever patch version was current
         when it was written.
         """

@@ -68,7 +68,7 @@ jobs:
         run: |
           # Soft-fail: if the helper crashes we still want the formatter to
           # run and post a "backend unavailable" comment rather than bail.
-          python scripts/memory_diff.py --output pr.json --backend auto || {
+          python scripts/perf/memory_diff.py --output pr.json --backend auto || {
             echo "PR measurement failed — writing empty summary"
             echo '{"backend":"unavailable","total_rss_bytes":0,"module_count":0,"allocators":[]}' > pr.json
           }
@@ -84,12 +84,12 @@ jobs:
           # using the base branch's older helper can make the diff compare two
           # different sampling methods (for example base top-20 vs PR top-500).
           mkdir -p /tmp/memdiff-scripts
-          cp scripts/memory_diff.py /tmp/memdiff-scripts/
-          cp scripts/format_memory_diff.py /tmp/memdiff-scripts/
+          cp scripts/perf/memory_diff.py /tmp/memdiff-scripts/
+          cp scripts/perf/format_memory_diff.py /tmp/memdiff-scripts/
           git worktree add --detach /tmp/base-tree "origin/$GITHUB_BASE_REF_VALUE"
-          mkdir -p /tmp/base-tree/scripts
-          cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/
-          cp /tmp/memdiff-scripts/format_memory_diff.py /tmp/base-tree/scripts/
+          mkdir -p /tmp/base-tree/scripts/perf
+          cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/perf/
+          cp /tmp/memdiff-scripts/format_memory_diff.py /tmp/base-tree/scripts/perf/
 
       - name: Measure base branch startup
         env:
@@ -98,14 +98,14 @@ jobs:
           INKYPI_NO_REFRESH: '1'
         working-directory: /tmp/base-tree
         run: |
-          python scripts/memory_diff.py --output "${{ github.workspace }}/base.json" --backend auto || {
+          python scripts/perf/memory_diff.py --output "${{ github.workspace }}/base.json" --backend auto || {
             echo "Base measurement failed — writing empty summary so the formatter can still run"
             echo '{"backend":"unavailable","total_rss_bytes":0,"module_count":0,"allocators":[]}' > "${{ github.workspace }}/base.json"
           }
 
       - name: Format comment
         run: |
-          python scripts/format_memory_diff.py \
+          python scripts/perf/format_memory_diff.py \
             --base base.json \
             --pr pr.json \
             --output comment.md
@@ -130,7 +130,7 @@ jobs:
           script: |
             const fs = require('fs');
             const body = fs.readFileSync('comment.md', 'utf8');
-            // The sticky marker must match scripts/format_memory_diff.py::STICKY_MARKER.
+            // The sticky marker must match scripts/perf/format_memory_diff.py::STICKY_MARKER.
             const marker = '<!-- memory-diff:jtn-610 -->';
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;

@@ -10,7 +10,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_DIR = REPO_ROOT / "install"
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "scripts" / "install_testing"
 DOCS_DIR = REPO_ROOT / "docs"
 
 
@@ -2400,7 +2400,7 @@ class TestInstallationDocCloudInit:
 
 
 class TestInstallMemcapSmoke:
-    """Structural guards for scripts/test_install_memcap.sh Phase 4.
+    """Structural guards for scripts/install_testing/test_install_memcap.sh Phase 4.
 
     JTN-608 added idle/peak RSS budgets but the first Phase 4 run reported
     peak == idle because the /update_now POST was blocked by CSRF before any
@@ -2468,7 +2468,7 @@ class TestInstallMemcapSmoke:
             if "curl" in ln and "update_now" in ln and not ln.strip().startswith("#")
         ]
         assert not curl_lines, (
-            "scripts/test_install_memcap.sh must not curl /update_now for the "
+            "scripts/install_testing/test_install_memcap.sh must not curl /update_now for the "
             "render exercise — it was CSRF-blocked before reaching render code "
             "(JTN-613). Use /__smoke/render instead. Offending lines: "
             f"{curl_lines}"
@@ -2693,7 +2693,7 @@ class TestOsDriftNightlyWorkflow:
         assert "--dry-run" in self.content
 
     def test_runs_end_to_end_install_sim(self):
-        assert "scripts/sim_install.sh" in self.content
+        assert "scripts/install_testing/sim_install.sh" in self.content
 
     def test_files_issue_on_failure(self):
         assert "actions/github-script" in self.content
@@ -2723,7 +2723,7 @@ class TestMemoryDiffWorkflow:
     """JTN-610: per-PR memory diff sticky comment."""
 
     WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "memory-diff.yml"
-    SCRIPTS_DIR = REPO_ROOT / "scripts"
+    SCRIPTS_DIR = REPO_ROOT / "scripts" / "perf"
 
     @pytest.fixture(autouse=True)
     def _load(self) -> None:
@@ -2747,8 +2747,8 @@ class TestMemoryDiffWorkflow:
         assert "continue-on-error: true" in self.content
 
     def test_workflow_invokes_helper_scripts(self) -> None:
-        assert "scripts/memory_diff.py" in self.content
-        assert "scripts/format_memory_diff.py" in self.content
+        assert "scripts/perf/memory_diff.py" in self.content
+        assert "scripts/perf/format_memory_diff.py" in self.content
 
     def test_workflow_posts_sticky_comment(self) -> None:
         assert "github-script" in self.content or "comment-pull-request" in self.content
@@ -2761,11 +2761,11 @@ class TestMemoryDiffWorkflow:
         assert "github.base_ref" in self.content
 
     def test_workflow_uses_same_helper_for_base_and_pr_measurements(self) -> None:
-        assert "cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/" in (
+        assert "cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/perf/" in (
             self.content
         )
         assert (
-            "cp /tmp/memdiff-scripts/format_memory_diff.py /tmp/base-tree/scripts/"
+            "cp /tmp/memdiff-scripts/format_memory_diff.py /tmp/base-tree/scripts/perf/"
             in self.content
         )
 

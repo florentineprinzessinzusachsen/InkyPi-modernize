@@ -130,7 +130,7 @@ Plugins don't get their own Flask blueprint. If the settings page needs live ext
 ## Testing your plugin
 
 ```bash
-python scripts/plugin_validator.py <plugin_id>   # validate structure/manifest
+python scripts/checks/plugin_validator.py <plugin_id>   # validate structure/manifest
 ```
 
 Then in the dev server (`INKYPI_ENV=dev .venv/bin/python src/inkypi.py --dev`):

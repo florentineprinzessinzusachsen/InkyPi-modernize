@@ -252,7 +252,7 @@ jobs:
           # passed straight through as the unpinned base image tag, so this
           # is the nightly drift-detection variant of the same sim the day
           # job runs against pinned digests.
-          ./scripts/sim_install.sh ${{ matrix.codename }} 2>&1 | tee "$LOG"
+          ./scripts/install_testing/sim_install.sh ${{ matrix.codename }} 2>&1 | tee "$LOG"
           exit ${PIPESTATUS[0]}
 
       - name: Upload install sim log

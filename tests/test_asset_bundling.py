@@ -1,7 +1,7 @@
 """Tests for JS/CSS asset bundling (JTN-287).
 
 Covers:
-- scripts/build_assets.py: manifest written, output files exist and non-empty.
+- scripts/build/build_assets.py: manifest written, output files exist and non-empty.
 - app_setup/asset_helpers.py: bundled_asset() returns correct filename.
 - Graceful degradation when manifest is absent.
 """
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BUILD_SCRIPT = REPO_ROOT / "scripts" / "build_assets.py"
+BUILD_SCRIPT = REPO_ROOT / "scripts" / "build" / "build_assets.py"
 SRC_ROOT = REPO_ROOT / "src"
 
 

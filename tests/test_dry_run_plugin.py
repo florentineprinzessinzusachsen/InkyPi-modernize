@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false
-"""Tests for scripts/dry_run_plugin.py — the offline plugin dry-run CLI."""
+"""Tests for scripts/render_qa/dry_run_plugin.py — the offline plugin dry-run CLI."""
 
 import importlib
 import json
@@ -16,7 +16,7 @@ from PIL import Image
 def _import_dry_run():
     """Import the dry_run_plugin script as a module (adds src/ to sys.path)."""
     repo_root = Path(__file__).parent.parent
-    script_path = repo_root / "scripts" / "dry_run_plugin.py"
+    script_path = repo_root / "scripts" / "render_qa" / "dry_run_plugin.py"
     spec = importlib.util.spec_from_file_location("dry_run_plugin", script_path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)

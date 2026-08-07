@@ -26,8 +26,8 @@ Instrumentation lives in `src/refresh_task/recorder.py` (creates the `benchmark_
 
 ### Reading the data
 
-- `python scripts/show_benchmarks.py` — quick CLI summary.
-- `python scripts/export_benchmarks_report.py` — writes a fuller report.
+- `python scripts/perf/show_benchmarks.py` — quick CLI summary.
+- `python scripts/perf/export_benchmarks_report.py` — writes a fuller report.
 - `/api/benchmarks/summary`, `/api/benchmarks/refreshes`, `/api/benchmarks/plugins`, `/api/benchmarks/stages` (`src/blueprints/settings/_benchmarks.py`) — used by the Settings page's **Advanced tools → Diagnostics snapshot** panel, which shows p50/p95 timing by stage for a selected window, per-plugin averages, recent refresh rows, and stage drill-down.
 
 ## Developer profiling tools
@@ -64,7 +64,7 @@ Saved runs land in `.benchmarks/` (gitignored).
 
 ### CI regression gate
 
-Every PR runs the benchmarks and compares against a cached CI baseline (per-OS GitHub Actions cache; a push to `main` becomes the new baseline). `tests/benchmarks/baseline.json` is the committed fallback for local dev / when no CI cache exists. Threshold defaults to +15% (override via `BENCHMARK_THRESHOLD_PCT`). Comparison script: `scripts/benchmark_compare.py`. Runs as part of the `lint` job in `.github/workflows/ci.yml`; every PR uploads a `benchmark-results` artifact.
+Every PR runs the benchmarks and compares against a cached CI baseline (per-OS GitHub Actions cache; a push to `main` becomes the new baseline). `tests/benchmarks/baseline.json` is the committed fallback for local dev / when no CI cache exists. Threshold defaults to +15% (override via `BENCHMARK_THRESHOLD_PCT`). Comparison script: `scripts/perf/benchmark_compare.py`. Runs as part of the `lint` job in `.github/workflows/ci.yml`; every PR uploads a `benchmark-results` artifact.
 
 To update the baseline after a legitimate perf change:
 
@@ -76,14 +76,14 @@ git add tests/benchmarks/baseline.json
 
 New benchmarks must have no network/wall-clock dependency, run well under 1s, and represent a real hot path — regenerate the baseline after adding one.
 
-### `scripts/test_profile.sh`
+### `scripts/checks/test_profile.sh`
 
 Wraps pytest with `--durations=25` for a quick scan of slow tests:
 
 ```bash
-scripts/test_profile.sh                                       # defaults to tests/plugins
-scripts/test_profile.sh tests/plugins/test_clock_plugin.py
-PYTEST_DURATIONS=50 scripts/test_profile.sh
+scripts/checks/test_profile.sh                                       # defaults to tests/plugins
+scripts/checks/test_profile.sh tests/plugins/test_clock_plugin.py
+PYTEST_DURATIONS=50 scripts/checks/test_profile.sh
 ```
 
 Activates `.venv`, sets `PYTHONPATH=src`, `SKIP_UI=1`, `SKIP_A11Y=1` to skip browser-dependent tests.
@@ -126,7 +126,7 @@ sudo py-spy record -o /tmp/profile.svg --pid $! --duration 30
 | Situation | Tool |
 |---|---|
 | Detect regressions across PRs | `pytest-benchmark` + `--benchmark-compare` |
-| Find which test is slow | `scripts/test_profile.sh` |
+| Find which test is slow | `scripts/checks/test_profile.sh` |
 | Drill into a slow function's call graph | `cProfile` + `snakeviz` |
 | Profile a live/production-like process | `py-spy` |
 | Per-refresh timings on the actual device | Runtime benchmark system, above |

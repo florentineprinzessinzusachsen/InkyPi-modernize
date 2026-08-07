@@ -5,18 +5,18 @@ How to run, extend, and understand the test setup. For performance/profiling too
 ## Setup & running
 
 ```bash
-bash scripts/venv.sh
+bash scripts/dev/venv.sh
 . .venv/bin/activate
 python -m pip install -r install/requirements.txt -r install/requirements-dev.txt
 
-scripts/test.sh                                     # recommended fast local path
-scripts/test.sh tests/unit/test_refresh_task_stress.py
-scripts/preflash_validate.sh                         # hardware-free pre-flash gate
+scripts/checks/test.sh                                     # recommended fast local path
+scripts/checks/test.sh tests/unit/test_refresh_task_stress.py
+scripts/install_testing/preflash_validate.sh                         # hardware-free pre-flash gate
 PYTHONPATH=$(pwd)/src pytest -q
 PYTHONPATH=$(pwd)/src pytest --cov=src --cov-report=term-missing
 ```
 
-- `scripts/test.sh` with no args shards the main local suite across 4 lanes (`core`, `plugins-a`, `plugins-b`, `plugins-c`), `PYTEST_LANE_WORKERS=2` per lane by default. Runs serial for a single explicit test file, `pytest -n 4 --dist=loadfile -q` for broader explicit targets. Coverage runs stay serial.
+- `scripts/checks/test.sh` with no args shards the main local suite across 4 lanes (`core`, `plugins-a`, `plugins-b`, `plugins-c`), `PYTEST_LANE_WORKERS=2` per lane by default. Runs serial for a single explicit test file, `pytest -n 4 --dist=loadfile -q` for broader explicit targets. Coverage runs stay serial.
 - Tests auto-mock Chromium screenshot capture via a fixture — no browser required for the default suite.
 - Managed API-key env vars are cleared per test; the temp `PROJECT_DIR` gets an empty `.env`, keeping missing-key flows deterministic.
 - Browser smoke coverage is separate and needs Playwright Chromium:
@@ -33,7 +33,7 @@ PYTHONPATH=$(pwd)/src pytest --cov=src --cov-report=term-missing
 
 ### Pre-flash validation
 
-`scripts/preflash_validate.sh` checks app boot, config resolution, mock rendering, and targeted pytest coverage without the device connected. It does **not** prove EEPROM detection, SPI/GPIO access, or real panel refresh — those are post-flash hardware checks.
+`scripts/install_testing/preflash_validate.sh` checks app boot, config resolution, mock rendering, and targeted pytest coverage without the device connected. It does **not** prove EEPROM detection, SPI/GPIO access, or real panel refresh — those are post-flash hardware checks.
 
 Set `INKYPI_VALIDATE_INSTALL=1` to include the import-only install smoke phase (clean temp env, both macOS and Linux; Linux also validates Inky/systemd imports). Additional opt-in lanes:
 
@@ -96,7 +96,7 @@ The `mutation-nightly` job in `.github/workflows/ci.yml` runs on a schedule (and
 For PR-time confidence there's also a fast, deterministic harness — a small set of known high-value mutants applied to a temp copy of the repo with targeted tests:
 
 ```bash
-INKYPI_ENV=dev INKYPI_NO_REFRESH=1 PYTHONPATH=src python scripts/mutation_check.py
+INKYPI_ENV=dev INKYPI_NO_REFRESH=1 PYTHONPATH=src python scripts/checks/mutation_check.py
 ```
 
 | Status | Meaning |
@@ -126,7 +126,7 @@ GitHub Actions runs the pytest matrix, pre-flash validation matrix, coverage gat
 
 ### CI memory budgets
 
-`install-smoke-memcap` (`scripts/test_install_memcap.sh`) asserts the running web service stays within the Pi Zero 2 W envelope: 512 MB total RAM, systemd unit caps InkyPi at `MemoryMax=350M`. It runs inside a 512 MB-capped container and reads `VmRSS` from `/proc/1/status`.
+`install-smoke-memcap` (`scripts/install_testing/test_install_memcap.sh`) asserts the running web service stays within the Pi Zero 2 W envelope: 512 MB total RAM, systemd unit caps InkyPi at `MemoryMax=350M`. It runs inside a 512 MB-capped container and reads `VmRSS` from `/proc/1/status`.
 
 | Metric | Target | Hard fail |
 | --- | --- | --- |
@@ -137,4 +137,4 @@ The idle sample follows a 30s sleep; the peak sample hits `/`, `/playlist`, `/ap
 
 ### OS drift nightly
 
-`.github/workflows/os-drift-nightly.yml` (daily cron) re-runs the install path against the **latest unpinned** `debian:trixie`/`bookworm`/`bullseye` images — the unpinned complement to the pinned PR-gating install matrix. It catches upstream Debian/Pi OS package churn that a pinned matrix can't. Each leg asserts every package in `install/debian-requirements.txt` resolves via `apt-cache show`, every pin in `install/requirements.txt` resolves via `pip install --dry-run`, and `scripts/sim_install.sh` runs `install/install.sh` end-to-end inside a 512 MB arm64 sim of the Pi Zero 2 W. It has no `pull_request:` trigger — a broken nightly must never block merges. On failure it opens a GitHub issue labelled `os-drift`/`bug`. Manual runs: `workflow_dispatch` with an optional codename filter.
+`.github/workflows/os-drift-nightly.yml` (daily cron) re-runs the install path against the **latest unpinned** `debian:trixie`/`bookworm`/`bullseye` images — the unpinned complement to the pinned PR-gating install matrix. It catches upstream Debian/Pi OS package churn that a pinned matrix can't. Each leg asserts every package in `install/debian-requirements.txt` resolves via `apt-cache show`, every pin in `install/requirements.txt` resolves via `pip install --dry-run`, and `scripts/install_testing/sim_install.sh` runs `install/install.sh` end-to-end inside a 512 MB arm64 sim of the Pi Zero 2 W. It has no `pull_request:` trigger — a broken nightly must never block merges. On failure it opens a GitHub issue labelled `os-drift`/`bug`. Manual runs: `workflow_dispatch` with an optional codename filter.

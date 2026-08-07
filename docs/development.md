@@ -14,7 +14,7 @@ Traditional setup
 git clone https://github.com/florentineprinzessinzusachsen/InkyPi-modernize.git
 cd InkyPi-modernize
 
-./scripts/dev.sh   # quick start
+./scripts/dev/dev.sh   # quick start
 
 # or manually:
 python3 -m venv .venv
@@ -51,7 +51,7 @@ Open http://localhost:8080.
 pre-commit install
 ```
 
-Runs on every `git commit`: whitespace/YAML/merge-conflict checks, **ruff** (lint + format), **mypy** (type checks — see [typing.md](typing.md)), **gitleaks** (secret scanning), and conventional-commit message validation. Frontend changes under `src/static/**` or `src/templates/**` also trigger `scripts/test.sh browser-smoke` locally before the commit is allowed through. See [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) for the full list. `git commit --no-verify` skips hooks locally, but CI enforces the same checks.
+Runs on every `git commit`: whitespace/YAML/merge-conflict checks, **ruff** (lint + format), **mypy** (type checks — see [typing.md](typing.md)), **gitleaks** (secret scanning), and conventional-commit message validation. Frontend changes under `src/static/**` or `src/templates/**` also trigger `scripts/checks/test.sh browser-smoke` locally before the commit is allowed through. See [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) for the full list. `git commit --no-verify` skips hooks locally, but CI enforces the same checks.
 
 ## Essential commands
 
@@ -59,12 +59,12 @@ Runs on every `git commit`: whitespace/YAML/merge-conflict checks, **ruff** (lin
 python src/inkypi.py --dev            # full program, mock display
 python src/inkypi.py --dev --web-only # web UI only, no background refresh thread
 python src/inkypi.py --dev --fast-dev # fast cycle, skip startup image
-./scripts/web_only.sh                 # scripted web-only startup
-./scripts/dev_watch.sh                # auto-rebuild CSS/JS on save (needs `watchdog`)
-python3 scripts/build_css.py          # one-shot CSS build (no watcher)
+./scripts/dev/web_only.sh                 # scripted web-only startup
+./scripts/dev/dev_watch.sh                # auto-rebuild CSS/JS on save (needs `watchdog`)
+python3 scripts/build/build_css.py          # one-shot CSS build (no watcher)
 ```
 
-`scripts/dev_watch.sh` watches `src/static/styles/` → `scripts/build_css.py`, `src/static/scripts/` → `scripts/build_assets.py`, and `src/templates/` (log-only; Flask auto-reloads templates).
+`scripts/dev/dev_watch.sh` watches `src/static/styles/` → `scripts/build/build_css.py`, `src/static/scripts/` → `scripts/build/build_assets.py`, and `src/templates/` (log-only; Flask auto-reloads templates).
 
 The dev server (waitress) does **not** hot-reload on `--dev` — restart after any code change. Exception: plugin modules under `src/plugins/` hot-reload on each access when `INKYPI_ENV=dev` / `--dev` is set. For Python code reload via Flask's debug reloader instead:
 
@@ -78,7 +78,7 @@ FLASK_APP=src.inkypi:create_app INKYPI_ENV=dev flask --debug run -p 8080
 - Simulated e-ink frame: `/tmp/inkypi-mock-frame.png` (override with `INKYPI_MOCK_FRAME_PATH`), or view live at `http://localhost:8080/dev/mock-frame`.
 - Plugin development: copy an existing plugin as a template (see [building_plugins.md](building_plugins.md)).
 - Config: edit `src/config/device_dev.json` for display settings (gitignored, safe to churn).
-- Plugin validator: `python scripts/plugin_validator.py [plugin_id]`.
+- Plugin validator: `python scripts/checks/plugin_validator.py [plugin_id]`.
 - JSON schemas (IDE/CI): `src/config/schemas/device_config.schema.json`, `src/config/schemas/plugin-info.schema.json`.
 - BasePlugin's Jinja environment is initialized even if a plugin has no `render/` directory — base templates under `plugins/base_plugin/render/` are always available. A plugin without `build_settings_schema()` fails CI (see [building_plugins.md](building_plugins.md)).
 

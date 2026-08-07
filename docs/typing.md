@@ -19,15 +19,15 @@ See `mypy.ini` for the authoritative list (`grep -B1 "strict = True" mypy.ini`).
    [mypy-utils.your_module]
    strict = True
    ```
-3. Add the file to the blocking check in `scripts/lint.sh` (alongside the existing strict-subset invocation).
+3. Add the file to the blocking check in `scripts/checks/lint.sh` (alongside the existing strict-subset invocation).
 4. Open a PR — CI enforces strictness from that point forward.
 
 ## CI behavior: clean `src/`, ratcheted `tests/`
 
-`scripts/lint.sh` runs mypy as three separate passes:
+`scripts/checks/lint.sh` runs mypy as three separate passes:
 
-1. `mypy src/` — production code, compared against `scripts/mypy_src_baseline.txt`. This baseline should stay `0`; CI fails on any reported issue or a run that can't produce a summary.
-2. `mypy tests/` — compared against `scripts/mypy_tests_baseline.txt`. CI fails if the error count rises above the committed baseline.
+1. `mypy src/` — production code, compared against `scripts/checks/mypy_src_baseline.txt`. This baseline should stay `0`; CI fails on any reported issue or a run that can't produce a summary.
+2. `mypy tests/` — compared against `scripts/checks/mypy_tests_baseline.txt`. CI fails if the error count rises above the committed baseline.
 3. `mypy --strict ...` — the curated subset above, fully blocking regardless of the other two.
 
 The split exists because the test suite carries far more typing noise than `src/` (fixtures, monkeypatching, duck-typed stubs). Combining both into one run let small production regressions get lost in thousands of test-only errors.
@@ -45,7 +45,7 @@ If `mypy src/` exits without a `Found N errors` / `Success:` summary, treat it a
 
 1. Run `mypy tests/` locally, fix errors your PR introduced.
 2. Treat baseline *increases* as exceptional and coordinated, not routine.
-3. If it goes down, confirm by rerunning, then lower `scripts/mypy_tests_baseline.txt` to the new integer. Pay down errors in clusters: shared fixtures first, then contract/security tests, then browser/integration tests.
+3. If it goes down, confirm by rerunning, then lower `scripts/checks/mypy_tests_baseline.txt` to the new integer. Pay down errors in clusters: shared fixtures first, then contract/security tests, then browser/integration tests.
 
 ## Coding guidelines for typed modules
 

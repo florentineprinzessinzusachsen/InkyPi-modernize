@@ -48,7 +48,7 @@ _COMPRESSIBLE_MIMETYPES = frozenset(
 # isn't worth it relative to the bytes saved.
 _MIN_COMPRESS_BYTES = 500
 
-# Content-hashed bundles under /static/dist/ (scripts/build_assets.py) are
+# Content-hashed bundles under /static/dist/ (scripts/build/build_assets.py) are
 # requested identically on every page load for as long as this process runs
 # — dist/manifest.json is only read once at startup (app_setup/asset_helpers.py),
 # so a running process can only ever see a fixed, small set of dist paths

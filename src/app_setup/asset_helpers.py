@@ -4,7 +4,7 @@ Provides the ``bundled_asset`` Jinja2 global function and a Flask setup
 helper that registers it on the application.
 
 The function reads ``src/static/dist/manifest.json`` (written by
-``scripts/build_assets.py``) and returns the versioned filename for a given
+``scripts/build/build_assets.py``) and returns the versioned filename for a given
 logical asset name (e.g. ``"common.js"`` → ``"common.bundle.abc12345.min.js"``).
 
 Graceful degradation: if the manifest does not exist (e.g. in local dev

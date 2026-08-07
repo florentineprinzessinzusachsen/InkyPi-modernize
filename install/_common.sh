@@ -228,7 +228,7 @@ EOF
 
 build_css_bundle() {
   echo "Building minified CSS bundle"
-  if ! "$VENV_PATH/bin/python" "$SCRIPT_DIR/../scripts/build_css.py" --minify; then
+  if ! "$VENV_PATH/bin/python" "$SCRIPT_DIR/../scripts/build/build_css.py" --minify; then
     echo_error "ERROR: CSS build failed. The web UI will not render correctly."
     exit 1
   fi
@@ -248,7 +248,7 @@ build_css_bundle() {
   # non-empty (app_setup/asset_helpers.py). Same fail-hard policy as the CSS
   # build: a broken bundle would silently serve JS-less pages.
   echo "Building minified JS/CSS asset bundle"
-  if ! "$VENV_PATH/bin/python" "$SCRIPT_DIR/../scripts/build_assets.py"; then
+  if ! "$VENV_PATH/bin/python" "$SCRIPT_DIR/../scripts/build/build_assets.py"; then
     echo_error "ERROR: Asset bundle build failed. The web UI will not render correctly."
     exit 1
   fi

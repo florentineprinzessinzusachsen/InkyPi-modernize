@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false
-"""Unit tests for ``scripts/soak_runner.py`` (JTN-733).
+"""Unit tests for ``scripts/perf/soak_runner.py`` (JTN-733).
 
 These tests exercise the report-shape, duration parsing, and trend summary
 logic against canned sampled data. They do NOT hit a live InkyPi instance —
@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = REPO_ROOT / "scripts" / "soak_runner.py"
+SCRIPT_PATH = REPO_ROOT / "scripts" / "perf" / "soak_runner.py"
 
 
 def _load_module():
-    """Load ``scripts/soak_runner.py`` as a module regardless of sys.path."""
+    """Load ``scripts/perf/soak_runner.py`` as a module regardless of sys.path."""
     spec = importlib.util.spec_from_file_location("soak_runner_under_test", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

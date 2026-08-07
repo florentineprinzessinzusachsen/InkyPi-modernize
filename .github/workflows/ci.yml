@@ -36,7 +36,7 @@ jobs:
       - name: Lint and type-check
         env:
           CI: true
-        run: scripts/lint.sh
+        run: scripts/checks/lint.sh
       - name: Check dependency licenses
         run: |
           pip install --quiet pip-licenses
@@ -74,7 +74,7 @@ jobs:
           if [ -f /tmp/bench-baseline.json ]; then
             echo "Using CI cached benchmark baseline." | tee /tmp/benchmark-compare.txt
             cp /tmp/bench-baseline.json /tmp/bench-effective-baseline.json
-            python scripts/benchmark_compare.py \
+            python scripts/perf/benchmark_compare.py \
               --baseline /tmp/bench-effective-baseline.json \
               --current /tmp/bench-current.json \
               | tee -a /tmp/benchmark-compare.txt
@@ -82,14 +82,14 @@ jobs:
             echo "No CI baseline cache found — using repo baseline as blocking fallback." \
               | tee /tmp/benchmark-compare.txt
             cp tests/benchmarks/baseline.json /tmp/bench-effective-baseline.json
-            python scripts/benchmark_compare.py \
+            python scripts/perf/benchmark_compare.py \
               --baseline /tmp/bench-effective-baseline.json \
               --current /tmp/bench-current.json \
               | tee -a /tmp/benchmark-compare.txt
           fi
           # JTN-738: hard performance budgets on plugin render latency and
           # cold-start startup time.
-          python scripts/perf_budget_gate.py --bench-json /tmp/bench-current.json
+          python scripts/perf/perf_budget_gate.py --bench-json /tmp/bench-current.json
           # On main branch pushes, update the cached baseline for future PRs
           if [ "$GITHUB_REF_VALUE" = "refs/heads/main" ]; then
             cp /tmp/bench-current.json /tmp/bench-baseline.json
@@ -123,25 +123,24 @@ jobs:
           bash -n install/update.sh
           bash -n install/uninstall.sh
           bash -n install/inkypi
-          bash -n scripts/dev.sh
-          bash -n scripts/dev_update.sh
-          bash -n scripts/format.sh
-          bash -n scripts/lint.sh
-          bash -n scripts/preflash_validate.sh
-          bash -n scripts/test.sh
-          bash -n scripts/test_profile.sh
-          bash -n scripts/venv.sh
-          bash -n scripts/web_only.sh
-          bash -n scripts/check_licenses.sh
-          bash -n scripts/precommit_browser_warning.sh
-          bash -n scripts/sim_install.sh
-          bash -n scripts/test_install_memcap.sh
-          bash -n scripts/ci_install_matrix_verify.sh
-          bash -n scripts/check_requirements_drift.sh
+          bash -n scripts/dev/dev.sh
+          bash -n scripts/checks/lint.sh
+          bash -n scripts/install_testing/preflash_validate.sh
+          bash -n scripts/checks/test.sh
+          bash -n scripts/checks/test_profile.sh
+          bash -n scripts/dev/venv.sh
+          bash -n scripts/dev/web_only.sh
+          bash -n scripts/checks/precommit_browser_warning.sh
+          bash -n scripts/install_testing/sim_install.sh
+          bash -n scripts/install_testing/test_install_memcap.sh
+          bash -n scripts/install_testing/ci_install_matrix_verify.sh
+          bash -n scripts/checks/check_requirements_drift.sh
       - name: Run shellcheck
         run: |
-          # Run shellcheck linting on all shell scripts
-          shellcheck install/*.sh scripts/*.sh install/inkypi
+          # Run shellcheck linting on all shell scripts. globstar makes
+          # scripts/**/*.sh recurse into the function-based subdirectories.
+          shopt -s globstar
+          shellcheck install/*.sh scripts/**/*.sh install/inkypi
 
   lockfile-drift:
     name: Lockfile drift check
@@ -158,7 +157,7 @@ jobs:
       - name: Install uv
         run: pip install uv
       - name: Check requirements drift
-        run: bash scripts/check_requirements_drift.sh
+        run: bash scripts/checks/check_requirements_drift.sh
 
   tests:
     name: Tests (pytest)
@@ -193,7 +192,7 @@ jobs:
           pip install -r install/requirements.txt -r install/requirements-dev.txt
           pip check
       - name: Build CSS
-        run: python scripts/build_css.py
+        run: python scripts/build/build_css.py
       - name: Run tests
         env:
           INKYPI_ENV: dev
@@ -441,7 +440,7 @@ jobs:
           INKYPI_VALIDATE_RECOVERY: '1'
           INKYPI_VALIDATE_API_CONTRACT: '1'
         run: |
-          scripts/preflash_validate.sh
+          scripts/install_testing/preflash_validate.sh
 
   coverage-gate:
     name: Coverage gate
@@ -469,7 +468,7 @@ jobs:
         env:
           INKYPI_VALIDATE_COVERAGE: '1'
         run: |
-          scripts/preflash_validate.sh
+          scripts/install_testing/preflash_validate.sh
       - name: Upload coverage gate artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -550,12 +549,12 @@ jobs:
         run: |
           .venv/bin/python -m playwright install --with-deps chromium
       - name: Build CSS
-        run: python scripts/build_css.py
+        run: python scripts/build/build_css.py
       - name: Run flake detection
         env:
           INKYPI_VALIDATE_FLAKE: '1'
         run: |
-          scripts/preflash_validate.sh
+          scripts/install_testing/preflash_validate.sh
 
   soak-nightly:
     name: Soak nightly
@@ -579,7 +578,7 @@ jobs:
         env:
           INKYPI_VALIDATE_SOAK: '1'
         run: |
-          scripts/preflash_validate.sh
+          scripts/install_testing/preflash_validate.sh
 
   # Mutation nightly — runs via the workflow-level ``schedule:`` trigger
   # (daily 09:00 UTC and weekly Sunday 03:00 UTC) and manual
@@ -677,7 +676,7 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
       - name: Build CSS
-        run: python scripts/build_css.py
+        run: python scripts/build/build_css.py
       - name: Run browser smoke suite
         env:
           BROWSER_SMOKE_ARTIFACT_DIR: runtime/mock_display_output/browser_smoke_failures
@@ -734,7 +733,7 @@ jobs:
 
       - name: Run 512 MB memory-cap smoke test
         run: |
-          ./scripts/test_install_memcap.sh trixie
+          ./scripts/install_testing/test_install_memcap.sh trixie
 
       - name: Upload container logs on failure
         if: failure()

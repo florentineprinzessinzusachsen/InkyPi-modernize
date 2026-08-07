@@ -63,7 +63,7 @@ sudo journalctl -u cloud-init -n 100   # no runcmd output if it was skipped
 
 **Recover** (pick one):
 
-- On the Pi: `sudo cloud-init clean --logs && sudo reboot` (or run `scripts/cloud_init_clean.sh`, copied to the Pi).
+- On the Pi: `sudo cloud-init clean --logs && sudo reboot` (or run `scripts/install_testing/cloud_init_clean.sh`, copied to the Pi).
 - Without SSH, from your computer with the card mounted: delete `.../rootfs/var/lib/cloud/instances/` and `.../rootfs/var/lib/cloud/data/instance-id`, then boot.
 - On the Pi: `echo "fresh-instance-$(date +%s)" | sudo tee /var/lib/cloud/data/instance-id && sudo reboot`.
 

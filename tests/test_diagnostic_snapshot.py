@@ -1,4 +1,4 @@
-"""Tests for scripts/diagnostic_snapshot.py."""
+"""Tests for scripts/ops/diagnostic_snapshot.py."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import pytest
 
 def _load_script(script_name: str):
     """Load a scripts/ module by file path, avoiding sys.path pollution."""
-    scripts_dir = Path(__file__).parent.parent / "scripts"
+    scripts_dir = Path(__file__).parent.parent / "scripts" / "ops"
     spec = importlib.util.spec_from_file_location(
         script_name, scripts_dir / f"{script_name}.py"
     )

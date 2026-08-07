@@ -1,4 +1,4 @@
-"""Tests for scripts/image_diff.py."""
+"""Tests for scripts/render_qa/image_diff.py."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from PIL import Image
 
 def _load_script(script_name: str):
     """Load a scripts/ module by file path, avoiding sys.path pollution."""
-    scripts_dir = Path(__file__).parent.parent / "scripts"
+    scripts_dir = Path(__file__).parent.parent / "scripts" / "render_qa"
     spec = importlib.util.spec_from_file_location(
         script_name, scripts_dir / f"{script_name}.py"
     )

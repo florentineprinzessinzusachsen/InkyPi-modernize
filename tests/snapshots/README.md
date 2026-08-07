@@ -95,7 +95,7 @@ docker run --rm --platform linux/amd64 -v "$(pwd):/app" -w /app \
 
 After the run, commit the updated `tests/snapshots/<plugin>/*.png` files.
 
-> `scripts/update_snapshots.py` still works for running inside a properly
+> `scripts/render_qa/update_snapshots.py` still works for running inside a properly
 > set-up environment (local venv with chromium, or the Pi). It is a thin
 > wrapper around `pytest ... --update-snapshots`.
 

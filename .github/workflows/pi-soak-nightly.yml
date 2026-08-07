@@ -1,6 +1,6 @@
 name: Pi soak nightly
 
-# JTN-733: real-Pi nightly soak. Runs `scripts/soak_runner.py` against a
+# JTN-733: real-Pi nightly soak. Runs `scripts/perf/soak_runner.py` against a
 # self-hosted Raspberry Pi runner for 24 hours, sampling /api/diagnostics
 # every 5 minutes, and uploads the resulting JSON report as an artifact.
 #
@@ -119,7 +119,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           OUT="artifacts/soak-report.json"
-          python3 scripts/soak_runner.py \
+          python3 scripts/perf/soak_runner.py \
             --host "$INKYPI_HOST" \
             --duration "$SOAK_DURATION" \
             --interval "$SOAK_INTERVAL" \

@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false
-"""Structural validation of scripts/dev_watch.sh and its dispatcher helper.
+"""Structural validation of scripts/dev/dev_watch.sh and its dispatcher helper.
 
 The filesystem watcher itself is not exercised here (it's flaky in CI and
 depends on inotify/FSEvents). Instead we validate that:
@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS_DIR = REPO_ROOT / "scripts"
+SCRIPTS_DIR = REPO_ROOT / "scripts" / "dev"
 WATCH_SH = SCRIPTS_DIR / "dev_watch.sh"
 DISPATCH_PY = SCRIPTS_DIR / "_dev_watch_dispatch.py"
 

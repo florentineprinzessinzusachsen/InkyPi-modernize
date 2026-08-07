@@ -27,8 +27,9 @@ jobs:
     # chromium-headless-shell) for each supported codename and asserts exit 0
     # + venv + systemd unit parse.
     #
-    # The Dockerfile is scripts/Dockerfile.install-matrix; the verification
-    # script that runs inside the container is scripts/ci_install_matrix_verify.sh.
+    # The Dockerfile is scripts/install_testing/Dockerfile.install-matrix; the
+    # verification script that runs inside the container is
+    # scripts/install_testing/ci_install_matrix_verify.sh.
     # Memory is capped at 512 MB to inherit the JTN-536 OOM regression gate so
     # this job also catches codename-specific OOMs during install.
     #
@@ -62,7 +63,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: scripts/Dockerfile.install-matrix
+          file: scripts/install_testing/Dockerfile.install-matrix
           platforms: linux/arm64
           build-args: |
             CODENAME=${{ matrix.codename }}
@@ -84,7 +85,7 @@ jobs:
             --memory-swap=512m \
             --entrypoint bash \
             inkypi-install-matrix:${{ matrix.codename }} \
-            /InkyPi/scripts/ci_install_matrix_verify.sh \
+            /InkyPi/scripts/install_testing/ci_install_matrix_verify.sh \
             2>&1 | tee "/tmp/install-matrix-logs/${{ matrix.codename }}.log"
 
       - name: Upload container logs on failure

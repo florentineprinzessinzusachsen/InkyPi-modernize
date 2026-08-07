@@ -2,7 +2,7 @@
 """Tests for the JTN-613 smoke render endpoint.
 
 The ``/__smoke/render`` route is an opt-in helper consumed by
-``scripts/test_install_memcap.sh`` Phase 4 to exercise the plugin render path
+``scripts/install_testing/test_install_memcap.sh`` Phase 4 to exercise the plugin render path
 in a live container so the peak RSS sample actually reflects a real
 ``generate_image()`` call. It must be:
 

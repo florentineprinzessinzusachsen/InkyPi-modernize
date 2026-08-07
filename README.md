@@ -131,9 +131,9 @@ Dev server runs on port 8080. See [CONTRIBUTING.md](./CONTRIBUTING.md) and [deve
 ### Testing
 
 ```bash
-scripts/test.sh                                        # fast local test runner (sharded)
-scripts/test.sh tests/unit/test_refresh_task_stress.py  # single file
-scripts/preflash_validate.sh                            # hardware-free pre-flash gate
+scripts/checks/test.sh                                        # fast local test runner (sharded)
+scripts/checks/test.sh tests/unit/test_refresh_task_stress.py  # single file
+scripts/install_testing/preflash_validate.sh                   # hardware-free pre-flash gate
 ```
 
 See [testing.md](./docs/testing.md) for coverage and CI details.
@@ -141,9 +141,9 @@ See [testing.md](./docs/testing.md) for coverage and CI details.
 ### Install Verification (Docker)
 
 ```bash
-./scripts/sim_install.sh trixie     # Debian Trixie (default)
-./scripts/sim_install.sh bookworm   # Debian Bookworm
-./scripts/sim_install.sh bullseye   # Debian Bullseye
+./scripts/install_testing/sim_install.sh trixie     # Debian Trixie (default)
+./scripts/install_testing/sim_install.sh bookworm   # Debian Bookworm
+./scripts/install_testing/sim_install.sh bullseye   # Debian Bullseye
 ```
 
 Builds an arm64 container capped at 512 MB RAM (matching Pi Zero 2 W) and runs `install.sh` end-to-end.

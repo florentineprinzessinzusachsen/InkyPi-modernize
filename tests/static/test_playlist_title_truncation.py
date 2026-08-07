@@ -52,7 +52,7 @@ def test_playlist_title_truncates_with_ellipsis_in_partial():
 
 
 def test_playlist_title_truncation_made_it_into_main_css_bundle():
-    """Build sanity: scripts/build_css.py must have inlined the truncation
+    """Build sanity: scripts/build/build_css.py must have inlined the truncation
     rule into the bundled main.css. Catches a forgotten rebuild."""
     block = _block_for_selector(MAIN_CSS.read_text(encoding="utf-8"), ".playlist-title")
     assert "text-overflow: ellipsis" in block
