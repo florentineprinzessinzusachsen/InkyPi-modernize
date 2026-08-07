@@ -27,8 +27,9 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify
 
-from utils.access_control import is_private_address as _is_private_address
-from utils.access_control import local_or_authenticated_access_allowed
+from utils.access_control import (
+    local_or_authenticated_access_allowed,
+)
 from utils.http_utils import json_error
 
 logger = logging.getLogger(__name__)

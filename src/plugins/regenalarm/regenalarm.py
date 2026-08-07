@@ -40,24 +40,36 @@ CSS/dvh and remains fully responsive to whatever `dimensions` this plugin
 is asked to render at.
 """
 
-from plugins.base_plugin.base_plugin import BasePlugin
-from plugins.base_plugin.settings_schema import callout, schema, section, widget
 import base64
 import logging
 import os
 import struct
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any, cast
 
 import requests
 
+from plugins.base_plugin.base_plugin import BasePlugin
+from plugins.base_plugin.settings_schema import callout, schema, section, widget
 from utils.http_client import get_http_session
 
-from .lib.forecast import build_forecast_request, parse_forecast_response, extract_map_image
+from .lib.chart_svg import render_chart_svg
+from .lib.forecast import (
+    ForecastResponse,
+    build_forecast_request,
+    extract_map_image,
+    parse_forecast_response,
+)
 from .lib.map_svg import (
-    MAP_VIEWBOX_W, MAP_VIEWBOX_H, MAP_CROP_X, MAP_CROP_Y, MAP_CROP_W, MAP_CROP_H,
+    MAP_CROP_H,
+    MAP_CROP_W,
+    MAP_CROP_X,
+    MAP_CROP_Y,
+    MAP_VIEWBOX_H,
+    MAP_VIEWBOX_W,
     render_marker_and_trajectory,
 )
-from .lib.chart_svg import render_chart_svg
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +91,7 @@ _INTENSITY_HEAVY_THRESHOLD = 200.0
 _INTENSITY_MEDIUM_THRESHOLD = 100.0
 
 
-def _rain_category(raw):
+def _rain_category(raw: float) -> str:
     if raw > _INTENSITY_HEAVY_THRESHOLD:
         return "Starker"
     if raw > _INTENSITY_MEDIUM_THRESHOLD:
@@ -87,7 +99,7 @@ def _rain_category(raw):
     return "Leichter"
 
 
-def _rain_summary(intensities, interval):
+def _rain_summary(intensities: list[int], interval: int) -> str:
     """One-line German summary for the dashboard header: 'Kein Regen
     erwartet' if no forecast step has any measurable intensity, otherwise
     'Starker/Mittlerer/Leichter Regen in X Minuten' (or '... Regen jetzt'
@@ -103,18 +115,18 @@ def _rain_summary(intensities, interval):
     return "Kein Regen erwartet"
 
 
-def _png_size(data: bytes):
+def _png_size(data: bytes) -> tuple[int, int] | None:
     """Width/height from a PNG's IHDR chunk, no image library needed:
     8-byte signature, 4-byte chunk length, 4-byte "IHDR", then 4+4 bytes
     of big-endian width/height."""
     if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
         return None
     width, height = struct.unpack(">II", data[16:24])
-    return width, height
+    return int(width), int(height)
 
 
 class Regenalarm(BasePlugin):
-    def build_settings_schema(self):
+    def build_settings_schema(self) -> Any:
         return schema(
             section(
                 "Location",
@@ -132,23 +144,27 @@ class Regenalarm(BasePlugin):
             ),
         )
 
-    def generate_settings_template(self):
+    def generate_settings_template(self) -> Any:
         template_params = super().generate_settings_template()
         # Full-bleed composed dashboard - frame/background style options
         # don't apply to it, so they're not shown.
-        template_params['style_settings'] = False
+        template_params["style_settings"] = False
         return template_params
 
-    def generate_image(self, settings, device_config):
+    def generate_image(self, settings: Mapping[str, Any], device_config: Any) -> Any:
         try:
-            lat = float(settings.get('latitude'))
-            lon = float(settings.get('longitude'))
+            lat = float(cast(str | int | float, settings.get("latitude")))
+            lon = float(cast(str | int | float, settings.get("longitude")))
         except (TypeError, ValueError):
-            raise RuntimeError("A location is required. Pick one on the map in the plugin settings.")
+            raise RuntimeError(
+                "A location is required. Pick one on the map in the plugin settings."
+            ) from None
 
         parsed = self._fetch_forecast(lat, lon)
         if parsed is None:
-            raise RuntimeError("Unable to reach regenonline.de (or its fallback hosts) for rain data.")
+            raise RuntimeError(
+                "Unable to reach regenonline.de (or its fallback hosts) for rain data."
+            )
         if parsed.error_message:
             raise RuntimeError(f"Regenalarm error: {parsed.error_message}")
 
@@ -157,16 +173,20 @@ class Regenalarm(BasePlugin):
             dimensions = dimensions[::-1]
 
         time_format = device_config.get_config("time_format", default="12h")
-        template_params = {
+        template_params: dict[str, Any] = {
             "plugin_settings": settings,
-            "summary_text": _rain_summary(parsed.intensities or [], parsed.interval or 0),
+            "summary_text": _rain_summary(
+                parsed.intensities or [], parsed.interval or 0
+            ),
             "last_refresh_time": self._format_now(time_format),
         }
 
         has_map = parsed.payload_blob is not None
         has_chart = bool(parsed.intensities and parsed.probabilities)
         if not has_map and not has_chart:
-            raise RuntimeError("Regenalarm returned no usable rain data for this location.")
+            raise RuntimeError(
+                "Regenalarm returned no usable rain data for this location."
+            )
 
         # Map SVG rendering doesn't depend on the panel layout (it's a
         # scalable viewBox), so it's safe to try first and let the actual
@@ -183,7 +203,11 @@ class Regenalarm(BasePlugin):
         # The chart is built at its exact panel pixel size (layout["chart_w"] /
         # layout["content_h"]) so it fills the panel with no letterboxing -
         # see chart_svg.py's module docstring.
-        chart_ok = self._add_chart_params(template_params, parsed, layout) if has_chart else False
+        chart_ok = (
+            self._add_chart_params(template_params, parsed, layout)
+            if has_chart
+            else False
+        )
 
         if map_ok and has_chart and not chart_ok:
             # Symmetric case: chart was expected (and the layout above split
@@ -194,14 +218,18 @@ class Regenalarm(BasePlugin):
             template_params.update(layout)
 
         if not map_ok and not chart_ok:
-            raise RuntimeError("Regenalarm returned no usable rain data for this location.")
+            raise RuntimeError(
+                "Regenalarm returned no usable rain data for this location."
+            )
 
-        image = self.render_image(dimensions, "regenalarm.html", "regenalarm.css", template_params)
+        image = self.render_image(
+            dimensions, "regenalarm.html", "regenalarm.css", template_params
+        )
         if not image:
             raise RuntimeError("Failed to render Regenalarm image, please check logs.")
         return image
 
-    def _fetch_forecast(self, lat, lon):
+    def _fetch_forecast(self, lat: float, lon: float) -> ForecastResponse | None:
         """Tries each fallback host in order, first success wins. No
         published rate limit is available for this unauthenticated API, so
         this makes exactly one attempt per host per refresh - no retries."""
@@ -209,7 +237,9 @@ class Regenalarm(BasePlugin):
         for host in HOSTS:
             try:
                 resp = get_http_session().post(
-                    f"https://{host}/rain/bin", data=body, timeout=REQUEST_TIMEOUT,
+                    f"https://{host}/rain/bin",
+                    data=body,
+                    timeout=REQUEST_TIMEOUT,
                 )
                 resp.raise_for_status()
                 return parse_forecast_response(resp.content)
@@ -218,7 +248,9 @@ class Regenalarm(BasePlugin):
                 continue
         return None
 
-    def _add_map_params(self, template_params, parsed):
+    def _add_map_params(
+        self, template_params: dict[str, Any], parsed: ForecastResponse
+    ) -> bool:
         if parsed.payload_blob is None:
             return False
         try:
@@ -232,28 +264,45 @@ class Regenalarm(BasePlugin):
             template_params["map_crop_y"] = MAP_CROP_Y
             template_params["map_crop_w"] = MAP_CROP_W
             template_params["map_crop_h"] = MAP_CROP_H
-            template_params["rain_image_data_uri"] = "data:image/png;base64," + base64.b64encode(rain_png).decode("ascii")
+            template_params["rain_image_data_uri"] = (
+                "data:image/png;base64," + base64.b64encode(rain_png).decode("ascii")
+            )
             template_params["map_marker_svg"] = render_marker_and_trajectory(
-                parsed.location_xy, parsed.location_uv, rain_native_size,
+                parsed.location_xy,
+                parsed.location_uv,
+                rain_native_size,
             )
             return True
         except Exception as e:
             logger.warning(f"Regenalarm: failed to build map SVG: {e}")
             return False
 
-    def _add_chart_params(self, template_params, parsed, layout):
+    def _add_chart_params(
+        self,
+        template_params: dict[str, Any],
+        parsed: ForecastResponse,
+        layout: dict[str, int],
+    ) -> bool:
         try:
+            # Guarded by generate_image's has_chart check for the two lists;
+            # a missing reference time/interval still raises inside
+            # render_chart_svg and is caught below, as before.
             template_params["chart_svg"] = render_chart_svg(
-                parsed.intensities, parsed.probabilities,
-                parsed.reference_time_minutes, parsed.interval,
-                width=layout["chart_w"], height=layout["content_h"],
+                cast(list[int], parsed.intensities),
+                cast(list[int], parsed.probabilities),
+                cast(int, parsed.reference_time_minutes),
+                cast(int, parsed.interval),
+                width=layout["chart_w"],
+                height=layout["content_h"],
             )
             return True
         except Exception as e:
             logger.warning(f"Regenalarm: failed to build chart SVG: {e}")
             return False
 
-    def _layout_px(self, dimensions, has_map, has_chart):
+    def _layout_px(
+        self, dimensions: tuple[int, int], has_map: bool, has_chart: bool
+    ) -> dict[str, int]:
         """Literal pixel sizes for the header and the map/chart panels -
         see the module docstring's "Panel sizing" note for why this can't
         just be dvh/flex-grow in CSS. The map panel's width is derived
@@ -294,7 +343,12 @@ class Regenalarm(BasePlugin):
         content_h = height - header_h - v_gap - 2 * v_pad
         content_w = width - 2 * h_pad
 
-        layout = {"header_h": header_h, "header_top_gap": header_top_gap, "content_h": content_h, "gap": gap}
+        layout = {
+            "header_h": header_h,
+            "header_top_gap": header_top_gap,
+            "content_h": content_h,
+            "gap": gap,
+        }
         if has_map and has_chart:
             # Aspect of the CROPPED viewBox (what's actually visible), not
             # the full 936x1026 asset - otherwise this still budgets width
@@ -312,6 +366,8 @@ class Regenalarm(BasePlugin):
             layout["chart_w"] = content_w
         return layout
 
-    def _format_now(self, time_format):
-        now = datetime.now()
-        return now.strftime("%H:%M") if time_format == "24h" else now.strftime("%I:%M %p")
+    def _format_now(self, time_format: str) -> str:
+        now = datetime.now()  # noqa: DTZ005 (local wall-clock time, on purpose)
+        return (
+            now.strftime("%H:%M") if time_format == "24h" else now.strftime("%I:%M %p")
+        )

@@ -48,20 +48,21 @@ are committed - the path-rewriting above keeps them machine-independent, so
 the preview is viewable straight from a checkout without re-running anything.
 Re-run only when you want the weather numbers refreshed.
 """
-import sys
+
 import os
-import random
 import pathlib
+import random
+import sys
 
 sys.path.insert(0, "src")
 os.environ.setdefault("INKYPI_ENV", "dev")
 
 from datetime import datetime, timedelta  # noqa: E402
 
-from utils.time_utils import get_timezone  # noqa: E402
-from utils.app_utils import get_fonts, resolve_path  # noqa: E402
 from plugins.plugin_registry import get_plugin_instance  # noqa: E402
 from plugins.weather_de.weather_de import BRIGHT_SKY_ICON_MAP  # noqa: E402
+from utils.app_utils import get_fonts, resolve_path  # noqa: E402
+from utils.time_utils import get_timezone  # noqa: E402
 
 # --- Live settings, copied verbatim from frame's device.json
 #     (playlist_config -> playlists[0] -> plugins -> plugin_id=weather_de) ---
@@ -121,13 +122,15 @@ for i in range(9 * 24):  # 9 days hourly - comfortably covers forecastDays=7
     temp += random.uniform(-1.2, 1.2)
     temp = max(-5.0, min(35.0, temp))
     is_rain_hour = random.random() < 0.25
-    hourly_records.append({
-        "timestamp": dt.isoformat(),
-        "icon": random.choice(icon_keys),
-        "temperature": round(temp, 1),
-        "precipitation": round(random.uniform(0, 3), 2) if is_rain_hour else 0.0,
-        "precipitation_probability": random.randint(0, 100),
-    })
+    hourly_records.append(
+        {
+            "timestamp": dt.isoformat(),
+            "icon": random.choice(icon_keys),
+            "temperature": round(temp, 1),
+            "precipitation": round(random.uniform(0, 3), 2) if is_rain_hour else 0.0,
+            "precipitation_probability": random.randint(0, 100),
+        }
+    )
 
 current_rec = hourly_records[2]
 current_data = {
@@ -171,10 +174,14 @@ if use_regenalarm_rain or show_regenalarm_map:
         if use_regenalarm_rain:
             instance._merge_regenalarm_rain(template_params, regenalarm_data, tz)
         if show_regenalarm_map:
-            regenalarm_map_ok = instance._add_regenalarm_map_params(template_params, regenalarm_data)
+            regenalarm_map_ok = instance._add_regenalarm_map_params(
+                template_params, regenalarm_data
+            )
         print("  -> Regenalarm data merged OK.")
     else:
-        print("  -> Regenalarm unavailable right now; falling back like production would.")
+        print(
+            "  -> Regenalarm unavailable right now; falling back like production would."
+        )
 template_params["regenalarm_map_ok"] = regenalarm_map_ok
 
 instance._extract_sun_times_for_graph(template_params, settings, tz)
@@ -183,7 +190,9 @@ template_params["plugin_settings"] = settings
 template_params["static_dir"] = instance.to_file_url(resolve_path("static"))
 
 last_refresh_time = (
-    now.strftime("%Y-%m-%d %H:%M") if TIME_FORMAT == "24h" else now.strftime("%Y-%m-%d %I:%M %p")
+    now.strftime("%Y-%m-%d %H:%M")
+    if TIME_FORMAT == "24h"
+    else now.strftime("%Y-%m-%d %I:%M %p")
 )
 template_params["last_refresh_time"] = last_refresh_time
 
@@ -204,9 +213,9 @@ template_params["width"] = RESOLUTION[0]
 template_params["height"] = RESOLUTION[1]
 
 fonts = get_fonts()
-for f in fonts:
-    if isinstance(f, dict):
-        f["url"] = instance.to_file_url(f.get("url", ""))
+for font in fonts:
+    if isinstance(font, dict):
+        font["url"] = instance.to_file_url(font.get("url", ""))
 template_params["font_faces"] = fonts
 
 html = instance._render_template("weather_de.html", template_params)
@@ -303,10 +312,16 @@ wrapper_html = f"""<!doctype html>
 with open(wrapper_path, "w", encoding="utf-8") as f:
     f.write(wrapper_html)
 
-print(f"\nWrote {inner_path} ({len(html)} bytes) - raw render, don't open this one directly")
-print(f"Wrote {wrapper_path} - open THIS one (fixed {RESOLUTION[0]}x{RESOLUTION[1]} viewport regardless of window size)")
-print(f"Current temp: {template_params.get('current_temperature')}{template_params.get('temperature_unit')}, "
-      f"feels like {template_params.get('feels_like')}")
+print(
+    f"\nWrote {inner_path} ({len(html)} bytes) - raw render, don't open this one directly"
+)
+print(
+    f"Wrote {wrapper_path} - open THIS one (fixed {RESOLUTION[0]}x{RESOLUTION[1]} viewport regardless of window size)"
+)
+print(
+    f"Current temp: {template_params.get('current_temperature')}{template_params.get('temperature_unit')}, "
+    f"feels like {template_params.get('feels_like')}"
+)
 print(f"Forecast days generated: {len(template_params.get('forecast', []))}")
 print(f"Hourly forecast points: {len(template_params.get('hourly_forecast', []))}")
 print(f"Regenalarm map ok: {regenalarm_map_ok}")

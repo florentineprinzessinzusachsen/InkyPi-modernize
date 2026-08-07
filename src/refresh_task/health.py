@@ -30,6 +30,7 @@ class PluginInstanceLike(Protocol):
     paused: bool
     consecutive_failure_count: int
     disabled_reason: str | None
+    paused_at: str | None
 
 
 class SupportsPlaylistLookup(Protocol):
@@ -87,7 +88,9 @@ class PluginHealthTracker:
         return max(1, value)
 
     @staticmethod
-    def circuit_breaker_cooldown_seconds(environ: Mapping[str, str] | None = None) -> int:
+    def circuit_breaker_cooldown_seconds(
+        environ: Mapping[str, str] | None = None,
+    ) -> int:
         """Return how long a paused plugin waits before an automatic retry.
 
         A transient outage (wifi drop, upstream API blip) can easily outlast
@@ -178,6 +181,7 @@ class PluginHealthTracker:
                 plugin_id,
                 instance,
             )
+
         def _apply(_cfg: dict[str, Any]) -> None:
             plugin_instance.consecutive_failure_count = 0
             plugin_instance.paused = False
@@ -233,8 +237,7 @@ class PluginHealthTracker:
             if plugin_instance.consecutive_failure_count >= threshold:
                 now_iso = self._now_iso()
                 error_msg = str(
-                    self.plugin_health.get(plugin_id, {}).get("last_error")
-                    or "unknown"
+                    self.plugin_health.get(plugin_id, {}).get("last_error") or "unknown"
                 )
                 plugin_instance.paused = True
                 plugin_instance.paused_at = now_iso
@@ -277,6 +280,7 @@ class PluginHealthTracker:
             or plugin_instance.consecutive_failure_count > 0
             or plugin_instance.disabled_reason is not None
         )
+
         def _apply(_cfg: dict[str, Any]) -> None:
             plugin_instance.consecutive_failure_count = 0
             plugin_instance.paused = False
@@ -378,7 +382,9 @@ class PluginHealthTracker:
             avg_key = f"avg_{key}"
             previous = entry.get(avg_key)
             if isinstance(previous, (int, float)):
-                entry[avg_key] = round(previous + cls._AVG_ALPHA * (value - previous), 1)
+                entry[avg_key] = round(
+                    previous + cls._AVG_ALPHA * (value - previous), 1
+                )
             else:
                 entry[avg_key] = float(value)
 
@@ -399,8 +405,11 @@ class PluginHealthTracker:
             return
         try:
             interval_s = float(
-                self.device_config.get_config(
-                    "plugin_cycle_interval_seconds", default=3600
+                cast(
+                    "str | int | float",
+                    self.device_config.get_config(
+                        "plugin_cycle_interval_seconds", default=3600
+                    ),
                 )
             )
         except Exception:

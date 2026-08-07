@@ -19,7 +19,9 @@ class TestStartUpdate:
         monkeypatch.setattr(mod, "_get_update_script_path", lambda: None)
         # Prevent the background thread from actually sleeping
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
+            mod,
+            "_start_update_fallback_thread",
+            lambda sp, target_tag=None, channel=None: None,
         )
         mod._set_update_state(False, None)
 
@@ -85,7 +87,9 @@ class TestStartUpdate:
             mod, "_start_update_via_systemd", MagicMock(side_effect=OSError("fail"))
         )
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
+            mod,
+            "_start_update_fallback_thread",
+            lambda sp, target_tag=None, channel=None: None,
         )
         mod._set_update_state(False, None)
 
@@ -107,7 +111,9 @@ class TestStartUpdate:
         monkeypatch.setattr(mod, "_systemd_available", lambda: False)
         monkeypatch.setattr(mod, "_get_update_script_path", lambda: None)
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
+            mod,
+            "_start_update_fallback_thread",
+            lambda sp, target_tag=None, channel=None: None,
         )
         mod._set_update_state(False, None)
 
@@ -146,7 +152,9 @@ class TestStartUpdate:
         monkeypatch.setattr(mod, "_systemd_available", lambda: False)
         monkeypatch.setattr(mod, "_get_update_script_path", lambda: None)
         monkeypatch.setattr(
-            mod, "_start_update_fallback_thread", lambda sp, target_tag=None, channel=None: None
+            mod,
+            "_start_update_fallback_thread",
+            lambda sp, target_tag=None, channel=None: None,
         )
         mod._set_update_state(False, None)
 

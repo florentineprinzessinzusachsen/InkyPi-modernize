@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import gzip
 import logging
+from typing import cast
 
 from flask import Response, request
 
 logger = logging.getLogger(__name__)
 
 try:
-    import brotli as _brotli  # type: ignore[import-untyped]
+    import brotli as _brotli
 except ImportError:
     _brotli = None
 
@@ -73,7 +74,7 @@ def _pick_content_encoding(accept_encoding: str) -> str | None:
 
 def _compress(data: bytes, encoding: str) -> bytes:
     if encoding == "br":
-        return _brotli.compress(data)
+        return cast(bytes, _brotli.compress(data))
     return gzip.compress(data, compresslevel=6)
 
 

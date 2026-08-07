@@ -629,9 +629,14 @@ class RefreshTask:
                         )
                         if img_index >= len(image_locations):
                             img_index = 0
-                        plugin_instance.settings["image_index"] = (
-                            img_index + 1
-                        ) % len(image_locations)
+                        # The protocol types `settings` read-only, but the
+                        # concrete PluginInstance backs it with a plain dict.
+                        mutable_settings = cast(
+                            dict[str, object], plugin_instance.settings
+                        )
+                        mutable_settings["image_index"] = (img_index + 1) % len(
+                            image_locations
+                        )
         generate_ms = int((perf_counter() - _t_gen_start) * 1000)
         # Plugin lifecycle: generate_complete
         logger.info(

@@ -15,17 +15,20 @@ configured stop (not per line), well within the 100 req/min (burst 200)
 budget of the BVG/VBB APIs.
 """
 
-from plugins.base_plugin.base_plugin import BasePlugin
-from plugins.base_plugin.settings_schema import schema, section, row, field, widget
-from utils.http_client import get_http_session
-from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import logging
 import math
 import os
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from typing import Any
 from urllib.parse import quote
+
+from plugins.base_plugin.base_plugin import BasePlugin
+from plugins.base_plugin.settings_schema import field, row, schema, section, widget
+from utils.http_client import get_http_session
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +40,9 @@ PROVIDER_BASES = {
 PROVIDER_LABELS = {"vbb": "VBB", "bvg": "BVG", "db": "DB"}
 
 DEPARTURES_DURATION_MIN = 60
-DEPARTURES_RESULTS = 15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
+DEPARTURES_RESULTS = (
+    15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
+)
 # Sanity ceiling on how many departures a single stop ever keeps, regardless
 # of the current layout's computed target (_target_capacities_for_stops) -
 # guards a pathological shape, not something expected to bind in practice.
@@ -73,14 +78,17 @@ _DEPARTURES_CACHE_PREFIX = "_abfahrtzeiten_departures_cache_"
 # doesn't reduce to a clean function of cols/rows alone. Falls back to a
 # rough estimate for shapes nobody's eyeballed yet.
 _TUNED_CAPACITY = {
-    (1, 1): 9,   # 1 stop, full width/height
-    (2, 1): 9,   # 2 stops side by side
-    (3, 1): 10,  # 3 stops side by side (narrower cells -> smaller clamped font -> more rows fit)
-    (2, 2): 5,   # 2x2 grid
+    (1, 1): 9,  # 1 stop, full width/height
+    (2, 1): 9,  # 2 stops side by side
+    (
+        3,
+        1,
+    ): 10,  # 3 stops side by side (narrower cells -> smaller clamped font -> more rows fit)
+    (2, 2): 5,  # 2x2 grid
 }
 
 
-def _capacity_for_row(cols, grid_rows):
+def _capacity_for_row(cols: int, grid_rows: int) -> int:
     tuned = _TUNED_CAPACITY.get((cols, grid_rows))
     if tuned is not None:
         return tuned
@@ -88,26 +96,31 @@ def _capacity_for_row(cols, grid_rows):
     return max(3, round(9 * factor / grid_rows))
 
 
-def _parse_entries(raw_entries):
+def _parse_entries(raw_entries: Any) -> list[dict[str, Any]]:
     """Parses the settings' `entries[]` list of JSON strings into dicts,
     skipping any that fail to parse (e.g. hand-edited config)."""
-    entries = []
+    entries: list[dict[str, Any]] = []
     for raw in raw_entries or []:
         try:
             entry = json.loads(raw)
         except (TypeError, ValueError):
             logger.warning(f"Skipping unparseable Abfahrtzeiten entry: {raw!r}")
             continue
-        if entry.get("provider") in PROVIDER_BASES and entry.get("stopId") and entry.get("lineName") and entry.get("direction"):
+        if (
+            entry.get("provider") in PROVIDER_BASES
+            and entry.get("stopId")
+            and entry.get("lineName")
+            and entry.get("direction")
+        ):
             entries.append(entry)
     return entries
 
 
-def _group_by_stop(entries):
+def _group_by_stop(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Groups parsed entries by (provider, stopId), preserving first-seen
     order, and collects the set of (lineName, direction) filters per stop."""
-    groups = {}
-    order = []
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
     for entry in entries:
         key = (entry["provider"], entry["stopId"])
         if key not in groups:
@@ -122,7 +135,7 @@ def _group_by_stop(entries):
     return [groups[key] for key in order]
 
 
-def _parse_when(value):
+def _parse_when(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -131,7 +144,7 @@ def _parse_when(value):
         return None
 
 
-def _is_cancelled(dep):
+def _is_cancelled(dep: Mapping[str, Any]) -> bool:
     if dep.get("cancelled"):
         return True
     for remark in dep.get("remarks") or []:
@@ -140,14 +153,14 @@ def _is_cancelled(dep):
     return False
 
 
-def _departures_cache_path(device_config, provider, stop_id):
+def _departures_cache_path(device_config: Any, provider: str, stop_id: str) -> str:
     digest = hashlib.sha256(f"{provider}:{stop_id}".encode()).hexdigest()[:32]
     return os.path.join(
         device_config.plugin_image_dir, f"{_DEPARTURES_CACHE_PREFIX}{digest}.json"
     )
 
 
-def _load_learned_results(device_config, provider, stop_id):
+def _load_learned_results(device_config: Any, provider: str, stop_id: str) -> int:
     """Returns the learned `results` page size for one stop, or the default.
 
     A stop shared by several frequent lines (trams, buses) can crowd a
@@ -161,7 +174,9 @@ def _load_learned_results(device_config, provider, stop_id):
     again", same as any other cache miss.
     """
     try:
-        with open(_departures_cache_path(device_config, provider, stop_id), encoding="utf-8") as f:
+        with open(
+            _departures_cache_path(device_config, provider, stop_id), encoding="utf-8"
+        ) as f:
             data = json.load(f)
     except (OSError, ValueError, AttributeError):
         return DEPARTURES_RESULTS
@@ -171,7 +186,9 @@ def _load_learned_results(device_config, provider, stop_id):
     return min(value, DEPARTURES_RESULTS_CEILING)
 
 
-def _store_learned_results(device_config, provider, stop_id, results):
+def _store_learned_results(
+    device_config: Any, provider: str, stop_id: str, results: int
+) -> None:
     try:
         path = _departures_cache_path(device_config, provider, stop_id)
         tmp_path = f"{path}.tmp"
@@ -179,15 +196,17 @@ def _store_learned_results(device_config, provider, stop_id, results):
             json.dump({"results": results}, f)
         os.replace(tmp_path, path)
     except (OSError, AttributeError) as e:
-        logger.debug("Could not write departures cache for %s/%s: %s", provider, stop_id, e)
+        logger.debug(
+            "Could not write departures cache for %s/%s: %s", provider, stop_id, e
+        )
 
 
-def _grow_results_cap(current):
+def _grow_results_cap(current: int) -> int:
     """Returns a bigger page size to try next time, capped at the ceiling."""
     return min(DEPARTURES_RESULTS_CEILING, max(current + 5, round(current * 1.5)))
 
 
-def _group_into_rows(items, max_per_row=3):
+def _group_into_rows(items: list[Any], max_per_row: int = 3) -> list[list[Any]]:
     """Arranges items into a responsive grid: up to `max_per_row` side by
     side, wrapping to further rows for more, with each row's size as
     balanced as possible (not just "fill 3, dump the remainder in a
@@ -198,16 +217,16 @@ def _group_into_rows(items, max_per_row=3):
         return []
     rows = math.ceil(n / max_per_row)
     base, remainder = divmod(n, rows)
-    result = []
+    result: list[list[Any]] = []
     idx = 0
     for r in range(rows):
         size = base + 1 if r < remainder else base
-        result.append(items[idx:idx + size])
+        result.append(items[idx : idx + size])
         idx += size
     return result
 
 
-def _target_capacities_for_stops(stop_count):
+def _target_capacities_for_stops(stop_count: int) -> list[int]:
     """Pre-fetch per-stop departure target, one entry per stop_groups index.
 
     Row assignment (which stop lands in which row, and how wide that row is)
@@ -224,19 +243,21 @@ def _target_capacities_for_stops(stop_count):
     rows = _group_into_rows(list(range(stop_count)))
     grid_rows = len(rows)
     capacities = [0] * stop_count
-    for row in rows:
-        capacity = _capacity_for_row(len(row), grid_rows) + 1
-        for idx in row:
+    for grid_row in rows:
+        capacity = _capacity_for_row(len(grid_row), grid_rows) + 1
+        for idx in grid_row:
             capacities[idx] = capacity
     return capacities
 
 
 class Abfahrtzeiten(BasePlugin):
-    def build_settings_schema(self):
+    def build_settings_schema(self) -> Any:
         return schema(
             section(
                 "Stops",
-                widget("abfahrtzeiten-stops", template="widgets/abfahrtzeiten_stops.html"),
+                widget(
+                    "abfahrtzeiten-stops", template="widgets/abfahrtzeiten_stops.html"
+                ),
             ),
             section(
                 "Display",
@@ -249,21 +270,23 @@ class Abfahrtzeiten(BasePlugin):
                         checked_value="true",
                         unchecked_value="false",
                         default="true",
-                        hint="Shows the departure platform/track (e.g. \"Gl. 3\") next to each departure, when the provider reports one.",
+                        hint='Shows the departure platform/track (e.g. "Gl. 3") next to each departure, when the provider reports one.',
                     ),
                 ),
             ),
         )
 
-    def generate_settings_template(self):
+    def generate_settings_template(self) -> Any:
         template_params = super().generate_settings_template()
-        template_params['style_settings'] = True
+        template_params["style_settings"] = True
         return template_params
 
-    def generate_image(self, settings, device_config):
-        entries = _parse_entries(settings.get('entries[]'))
+    def generate_image(self, settings: Mapping[str, Any], device_config: Any) -> Any:
+        entries = _parse_entries(settings.get("entries[]"))
         if not entries:
-            raise RuntimeError("At least one stop is required. Add a stop in the plugin settings.")
+            raise RuntimeError(
+                "At least one stop is required. Add a stop in the plugin settings."
+            )
 
         stop_groups = _group_by_stop(entries)
         # Computed before fetching - see _target_capacities_for_stops - so
@@ -300,10 +323,10 @@ class Abfahrtzeiten(BasePlugin):
         # row's cells render smaller text (see abfahrtzeiten.css's cqw
         # clamp), so more departure rows fit in the same height than in a
         # 1- or 2-column row of the same grid.
-        rendered_rows = []
-        for row in stop_rows:
-            capacity = _capacity_for_row(len(row), len(stop_rows))
-            for stop in row:
+        rendered_rows: list[dict[str, Any]] = []
+        for stop_row in stop_rows:
+            capacity = _capacity_for_row(len(stop_row), len(stop_rows))
+            for stop in stop_row:
                 # Deliberately render one row past `capacity` and let CSS
                 # clip it (.stop-section/.departure-rows: overflow:hidden)
                 # instead of trying to size things to fit exactly - the
@@ -313,33 +336,46 @@ class Abfahrtzeiten(BasePlugin):
                 # `capacity` rows left a sliver of empty padding at the
                 # bottom. The overflowing extra row eats that leftover
                 # space instead.
-                stop["departures"] = stop["departures"][:capacity + 1]
-            rendered_rows.append({"stops": row, "row_units": capacity + 1})
+                stop["departures"] = stop["departures"][: capacity + 1]
+            rendered_rows.append({"stops": stop_row, "row_units": capacity + 1})
 
-        template_params = {
+        template_params: dict[str, Any] = {
             "stop_rows": rendered_rows,
             "plugin_settings": settings,
             "last_refresh_time": self._format_now(time_format),
         }
-        image = self.render_image(dimensions, "abfahrtzeiten.html", "abfahrtzeiten.css", template_params)
+        image = self.render_image(
+            dimensions, "abfahrtzeiten.html", "abfahrtzeiten.css", template_params
+        )
         if not image:
-            raise RuntimeError("Failed to render Abfahrtzeiten image, please check logs.")
+            raise RuntimeError(
+                "Failed to render Abfahrtzeiten image, please check logs."
+            )
         return image
 
-    def _fetch_all(self, stop_groups, device_config, target_capacities):
-        stops = []
+    def _fetch_all(
+        self,
+        stop_groups: list[dict[str, Any]],
+        device_config: Any,
+        target_capacities: list[int],
+    ) -> tuple[list[dict[str, Any]], bool, list[str]]:
+        stops: list[dict[str, Any]] = []
         any_succeeded = False
-        fetch_errors = []
+        fetch_errors: list[str] = []
         session = get_http_session()
 
-        def fetch_one(group, target_capacity):
+        def fetch_one(
+            group: dict[str, Any], target_capacity: int
+        ) -> tuple[dict[str, Any], list[dict[str, Any]], str | None]:
             try:
                 departures = self._fetch_stop_departures(
                     session, group, device_config, target_capacity
                 )
                 return group, departures, None
             except Exception as e:
-                logger.warning(f"Abfahrtzeiten: departures fetch failed for stop {group['stopId']} ({group['provider']}): {e}")
+                logger.warning(
+                    f"Abfahrtzeiten: departures fetch failed for stop {group['stopId']} ({group['provider']}): {e}"
+                )
                 # Keep the raw exception text out of the per-stop dict (it's
                 # too technical/long for the small in-template error slot -
                 # see abfahrtzeiten.html's .stop-error) but hand it back so
@@ -357,19 +393,29 @@ class Abfahrtzeiten(BasePlugin):
             results = list(executor.map(fetch_one, stop_groups, target_capacities))
 
         for group, rows, error in results:
-            stops.append({
-                "name": group["stopName"],
-                "provider": PROVIDER_LABELS.get(group["provider"], group["provider"]),
-                "departures": rows,
-                "error": "Departures unavailable" if error else None,
-            })
+            stops.append(
+                {
+                    "name": group["stopName"],
+                    "provider": PROVIDER_LABELS.get(
+                        group["provider"], group["provider"]
+                    ),
+                    "departures": rows,
+                    "error": "Departures unavailable" if error else None,
+                }
+            )
             if error is None:
                 any_succeeded = True
             else:
                 fetch_errors.append(error)
         return stops, any_succeeded, fetch_errors
 
-    def _fetch_stop_departures(self, session, group, device_config, target_capacity):
+    def _fetch_stop_departures(
+        self,
+        session: Any,
+        group: dict[str, Any],
+        device_config: Any,
+        target_capacity: int,
+    ) -> list[dict[str, Any]]:
         """Fetches, filters, and adaptively re-pages one stop's departures.
 
         `target_capacity` is how many departures the CURRENT render's grid
@@ -394,12 +440,12 @@ class Abfahrtzeiten(BasePlugin):
         data = resp.json()
         raw_departures = data.get("departures", [])
 
-        rows = []
+        rows: list[dict[str, Any]] = []
         # Tracks how many raw (pre-filter) entries it took, in the order the
         # API returned them, to accumulate `effective_target` matches - used
         # below to decide whether results_cap has more headroom than this
         # stop actually needs.
-        raw_scanned_for_target = None
+        raw_scanned_for_target: int | None = None
         for i, dep in enumerate(raw_departures, start=1):
             line = (dep.get("line") or {}).get("name")
             direction = dep.get("direction")
@@ -414,15 +460,21 @@ class Abfahrtzeiten(BasePlugin):
             delay_seconds = dep.get("delay") or 0
             # Negative delay = running early; not worth a "late" badge.
             delay_minutes = max(0, round(delay_seconds / 60)) if delay_seconds else 0
-            rows.append({
-                "line": line,
-                "direction": direction,
-                "sort_time": actual,
-                "planned_time": planned.strftime("%H:%M") if planned else actual.strftime("%H:%M"),
-                "delay_minutes": delay_minutes,
-                "platform": dep.get("platform"),
-                "cancelled": _is_cancelled(dep),
-            })
+            rows.append(
+                {
+                    "line": line,
+                    "direction": direction,
+                    "sort_time": actual,
+                    "planned_time": (
+                        planned.strftime("%H:%M")
+                        if planned
+                        else actual.strftime("%H:%M")
+                    ),
+                    "delay_minutes": delay_minutes,
+                    "platform": dep.get("platform"),
+                    "cancelled": _is_cancelled(dep),
+                }
+            )
             if raw_scanned_for_target is None and len(rows) >= effective_target:
                 raw_scanned_for_target = i
 
@@ -447,7 +499,9 @@ class Abfahrtzeiten(BasePlugin):
             # Target was reached - nudge the cap toward what this cycle
             # actually needed (with headroom), rather than only correcting
             # once grossly oversized. See DEPARTURES_HEADROOM/_SMOOTHING.
-            ideal = max(DEPARTURES_RESULTS, round(raw_scanned_for_target * DEPARTURES_HEADROOM))
+            ideal = max(
+                DEPARTURES_RESULTS, round(raw_scanned_for_target * DEPARTURES_HEADROOM)
+            )
             nudged = round(
                 DEPARTURES_SMOOTHING * results_cap + (1 - DEPARTURES_SMOOTHING) * ideal
             )
@@ -462,6 +516,8 @@ class Abfahrtzeiten(BasePlugin):
 
         return matched
 
-    def _format_now(self, time_format):
-        now = datetime.now()
-        return now.strftime("%H:%M") if time_format == "24h" else now.strftime("%I:%M %p")
+    def _format_now(self, time_format: str) -> str:
+        now = datetime.now()  # noqa: DTZ005 (local wall-clock time, on purpose)
+        return (
+            now.strftime("%H:%M") if time_format == "24h" else now.strftime("%I:%M %p")
+        )

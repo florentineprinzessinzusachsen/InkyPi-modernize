@@ -33,8 +33,7 @@ from typing import Any
 
 from flask import Flask, Response, current_app, request
 
-from utils.http_utils import env_bool as _env_bool
-from utils.http_utils import json_error
+from utils.http_utils import env_bool as _env_bool, json_error
 
 logger = logging.getLogger(__name__)
 

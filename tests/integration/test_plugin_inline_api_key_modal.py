@@ -43,7 +43,9 @@ def _load_real_plugin_page(page, client, plugin_id, fetch_router_js):
     """)
 
 
-def test_manage_keys_opens_inline_modal_without_losing_typed_settings(client, device_config_dev):
+def test_manage_keys_opens_inline_modal_without_losing_typed_settings(
+    client, device_config_dev
+):
     """Clicking "Manage keys" must never discard what the user has typed —
     it opens the inline modal in place, no navigation, nothing lost."""
     pytest.importorskip("playwright.sync_api", reason="playwright not available")

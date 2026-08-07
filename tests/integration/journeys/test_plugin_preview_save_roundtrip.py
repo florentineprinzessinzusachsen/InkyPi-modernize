@@ -197,12 +197,13 @@ def _click_save_instance(page, plugin_id: str) -> None:
         save_btn.click(timeout=5000, force=True)
     response = resp_info.value
     assert response.ok, (
-        f"{plugin_id}: update_plugin_instance PUT failed with "
-        f"{response.status}"
+        f"{plugin_id}: update_plugin_instance PUT failed with " f"{response.status}"
     )
 
 
-def _purge_instance(flask_app, plugin_id: str, playlist_name: str, instance_name: str) -> None:
+def _purge_instance(
+    flask_app, plugin_id: str, playlist_name: str, instance_name: str
+) -> None:
     """Remove the journey's playlist instance so it doesn't leak into sibling tests."""
     device_config = flask_app.config.get("DEVICE_CONFIG")
     if device_config is None:

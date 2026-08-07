@@ -325,7 +325,7 @@ def test_action_buttons_live_check_when_api_key_missing(client, device_config_de
     body = resp.data.decode("utf-8")
 
     # Neither button is hard-disabled...
-    assert "disabled title=\"Configure" not in body
+    assert 'disabled title="Configure' not in body
     # ...both instead carry a live-check hook naming the missing key and
     # service, for plugin_page.js to re-verify before acting.
     assert 'data-api-key-check="UNSPLASH_ACCESS_KEY"' in body

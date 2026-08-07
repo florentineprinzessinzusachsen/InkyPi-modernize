@@ -1572,9 +1572,9 @@ class TestPiImageBuildWorkflow:
             "actions/upload-artifact",
             "actions/download-artifact",
         ):
-            assert re.search(rf"{re.escape(action)}@v\d+", self.content), (
-                f"{action} is not pinned to a major version in the workflow"
-            )
+            assert re.search(
+                rf"{re.escape(action)}@v\d+", self.content
+            ), f"{action} is not pinned to a major version in the workflow"
 
     def test_workflow_uploads_release_asset(self):
         assert "softprops/action-gh-release" in self.content
@@ -2761,8 +2761,9 @@ class TestMemoryDiffWorkflow:
         assert "github.base_ref" in self.content
 
     def test_workflow_uses_same_helper_for_base_and_pr_measurements(self) -> None:
-        assert "cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/perf/" in (
-            self.content
+        assert (
+            "cp /tmp/memdiff-scripts/memory_diff.py /tmp/base-tree/scripts/perf/"
+            in (self.content)
         )
         assert (
             "cp /tmp/memdiff-scripts/format_memory_diff.py /tmp/base-tree/scripts/perf/"

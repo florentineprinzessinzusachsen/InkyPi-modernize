@@ -177,7 +177,8 @@ def test_import_ignores_unknown_config_and_env_keys(client, device_config_dev):
     env keys, while still accepting arbitrary custom secrets (e.g.
     calendar_auth's CALENDAR_AUTH_PASSWORD_<LABEL>) - those are legitimate
     plugin data, not an unknown/dangerous key, and must round-trip through a
-    backup (see also test_settings_import.py::test_import_accepts_custom_secret_env_keys)."""
+    backup (see also test_settings_import.py::test_import_accepts_custom_secret_env_keys).
+    """
     payload = {
         "config": {
             "name": "Allowed",

@@ -18,12 +18,13 @@ reversible and adds no real confidentiality (TLS already provides that).
 from __future__ import annotations
 
 import bz2
+import datetime
 import struct
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any
 
-from .protocol import TLVWriter, TLVReader, encode_range, decode_range
+from .protocol import TLVReader, TLVWriter, decode_range, encode_range
 
 REQUEST_MAGIC = bytes([28, 9, 82, 1])  # [VERIFIED] AbstractC1646s.java:350-353
 
@@ -32,41 +33,43 @@ def build_forecast_request(
     lat: float,
     lon: float,
     *,
-    device_uuid: Optional[str] = None,
+    device_uuid: str | None = None,
     app_version: str = "2.0.20",
     android_release: str = "14",
     device_manufacturer_model: str = "Google - Pixel 8",
     is_first_request_today: bool = True,
-    request_source_type: int = 1,        # [INFERRED] 1=main app screen, 2=widget (AbstractServiceC0710a passes 2).
-                                          # Empirically tag 3/4/5 (probabilities/intensities/map image) come back
-                                          # with source=1 + include_field3/4 - source=2 (widget) is the leading
-                                          # hypothesis for what unlocks tag 14 (temperature); UNCONFIRMED, try it.
-    ads_ab_flag: bool = False,           # prefs "ab" boolean, purpose unclear [UNCERTAIN]
+    request_source_type: int = 1,  # [INFERRED] 1=main app screen, 2=widget (AbstractServiceC0710a passes 2).
+    # Empirically tag 3/4/5 (probabilities/intensities/map image) come back
+    # with source=1 + include_field3/4 - source=2 (widget) is the leading
+    # hypothesis for what unlocks tag 14 (temperature); UNCONFIRMED, try it.
+    ads_ab_flag: bool = False,  # prefs "ab" boolean, purpose unclear [UNCERTAIN]
     minutes_since_last_fetch: int = 0,
     minutes_since_install: int = 0,
-    include_field3: bool = True,         # [UNCERTAIN exact meaning, VERIFIED effect] "extended forecast?" - z4 in
-                                          # the app. Empirically required (together with include_field4) to get
-                                          # probabilities/intensities/map image back - a bare request without
-                                          # these returns only a short status stub. Default True as of this
-                                          # revision (was False, matching the plain main-screen call site, which
-                                          # turned out to be the wrong thing to default to for a useful PoC).
-    include_field4: bool = True,         # see include_field3 - same empirical finding, default True
-    top_level_flag: bool = False,        # [UNCERTAIN] z6/tag 11 - true only for the "location name lookup" call path
-    wind_query: Optional[tuple] = None,  # (wind_level, wind_area_id) -> optional field 10 [VERIFIED shape AND
-                                          # semantics, corrected from an earlier wrong guess ("tile_x/tile_y") -
-                                          # traced through C0668j1.java:369-376 + AsyncTaskC0695s1.java:82-83,130-131:
-                                          #   - wind_level: preference key literally named "WindLevel"
-                                          #     (AbstractC1636l0.f6281y decodes to "WindLevel"), default value is
-                                          #     the STRING "1500" parsed to int on a fresh install - almost
-                                          #     certainly an altitude/pressure level selector (e.g. wind at 1500m
-                                          #     vs. surface), not a map tile coordinate.
-                                          #   - wind_area_id: defaults to -1 on a fresh install (field2887v's
-                                          #     declared default; only overridden by a 5-second-lived "last
-                                          #     scroll position" cache - irrelevant for a fresh PoC request).
-                                          #     Also separately used server-side as a cache-freshness token
-                                          #     (AsyncTaskC0695s1.java:122, compared against response tag-11
-                                          #     sub-field 3) - NOT relevant when there's no local cache, as here.
-                                          # Use wind_query=(1500, -1) to match the app's own fresh-install request.
+    include_field3: bool = True,  # [UNCERTAIN exact meaning, VERIFIED effect] "extended forecast?" - z4 in
+    # the app. Empirically required (together with include_field4) to get
+    # probabilities/intensities/map image back - a bare request without
+    # these returns only a short status stub. Default True as of this
+    # revision (was False, matching the plain main-screen call site, which
+    # turned out to be the wrong thing to default to for a useful PoC).
+    include_field4: bool = True,  # see include_field3 - same empirical finding, default True
+    top_level_flag: bool = False,  # [UNCERTAIN] z6/tag 11 - true only for the "location name lookup" call path
+    wind_query: (
+        tuple[int, int] | None
+    ) = None,  # (wind_level, wind_area_id) -> optional field 10 [VERIFIED shape AND
+    # semantics, corrected from an earlier wrong guess ("tile_x/tile_y") -
+    # traced through C0668j1.java:369-376 + AsyncTaskC0695s1.java:82-83,130-131:
+    #   - wind_level: preference key literally named "WindLevel"
+    #     (AbstractC1636l0.f6281y decodes to "WindLevel"), default value is
+    #     the STRING "1500" parsed to int on a fresh install - almost
+    #     certainly an altitude/pressure level selector (e.g. wind at 1500m
+    #     vs. surface), not a map tile coordinate.
+    #   - wind_area_id: defaults to -1 on a fresh install (field2887v's
+    #     declared default; only overridden by a 5-second-lived "last
+    #     scroll position" cache - irrelevant for a fresh PoC request).
+    #     Also separately used server-side as a cache-freshness token
+    #     (AsyncTaskC0695s1.java:122, compared against response tag-11
+    #     sub-field 3) - NOT relevant when there's no local cache, as here.
+    # Use wind_query=(1500, -1) to match the app's own fresh-install request.
 ) -> bytes:
     """Port of AbstractC1646s.m3436a's request-building half (server-call
     retry/failover loop omitted - this returns one request body for one
@@ -90,7 +93,9 @@ def build_forecast_request(
         (AbstractC1646s.java:267-268) - so wire order is (lat, lon).
     """
     if device_uuid is None:
-        device_uuid = str(uuid.uuid4())  # AbstractC1636l0.m3420a - persisted UUID.randomUUID()
+        device_uuid = str(
+            uuid.uuid4()
+        )  # AbstractC1636l0.m3420a - persisted UUID.randomUUID()
 
     w = TLVWriter()
     # 4-byte header reserved now, overwritten with REQUEST_MAGIC after the
@@ -124,7 +129,9 @@ def build_forecast_request(
         # f2076a (wind_level)/f2077b (wind_area_id) set in AsyncTaskC0695s1.java:129-131.
         tile_x, tile_y = wind_query
         sub = TLVWriter()
-        sub.raw_byte(1).raw_byte(2).raw_byte((tile_x >> 8) & 0xFF).raw_byte(tile_x & 0xFF)
+        sub.raw_byte(1).raw_byte(2).raw_byte((tile_x >> 8) & 0xFF).raw_byte(
+            tile_x & 0xFF
+        )
         sub.uint32_field(2, tile_y)
         sub.bool_field(3, True)
         w.submessage(10, sub)
@@ -133,8 +140,8 @@ def build_forecast_request(
     dev = TLVWriter()
     dev.bool_field(1, is_first_request_today)
     dev.string_ascii(2, device_uuid)
-    dev.byte_field(3, 2)                     # constant
-    dev.byte_field(4, 1)                     # constant
+    dev.byte_field(3, 2)  # constant
+    dev.byte_field(4, 1)  # constant
     dev.string_ascii(5, app_version)
     dev.string_ascii(6, android_release)
     dev.string_utf8(7, device_manufacturer_model)
@@ -162,62 +169,89 @@ def build_forecast_request(
 # Response parsing
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ForecastResponse:
-    error_message: Optional[str] = None          # tag 1  [VERIFIED shape]
-    reference_time_minutes: Optional[int] = None   # tag 2  [VERIFIED - Bundle key "Rmpf"->"Time" in
-                                                     # ShowForecastActivity.java:315; used mod 1440
-                                                     # (minutes/day) in AbstractServiceC0711b.java:264]
-    interval: Optional[int] = None                 # tag 3 sub 1 [VERIFIED - Bundle key "Grwfpqci"->"Interval"]
-    intensities: Optional[list] = None              # tag 3 sub 3, int16[] [VERIFIED - Bundle key "Grwflnkqmav"->"Intensities"]
-    probabilities: Optional[list] = None            # tag 3 sub 4, byte[] decoded as unsigned ints 0-255
-                                                     # [VERIFIED field - Bundle key "Nvrc_]kimplct"->"Probabilities";
-                                                     # INFERRED unit - observed values (e.g. 2, 1, 0) are consistent
-                                                     # with a direct 0-100 percentage per byte, one per Interval-sized
-                                                     # time step, same indexing as `intensities`, but no explicit
-                                                     # "these are percent" label was found in the decompiled code]
-    location_xy: Optional[tuple] = None            # tag 4 sub 1: (uint16,uint16), pixel position of the requested
-                                                     # location in the rain-image's native pixel space [VERIFIED,
-                                                     # p138u5/AbstractC1859b.java:226-229]
-    location_uv: Optional[tuple] = None            # tag 4 sub 2: (float,float), wind (U,V) AT that exact point
-                                                     # [VERIFIED, p138u5/AbstractC1859b.java:230-232]
-    payload_blob: Optional[bytes] = None           # tag 5, XOR+reversed          [VERIFIED transform AND content:
-                                                     # BitmapFactory.decodeByteArray(blob,1,len-1) in
-                                                     # MapWidgetProvider.java:114 / AsyncTaskC0698u.java:103
-                                                     # -> this is a standard image file (1 leading marker byte,
-                                                     # then PNG/JPEG bytes). See extract_map_image() below.]
-    aux_string: Optional[str] = None               # tag 7  [INFERRED - seen elsewhere as a server-supplied host]
-    wind: Optional["WindGrid"] = None               # tag 11 [VERIFIED field-for-field against
-                                                     # AsyncTaskC0695s1.java:150-164 + WindView.java + C1644q.java]
-    location_candidates: Optional[list] = None      # tag 12 sub 1/2/3: 3x int32[] [INFERRED - candidate
-                                                     # (lat*1e6, lon*1e6, id) triples for place-name search]
-    temperature_c: Optional[float] = None           # tag 14 sub 1  [VERIFIED - AbstractServiceC0711b.java:273
-                                                     # formats this as "%.0f °C"]
-    server_time_minutes_v1: Optional[int] = None    # tag 6, uint32 [INFERRED PURELY EMPIRICALLY - C1758g.java's
-                                                     # dispatch has NO case for tag 6, the app never reads this.
-                                                     # Decoded as minutes-since-2010-01-01, two captures ~15 min
-                                                     # apart showed an exact +15 delta landing precisely on both
-                                                     # capture times - see server_time_minutes_v1_datetime().
-    server_time_ms: Optional[int] = None            # tag 13, uint64 [INFERRED PURELY EMPIRICALLY - also has no
-                                                     # dispatch case. Decoded as milliseconds-since-Unix-epoch,
-                                                     # lands within ~7 minutes of the tag-6-derived time on the
-                                                     # same captures - see server_time_ms_datetime(). Most likely
-                                                     # both are just response-generation timestamps at different
-                                                     # precision/epoch, unused by the current app version - not
-                                                     # part of the weather data, not another protection layer.
-    raw_top_level_fields: dict = field(default_factory=dict)  # anything else, tag -> raw bytes
+    error_message: str | None = None  # tag 1  [VERIFIED shape]
+    reference_time_minutes: int | None = (
+        None  # tag 2  [VERIFIED - Bundle key "Rmpf"->"Time" in
+    )
+    # ShowForecastActivity.java:315; used mod 1440
+    # (minutes/day) in AbstractServiceC0711b.java:264]
+    interval: int | None = (
+        None  # tag 3 sub 1 [VERIFIED - Bundle key "Grwfpqci"->"Interval"]
+    )
+    intensities: list[int] | None = (
+        None  # tag 3 sub 3, int16[] [VERIFIED - Bundle key "Grwflnkqmav"->"Intensities"]
+    )
+    probabilities: list[int] | None = (
+        None  # tag 3 sub 4, byte[] decoded as unsigned ints 0-255
+    )
+    # [VERIFIED field - Bundle key "Nvrc_]kimplct"->"Probabilities";
+    # INFERRED unit - observed values (e.g. 2, 1, 0) are consistent
+    # with a direct 0-100 percentage per byte, one per Interval-sized
+    # time step, same indexing as `intensities`, but no explicit
+    # "these are percent" label was found in the decompiled code]
+    location_xy: tuple[int, int] | None = (
+        None  # tag 4 sub 1: (uint16,uint16), pixel position of the requested
+    )
+    # location in the rain-image's native pixel space [VERIFIED,
+    # p138u5/AbstractC1859b.java:226-229]
+    location_uv: tuple[float, float] | None = (
+        None  # tag 4 sub 2: (float,float), wind (U,V) AT that exact point
+    )
+    # [VERIFIED, p138u5/AbstractC1859b.java:230-232]
+    payload_blob: bytes | None = (
+        None  # tag 5, XOR+reversed          [VERIFIED transform AND content:
+    )
+    # BitmapFactory.decodeByteArray(blob,1,len-1) in
+    # MapWidgetProvider.java:114 / AsyncTaskC0698u.java:103
+    # -> this is a standard image file (1 leading marker byte,
+    # then PNG/JPEG bytes). See extract_map_image() below.]
+    aux_string: str | None = (
+        None  # tag 7  [INFERRED - seen elsewhere as a server-supplied host]
+    )
+    wind: WindGrid | None = None  # tag 11 [VERIFIED field-for-field against
+    # AsyncTaskC0695s1.java:150-164 + WindView.java + C1644q.java]
+    location_candidates: list[Any] | None = (
+        None  # tag 12 sub 1/2/3: 3x int32[] [INFERRED - candidate
+    )
+    # (lat*1e6, lon*1e6, id) triples for place-name search]
+    temperature_c: float | None = (
+        None  # tag 14 sub 1  [VERIFIED - AbstractServiceC0711b.java:273
+    )
+    # formats this as "%.0f °C"]
+    server_time_minutes_v1: int | None = (
+        None  # tag 6, uint32 [INFERRED PURELY EMPIRICALLY - C1758g.java's
+    )
+    # dispatch has NO case for tag 6, the app never reads this.
+    # Decoded as minutes-since-2010-01-01, two captures ~15 min
+    # apart showed an exact +15 delta landing precisely on both
+    # capture times - see server_time_minutes_v1_datetime().
+    server_time_ms: int | None = (
+        None  # tag 13, uint64 [INFERRED PURELY EMPIRICALLY - also has no
+    )
+    # dispatch case. Decoded as milliseconds-since-Unix-epoch,
+    # lands within ~7 minutes of the tag-6-derived time on the
+    # same captures - see server_time_ms_datetime(). Most likely
+    # both are just response-generation timestamps at different
+    # precision/epoch, unused by the current app version - not
+    # part of the weather data, not another protection layer.
+    raw_top_level_fields: dict[Any, Any] = field(
+        default_factory=dict
+    )  # anything else, tag -> raw bytes
 
-    def server_time_minutes_v1_datetime(self):
-        import datetime
+    def server_time_minutes_v1_datetime(self) -> datetime.datetime | None:
         if self.server_time_minutes_v1 is None:
             return None
-        return datetime.datetime(2010, 1, 1) + datetime.timedelta(minutes=self.server_time_minutes_v1)
+        epoch = datetime.datetime(2010, 1, 1, tzinfo=datetime.UTC)
+        return epoch + datetime.timedelta(minutes=self.server_time_minutes_v1)
 
-    def server_time_ms_datetime(self):
-        import datetime
+    def server_time_ms_datetime(self) -> datetime.datetime | None:
         if self.server_time_ms is None:
             return None
-        return datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=self.server_time_ms)
+        epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+        return epoch + datetime.timedelta(milliseconds=self.server_time_ms)
 
 
 @dataclass
@@ -243,23 +277,26 @@ class WindGrid:
     decompresses these fields at parse time, so `u_component`/`v_component`/
     `gust` on this dataclass are already the plain per-cell bytes;
     `coverage()` should read 100% for a successfully decompressed grid."""
+
     width: int
     height: int
     cell_scale: int
-    u_component: bytes    # signed bytes (post-decompression); value(i) = int8(u_component[i]) / wind_scale, m/s
-    v_component: bytes    # signed bytes (post-decompression); value(i) = int8(v_component[i]) / wind_scale, m/s
+    u_component: bytes  # signed bytes (post-decompression); value(i) = int8(u_component[i]) / wind_scale, m/s
+    v_component: bytes  # signed bytes (post-decompression); value(i) = int8(v_component[i]) / wind_scale, m/s
     wind_scale: float
-    gust: bytes            # unsigned bytes (post-decompression); value(i) = (gust[i] & 0xFF) / gust_scale, m/s
+    gust: bytes  # unsigned bytes (post-decompression); value(i) = (gust[i] & 0xFF) / gust_scale, m/s
     gust_scale: float
 
-    def coverage(self) -> tuple:
+    def coverage(self) -> tuple[int, int]:
         """(cells_declared, cells_actually_present). Should be 100% after
         decompression (m1770c enforces exactly width*height bytes or
         returns empty) - a value less than that most likely means
         decompression failed (corrupt/truncated capture, or a compression
         variant this stdlib call doesn't handle) rather than genuine sparse
         geographic coverage."""
-        return self.width * self.height, min(len(self.u_component), len(self.v_component))
+        return self.width * self.height, min(
+            len(self.u_component), len(self.v_component)
+        )
 
     @staticmethod
     def decompress_field(raw: bytes, expected_len: int) -> bytes:
@@ -275,7 +312,7 @@ class WindGrid:
             return b""
         return out
 
-    def nearest_populated_cell(self, x: int, y: int):
+    def nearest_populated_cell(self, x: int, y: int) -> tuple[int, int] | None:
         """Nearest actually-covered cell to (x, y), by real 2D grid distance
         (not by position in the flat byte array). Use this when the grid is
         sparse and the exact target cell has no data. Returns None if the
@@ -283,8 +320,8 @@ class WindGrid:
         n = min(len(self.u_component), len(self.v_component))
         if n == 0 or self.width == 0:
             return None
-        best = None
-        best_dist2 = None
+        best: tuple[int, int] | None = None
+        best_dist2: int | None = None
         for i in range(n):
             cx, cy = i % self.width, i // self.width
             dist2 = (cx - x) ** 2 + (cy - y) ** 2
@@ -292,7 +329,7 @@ class WindGrid:
                 best, best_dist2 = (cx, cy), dist2
         return best
 
-    def cell_for_coords(self, lat: float, lon: float) -> tuple:
+    def cell_for_coords(self, lat: float, lon: float) -> tuple[int, int]:
         """Direct lat/lon -> (grid_x, grid_y), derived from WindView.java's
         own math (not guessed): WindView.m1769c() projects (lon, lat) to a
         screen pixel position (to draw a "wind at your location" label)
@@ -317,7 +354,11 @@ class WindGrid:
         identify "the cell for this location", not guaranteed bit-identical
         to what WindView would compute on an actual device.
         """
-        jround2 = round(20.282986936 * lat + (-2.020678158 * lat + 176.386305317) * lon - 1325.222361859)
+        jround2 = round(
+            20.282986936 * lat
+            + (-2.020678158 * lat + 176.386305317) * lon
+            - 1325.222361859
+        )
         bands = [
             (7.587776, -116.369520756, 6492.217861582),
             (8.495436, -115.636075636, 6459.810519731),
@@ -337,7 +378,7 @@ class WindGrid:
         grid_y = round((jround - 6) / 1.125 / self.cell_scale)
         return grid_x, grid_y
 
-    def wind_at(self, x: int, y: int):
+    def wind_at(self, x: int, y: int) -> tuple[float, float, float] | None:
         """Returns (speed_m_s, direction_deg_from_north, gust_m_s) for grid
         cell (x,y), replicating WindView.m1766d's math verbatim - INCLUDING
         its own bounds check (WindView.java:146: "i11 >= c1644q.f6294a.length"),
@@ -351,11 +392,12 @@ class WindGrid:
         i = y * self.width + x
         if i >= len(self.u_component) or i >= len(self.v_component):
             return None
-        u = struct.unpack("b", self.u_component[i:i + 1])[0] / self.wind_scale
-        v = struct.unpack("b", self.v_component[i:i + 1])[0] / self.wind_scale
+        u = struct.unpack("b", self.u_component[i : i + 1])[0] / self.wind_scale
+        v = struct.unpack("b", self.v_component[i : i + 1])[0] / self.wind_scale
         speed = (u * u + v * v) ** 0.5
         gust = (self.gust[i] & 0xFF) / self.gust_scale if i < len(self.gust) else 0.0
         import math
+
         degrees = math.degrees(math.acos(v / speed)) if speed > 1e-5 else 0.0
         if u >= 0.0:
             degrees = 360.0 - degrees
@@ -410,8 +452,8 @@ def parse_forecast_response(data: bytes) -> ForecastResponse:
     r = TLVReader(body, 0, len(body))
     out = ForecastResponse()
     out.raw_top_level_fields["_header_uint32"] = data[0:4]
-    out.raw_top_level_fields["_header_matches_total_len"] = (header_value == len(data))
-    out.raw_top_level_fields["_header_matches_body_len"] = (header_value == len(body))
+    out.raw_top_level_fields["_header_matches_total_len"] = header_value == len(data)
+    out.raw_top_level_fields["_header_matches_body_len"] = header_value == len(body)
 
     tag = r.read_byte()
     while tag > -1:
@@ -446,14 +488,16 @@ def parse_forecast_response(data: bytes) -> ForecastResponse:
                 if st == 1:
                     out.interval = sub.read_byte()
                 elif st == 3:
-                    out.intensities = [sub.read_uint16() for _ in range(sub.remaining() // 2)]
+                    out.intensities = [
+                        sub.read_uint16() for _ in range(sub.remaining() // 2)
+                    ]
                 elif st == 4:
                     out.probabilities = list(sub.read_remaining_bytes())
                 field_reader.pos = send
                 st = field_reader.read_byte()
         elif tag == 11:
             # C1757f -> WindGrid, verified against AsyncTaskC0695s1.java:150-164
-            vals = {}
+            vals: dict[str, Any] = {}
             st = field_reader.read_byte()
             while st > -1:
                 slen = field_reader.read_length()
@@ -481,12 +525,17 @@ def parse_forecast_response(data: bytes) -> ForecastResponse:
             if {"width", "height", "u", "v", "wind_scale"} <= vals.keys():
                 cell_count = vals["width"] * vals["height"]
                 out.wind = WindGrid(
-                    width=vals["width"], height=vals["height"],
+                    width=vals["width"],
+                    height=vals["height"],
                     cell_scale=vals.get("cell_scale", 0),
                     u_component=WindGrid.decompress_field(vals["u"], cell_count),
                     v_component=WindGrid.decompress_field(vals["v"], cell_count),
                     wind_scale=vals["wind_scale"],
-                    gust=WindGrid.decompress_field(vals.get("gust", b""), cell_count) if vals.get("gust") else b"",
+                    gust=(
+                        WindGrid.decompress_field(vals.get("gust", b""), cell_count)
+                        if vals.get("gust")
+                        else b""
+                    ),
                     gust_scale=vals.get("gust_scale", 1.0),
                 )
         elif tag == 14:
@@ -517,8 +566,8 @@ def parse_forecast_response(data: bytes) -> ForecastResponse:
             #     not something the client derives.
             #   sub 2 (2x float) = (U,V) wind vector AT that exact point,
             #     also server-computed - NOT a scale/origin value.
-            loc_xy = None
-            loc_uv = None
+            loc_xy: tuple[int, int] | None = None
+            loc_uv: tuple[float, float] | None = None
             st = field_reader.read_byte()
             while st > -1:
                 slen = field_reader.read_length()

@@ -6,7 +6,9 @@
 def test_secret_key_not_shown_in_generic_api_keys_page(client, tmp_path, monkeypatch):
     """JTN-309: SECRET_KEY must not appear in the /settings/api-keys response."""
     env_file = tmp_path / ".env"
-    env_file.write_text("SECRET_KEY=super-secret\nCALENDAR_AUTH_PASSWORD_HOME=nasa123\n")
+    env_file.write_text(
+        "SECRET_KEY=super-secret\nCALENDAR_AUTH_PASSWORD_HOME=nasa123\n"
+    )
     monkeypatch.setattr("blueprints.apikeys.get_env_path", lambda: str(env_file))
 
     resp = client.get("/settings/api-keys")

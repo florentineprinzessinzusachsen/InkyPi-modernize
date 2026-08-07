@@ -2,7 +2,6 @@ import logging
 import os
 
 from dotenv import dotenv_values
-
 from flask import Blueprint
 
 logger = logging.getLogger(__name__)

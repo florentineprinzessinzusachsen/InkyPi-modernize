@@ -147,8 +147,7 @@ def test_sidebar_online_indicator_reflects_connectivity_state(client):
     # Retry button must be visible (not hidden) whenever offline.
     assert 'id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn"' in html
     assert (
-        'id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn" hidden'
-        not in html
+        'id="sidebarConnectivityRetryBtn" class="sidebar-retry-btn" hidden' not in html
     )
 
 

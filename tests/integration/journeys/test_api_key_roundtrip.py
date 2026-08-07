@@ -73,7 +73,9 @@ def test_api_key_add_edit_delete_roundtrip(live_server, browser_page, client):
         # Stub window.confirm so deleteKey()'s confirm() doesn't hang, and
         # window.location.reload so the post-save reload doesn't race
         # Playwright — we reload explicitly so we control timing.
-        page.evaluate("window.confirm = () => true;" "window.location.reload = () => {};")
+        page.evaluate(
+            "window.confirm = () => true;" "window.location.reload = () => {};"
+        )
 
         # ---- Step 2: add a new custom secret via the UI ----
         page.locator("#addCustomSecretBtn").click()

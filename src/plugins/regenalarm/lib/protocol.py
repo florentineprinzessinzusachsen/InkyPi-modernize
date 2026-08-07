@@ -24,8 +24,6 @@ capability by design.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Layer 0: the app-wide string/byte "obfuscation" (NOT real cryptography)
@@ -38,7 +36,9 @@ from typing import Optional
 STRING_KEY = [-2, 4, 3, 1, -2, -5, 2, -3, 4, -4, 3, -2, 1, -1, 2]
 
 
-def deobfuscate_string(s: str, key=STRING_KEY, decrypt: bool = True) -> str:
+def deobfuscate_string(
+    s: str, key: list[int] = STRING_KEY, decrypt: bool = True
+) -> str:
     """Port of AbstractC1653z.m3453q(String, int[], boolean).
 
     Additive substitution cipher, key repeats every len(key) chars.
@@ -54,8 +54,10 @@ def deobfuscate_string(s: str, key=STRING_KEY, decrypt: bool = True) -> str:
 # AbstractC1653z.m3438b - fixed 100-char repeating-key XOR applied to whole
 # request/response byte ranges (in addition to a byte-reversal, see below).
 # [VERIFIED] - read verbatim from AbstractC1653z.java:118.
-XOR_KEY = ("K$jh#!xi8&Uk?!;QPjks7jhi#PBdhsk2jFbnHbyniws9huz%()gFueih wgoQzW-*"
-           "#guZghC=sduPdsjsMj=Q-;[]);PAy<:>T!?")
+XOR_KEY = (
+    "K$jh#!xi8&Uk?!;QPjks7jhi#PBdhsk2jFbnHbyniws9huz%()gFueih wgoQzW-*"
+    "#guZghC=sduPdsjsMj=Q-;[]);PAy<:>T!?"
+)
 assert len(XOR_KEY) == 100
 
 
@@ -107,10 +109,10 @@ def decode_range(buf: bytearray, offset: int, length: int) -> None:
 class TLVWriter:
     """Port of p122s2/C1753b.java."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.buf = bytearray()
 
-    def raw_byte(self, v: int) -> "TLVWriter":
+    def raw_byte(self, v: int) -> TLVWriter:
         self.buf.append(v & 0xFF)
         return self
 
@@ -123,21 +125,21 @@ class TLVWriter:
             self.raw_byte((n >> 8) & 0xFF)
             self.raw_byte(n & 0xFF)
 
-    def byte_field(self, tag: int, value: int) -> "TLVWriter":
+    def byte_field(self, tag: int, value: int) -> TLVWriter:
         """m3708d - tag, len=1, single byte value."""
         self.raw_byte(tag)
         self.raw_byte(1)
         self.raw_byte(value)
         return self
 
-    def bool_field(self, tag: int, value: bool) -> "TLVWriter":
+    def bool_field(self, tag: int, value: bool) -> TLVWriter:
         """m3707c."""
         self.raw_byte(tag)
         self.raw_byte(1)
         self.raw_byte(1 if value else 0)
         return self
 
-    def uint32_field(self, tag: int, value: int) -> "TLVWriter":
+    def uint32_field(self, tag: int, value: int) -> TLVWriter:
         """m3714j - tag, len=4, 4-byte big-endian value ("long" in the app,
         but truncated to 32 bits on the wire)."""
         self.raw_byte(tag)
@@ -145,7 +147,7 @@ class TLVWriter:
         self.buf += struct.pack(">I", value & 0xFFFFFFFF)
         return self
 
-    def string_ascii(self, tag: int, s: Optional[str]) -> "TLVWriter":
+    def string_ascii(self, tag: int, s: str | None) -> TLVWriter:
         """m3706b."""
         data = b"" if s is None else s.encode("ascii", errors="replace")
         self.raw_byte(tag)
@@ -153,7 +155,7 @@ class TLVWriter:
         self.buf += data
         return self
 
-    def string_utf8(self, tag: int, s: Optional[str]) -> "TLVWriter":
+    def string_utf8(self, tag: int, s: str | None) -> TLVWriter:
         """m3715k."""
         data = b"" if s is None else s.encode("utf-8")
         self.raw_byte(tag)
@@ -161,14 +163,14 @@ class TLVWriter:
         self.buf += data
         return self
 
-    def submessage(self, tag: int, sub: "TLVWriter") -> "TLVWriter":
+    def submessage(self, tag: int, sub: TLVWriter) -> TLVWriter:
         """m3709e - nested TLVWriter embedded with its own length prefix."""
         self.raw_byte(tag)
         self._write_length(len(sub.buf))
         self.buf += sub.buf
         return self
 
-    def raw_float_pair(self, tag: int, a: float, b: float) -> "TLVWriter":
+    def raw_float_pair(self, tag: int, a: float, b: float) -> TLVWriter:
         """The coordinate field is hand-written (not via a generic helper):
         raw tag byte, raw length byte (always 8), then two big-endian
         IEEE-754 floats. [VERIFIED] AbstractC1646s.java:264-268."""
@@ -233,7 +235,7 @@ class TLVReader:
 
     def read_remaining_bytes(self) -> bytes:
         n = self.remaining()
-        out = self.buf[self.pos:self.pos + n]
+        out = self.buf[self.pos : self.pos + n]
         self.pos += n
         return bytes(out)
 
@@ -252,9 +254,9 @@ class TLVReader:
         return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 
     def read_float(self) -> float:
-        return struct.unpack(">f", struct.pack(">I", self.read_uint32()))[0]
+        return float(struct.unpack(">f", struct.pack(">I", self.read_uint32()))[0])
 
-    def read_int32_array(self) -> list:
+    def read_int32_array(self) -> list[int]:
         n = self.remaining() // 4
         return [self.read_uint32() for _ in range(n)]
 
@@ -264,7 +266,7 @@ class TLVReader:
         n = self.read_length()
         self.pos += n
 
-    def find_field(self, tag: int) -> Optional["TLVReader"]:
+    def find_field(self, tag: int) -> TLVReader | None:
         """Faithful port of C1752a.m3698f, INCLUDING its evaluation-order
         quirk - see class docstring. Non-destructive (restores self.pos)."""
         saved = self.pos

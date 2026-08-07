@@ -35,7 +35,7 @@ def _read_plugin_html(client, plugin_id: str = "ai_image") -> str:
 
 
 def test_manage_keys_control_opens_modal_not_a_link(client):
-    """"Manage keys" must open the inline modal, not navigate away."""
+    """ "Manage keys" must open the inline modal, not navigate away."""
     html = _read_plugin_html(client)
     assert 'data-open-modal="pluginApiKeyModal"' in html, (
         "The Manage keys control must open the inline API key modal via "
@@ -48,7 +48,7 @@ def test_inline_api_key_modal_rendered(client):
     html = _read_plugin_html(client)
     assert 'id="pluginApiKeyModal"' in html
     assert 'id="pluginApiKeySaveBtn"' in html
-    assert 'data-api-key-modal-input' in html
+    assert "data-api-key-modal-input" in html
 
 
 def test_inline_api_key_modal_has_accessibility_attrs(client):
@@ -114,6 +114,7 @@ def test_plugin_js_checks_api_key_presence_live():
     assert "api_keys_status" in js
     # The stale, page-load-only flag must not gate anything anymore.
     assert "apiKeyMissing" not in js
+
 
 def test_plugin_js_dirty_tracking_removed():
     """The old snapshot/dirty-check machinery is dead code now — removed."""

@@ -437,9 +437,7 @@ def _resolve_key_value_for_save(key: str, value: str) -> tuple[str | None, bool]
         )
         return None, True
     if _apikeys_mod._has_invalid_control_chars(value):
-        raise ClientInputError(
-            f"Invalid characters in value for {key}", status=400
-        )
+        raise ClientInputError(f"Invalid characters in value for {key}", status=400)
     return value, False
 
 

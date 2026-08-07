@@ -46,14 +46,12 @@ def test_generic_api_keys_list_inputs_have_aria_labels(client, monkeypatch, tmp_
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
-    match = re.search(
-        r'<input type="password" id="([^"]+)" name="ANOTHER_KEY"', html
-    )
+    match = re.search(r'<input type="password" id="([^"]+)" name="ANOTHER_KEY"', html)
     assert match, "Expected a password input named ANOTHER_KEY"
     input_id = match.group(1)
-    assert f'for="{input_id}">ANOTHER_KEY</label>' in html, (
-        f"Expected a <label for={input_id!r}> giving the input its accessible name"
-    )
+    assert (
+        f'for="{input_id}">ANOTHER_KEY</label>' in html
+    ), f"Expected a <label for={input_id!r}> giving the input its accessible name"
 
 
 def test_managed_api_keys_card_delete_button_has_aria_label(client, device_config_dev):

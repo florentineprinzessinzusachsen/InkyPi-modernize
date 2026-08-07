@@ -177,9 +177,7 @@ class TestDeleteApiKey:
         # A well-formed but unregistered name (e.g. "EVIL_KEY") is now a
         # legitimate custom-secret delete target and returns 200 - only
         # malformed names or reserved internal keys are rejected.
-        resp = client.post(
-            "/settings/delete_api_key", data={"key": "not a valid key!"}
-        )
+        resp = client.post("/settings/delete_api_key", data={"key": "not a valid key!"})
         assert resp.status_code == 400
 
     def test_delete_api_key_missing_key(self, client):

@@ -35,6 +35,17 @@ can read whenever it wants - not "secure" in an absolute sense, just the
 best this app's existing tools allow.
 """
 
+import logging
+import re
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from typing import Any
+
+import icalendar
+import recurring_ical_events
+from PIL import ImageColor
+
 from plugins.base_plugin.base_plugin import BasePlugin
 from plugins.base_plugin.settings_schema import (
     callout,
@@ -47,13 +58,6 @@ from plugins.base_plugin.settings_schema import (
     widget,
 )
 from plugins.calendar_auth.constants import FONT_SIZES, LOCALE_GROUPS, LOCALE_MAP
-from PIL import ImageColor
-from concurrent.futures import ThreadPoolExecutor
-import icalendar
-import re
-import recurring_ical_events
-import logging
-from datetime import datetime, timedelta
 from utils.app_utils import resolve_path
 from utils.http_client import get_http_session
 from utils.time_utils import get_timezone
@@ -64,7 +68,7 @@ VALID_LABEL = re.compile(r"^[A-Za-z0-9_]+$")
 
 
 class CalendarAuth(BasePlugin):
-    def build_settings_schema(self):
+    def build_settings_schema(self) -> Any:
         return schema(
             section(
                 "Calendars",
@@ -245,32 +249,39 @@ class CalendarAuth(BasePlugin):
             ),
         )
 
-    def generate_settings_template(self):
+    def generate_settings_template(self) -> Any:
         template_params = super().generate_settings_template()
-        template_params['style_settings'] = True
-        template_params['locale_map'] = LOCALE_MAP
+        template_params["style_settings"] = True
+        template_params["locale_map"] = LOCALE_MAP
         return template_params
 
-    def generate_image(self, settings, device_config):
+    def generate_image(self, settings: Mapping[str, Any], device_config: Any) -> Any:
         entries = self._parse_entries(
-            settings.get('calendarAuthURLs[]'),
-            settings.get('calendarAuthColors[]'),
-            settings.get('calendarAuthUsernames[]'),
-            settings.get('calendarAuthLabels[]'),
+            settings.get("calendarAuthURLs[]"),
+            settings.get("calendarAuthColors[]"),
+            settings.get("calendarAuthUsernames[]"),
+            settings.get("calendarAuthLabels[]"),
         )
         view = settings.get("viewMode")
 
         if not view:
             raise RuntimeError("View is required")
-        elif view not in ["timeGridDay", "timeGridWeek", "dayGrid", "dayGridMonth", "listMonth"]:
+        if view not in [
+            "timeGridDay",
+            "timeGridWeek",
+            "dayGrid",
+            "dayGridMonth",
+            "listMonth",
+        ]:
             raise RuntimeError("Invalid view")
 
         if not entries:
             raise RuntimeError("At least one calendar URL is required")
 
-        calendars = []
-        for entry in entries:
-            calendars.append((entry["url"], entry["color"], self._auth_for_entry(entry, device_config)))
+        calendars = [
+            (entry["url"], entry["color"], self._auth_for_entry(entry, device_config))
+            for entry in entries
+        ]
 
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
@@ -287,17 +298,19 @@ class CalendarAuth(BasePlugin):
         if not events:
             logger.warning("No events found for ics url")
 
-        if view == 'timeGridWeek' and settings.get("displayPreviousDays") != "true":
-            view = 'timeGrid'
+        if view == "timeGridWeek" and settings.get("displayPreviousDays") != "true":
+            view = "timeGrid"
 
-        template_params = {
+        template_params: dict[str, Any] = {
             "view": view,
             "events": events,
-            "current_dt": current_dt.replace(minute=0, second=0, microsecond=0).isoformat(),
+            "current_dt": current_dt.replace(
+                minute=0, second=0, microsecond=0
+            ).isoformat(),
             "timezone": timezone,
             "plugin_settings": settings,
             "time_format": time_format,
-            "font_scale": FONT_SIZES.get(settings.get("fontSize", "normal"))
+            "font_scale": FONT_SIZES.get(settings.get("fontSize", "normal")),
         }
 
         # calendar_auth.html references {{static_dir}}/scripts/calendar.min.js to
@@ -311,31 +324,47 @@ class CalendarAuth(BasePlugin):
         # ReferenceError invisible to the Python-side logs.
         template_params["static_dir"] = self.to_file_url(resolve_path("static"))
 
-        image = self.render_image(dimensions, "calendar_auth.html", "calendar_auth.css", template_params)
+        image = self.render_image(
+            dimensions, "calendar_auth.html", "calendar_auth.css", template_params
+        )
 
         if not image:
             raise RuntimeError("Failed to take screenshot, please check logs.")
         return image
 
-    def _parse_entries(self, urls, colors, usernames, labels):
+    def _parse_entries(
+        self, urls: Any, colors: Any, usernames: Any, labels: Any
+    ) -> list[dict[str, str]]:
         urls = urls or []
         colors = colors or []
         usernames = usernames or []
         labels = labels or []
-        entries = []
+        entries: list[dict[str, str]] = []
         for i, raw_url in enumerate(urls):
             url = (raw_url or "").strip()
             if not url:
                 continue
-            entries.append({
-                "url": url,
-                "color": (colors[i] if i < len(colors) and colors[i] else "#007BFF"),
-                "username": (usernames[i].strip() if i < len(usernames) and usernames[i] else ""),
-                "label": (labels[i].strip() if i < len(labels) and labels[i] else ""),
-            })
+            entries.append(
+                {
+                    "url": url,
+                    "color": (
+                        colors[i] if i < len(colors) and colors[i] else "#007BFF"
+                    ),
+                    "username": (
+                        usernames[i].strip()
+                        if i < len(usernames) and usernames[i]
+                        else ""
+                    ),
+                    "label": (
+                        labels[i].strip() if i < len(labels) and labels[i] else ""
+                    ),
+                }
+            )
         return entries
 
-    def _auth_for_entry(self, entry, device_config):
+    def _auth_for_entry(
+        self, entry: dict[str, Any], device_config: Any
+    ) -> tuple[str, str] | None:
         if not entry["username"]:
             return None
         label = entry["label"]
@@ -347,11 +376,19 @@ class CalendarAuth(BasePlugin):
         key = f"CALENDAR_AUTH_PASSWORD_{label.upper()}"
         password = device_config.load_env_key(key)
         if not password:
-            raise RuntimeError(f"Username set for '{entry['url']}' but {key} isn't configured. Set it on the API Keys page.")
+            raise RuntimeError(
+                f"Username set for '{entry['url']}' but {key} isn't configured. Set it on the API Keys page."
+            )
         return (entry["username"], password)
 
-    def fetch_ics_events(self, calendars, tz, start_range, end_range):
-        parsed_events = []
+    def fetch_ics_events(
+        self,
+        calendars: list[tuple[str, str, tuple[str, str] | None]],
+        tz: Any,
+        start_range: datetime,
+        end_range: datetime,
+    ) -> list[dict[str, Any]]:
+        parsed_events: list[dict[str, Any]] = []
 
         # Calendar fetches are pure network I/O (each one measured 1-3s+
         # against a slow remote server) and were previously done one at a
@@ -370,7 +407,9 @@ class CalendarAuth(BasePlugin):
                 )
             )
 
-        for (calendar_url, color, auth), cal in zip(calendars, fetched_calendars):
+        for (_calendar_url, color, _auth), cal in zip(
+            calendars, fetched_calendars, strict=True
+        ):
             events = recurring_ical_events.of(cal).between(start_range, end_range)
             contrast_color = self.get_contrast_color(color)
 
@@ -381,17 +420,22 @@ class CalendarAuth(BasePlugin):
                     "start": start,
                     "backgroundColor": color,
                     "textColor": contrast_color,
-                    "allDay": all_day
+                    "allDay": all_day,
                 }
                 if end:
-                    parsed_event['end'] = end
+                    parsed_event["end"] = end
 
                 parsed_events.append(parsed_event)
 
         return parsed_events
 
-    def get_view_range(self, view, current_dt, settings):
-        start = datetime(current_dt.year, current_dt.month, current_dt.day)
+    def get_view_range(
+        self, view: str, current_dt: datetime, settings: Mapping[str, Any]
+    ) -> tuple[datetime, datetime]:
+        tzinfo = current_dt.tzinfo
+        start = datetime(
+            current_dt.year, current_dt.month, current_dt.day, tzinfo=tzinfo
+        )
         if view == "timeGridDay":
             end = start + timedelta(days=1)
         elif view == "timeGridWeek":
@@ -400,19 +444,23 @@ class CalendarAuth(BasePlugin):
                 python_week_start = (week_start_day - 1) % 7
                 offset = (current_dt.weekday() - python_week_start) % 7
                 start = current_dt - timedelta(days=offset)
-                start = datetime(start.year, start.month, start.day)
+                start = datetime(start.year, start.month, start.day, tzinfo=tzinfo)
             end = start + timedelta(days=7)
         elif view == "dayGrid":
             start = current_dt - timedelta(weeks=1)
             end = current_dt + timedelta(weeks=int(settings.get("displayWeeks") or 4))
         elif view == "dayGridMonth":
-            start = datetime(current_dt.year, current_dt.month, 1) - timedelta(weeks=1)
-            end = datetime(current_dt.year, current_dt.month, 1) + timedelta(weeks=6)
+            start = datetime(
+                current_dt.year, current_dt.month, 1, tzinfo=tzinfo
+            ) - timedelta(weeks=1)
+            end = datetime(
+                current_dt.year, current_dt.month, 1, tzinfo=tzinfo
+            ) + timedelta(weeks=6)
         elif view == "listMonth":
             end = start + timedelta(weeks=5)
         return start, end
 
-    def parse_data_points(self, event, tz):
+    def parse_data_points(self, event: Any, tz: Any) -> tuple[str, str | None, bool]:
         all_day = False
         dtstart = event.decoded("dtstart")
         if isinstance(dtstart, datetime):
@@ -433,7 +481,9 @@ class CalendarAuth(BasePlugin):
             end = (dtstart + duration).isoformat()
         return start, end, all_day
 
-    def fetch_calendar(self, calendar_url, auth, session=None):
+    def fetch_calendar(
+        self, calendar_url: str, auth: tuple[str, str] | None, session: Any = None
+    ) -> Any:
         # workaround for webcal urls
         if calendar_url.startswith("webcal://"):
             calendar_url = calendar_url.replace("webcal://", "https://")
@@ -443,9 +493,9 @@ class CalendarAuth(BasePlugin):
             response.raise_for_status()
             return icalendar.Calendar.from_ical(response.text)
         except Exception as e:
-            raise RuntimeError(f"Failed to fetch iCalendar url: {str(e)}")
+            raise RuntimeError(f"Failed to fetch iCalendar url: {str(e)}") from e
 
-    def get_contrast_color(self, color):
+    def get_contrast_color(self, color: str) -> str:
         """
         Returns '#000000' (black) or '#ffffff' (white) depending on the contrast
         against the given color.
@@ -454,4 +504,4 @@ class CalendarAuth(BasePlugin):
         # YIQ formula to estimate brightness
         yiq = (r * 299 + g * 587 + b * 114) / 1000
 
-        return '#000000' if yiq >= 150 else '#ffffff'
+        return "#000000" if yiq >= 150 else "#ffffff"

@@ -25,9 +25,7 @@ from utils.time_utils import now_device_tz
 def download_logs() -> Response:
     allowed, reason = local_or_authenticated_access_allowed("log download endpoint")
     if not allowed:
-        return Response(
-            reason or "Forbidden", status=403, mimetype="text/plain"
-        )
+        return Response(reason or "Forbidden", status=403, mimetype="text/plain")
     try:
         # Guardrail hours clamp
         hours = _mod._clamp_int(

@@ -23,8 +23,7 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from app_setup.compression import apply_response_compression
 from app_setup.smoke import SMOKE_RENDER_PATH, smoke_render_enabled
 from config import Config
-from utils.http_utils import env_bool as _env_bool
-from utils.http_utils import json_error
+from utils.http_utils import env_bool as _env_bool, json_error
 from utils.rate_limit import (
     TokenBucket,
     make_auth_bucket,

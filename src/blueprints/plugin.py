@@ -222,9 +222,7 @@ def plugin_page(plugin_id: str) -> Any:
             requirement_check = getattr(plugin, "api_key_required_for_settings", None)
             if callable(requirement_check):
                 settings_for_check = template_params.get("plugin_settings") or {}
-                api_key_meta["required"] = bool(
-                    requirement_check(settings_for_check)
-                )
+                api_key_meta["required"] = bool(requirement_check(settings_for_check))
 
         template_params["playlists"] = playlist_manager.get_playlist_names()
 
@@ -1217,7 +1215,9 @@ def _preview_scratch_path(device_config: Any, plugin_id: str) -> str:
     no saved instance yet for a draft plugin, and this is throwaway scratch
     space, not the real per-instance cache instance_image() maintains)."""
     safe_id = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in plugin_id)
-    return os.path.join(device_config.plugin_image_dir, f"_preview_scratch_{safe_id}.png")
+    return os.path.join(
+        device_config.plugin_image_dir, f"_preview_scratch_{safe_id}.png"
+    )
 
 
 @plugin_bp.route("/preview_now", methods=["POST"])  # type: ignore[untyped-decorator]
@@ -1277,7 +1277,9 @@ def preview_now() -> Any:
                 exc_info=True,
             )
             return json_error(
-                SCREENSHOT_BACKEND_UNAVAILABLE_MSG, status=503, code="backend_unavailable"
+                SCREENSHOT_BACKEND_UNAVAILABLE_MSG,
+                status=503,
+                code="backend_unavailable",
             )
         except TimeoutError:
             logger.warning(

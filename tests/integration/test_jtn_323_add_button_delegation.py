@@ -24,7 +24,9 @@ def test_js_delegation_handler_covers_add_row_action(client):
     assert resp.status_code == 200
     js = resp.get_data(as_text=True)
 
-    assert '"add-custom-secret"' in js, "JS must include an 'add-custom-secret' action case"
+    assert (
+        '"add-custom-secret"' in js
+    ), "JS must include an 'add-custom-secret' action case"
     assert (
         "addCustomSecretCard();" in js
     ), "The 'add-custom-secret' action must call addCustomSecretCard()"

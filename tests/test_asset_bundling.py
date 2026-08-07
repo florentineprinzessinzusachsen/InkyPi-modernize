@@ -121,7 +121,11 @@ class TestBuildAssetsScript:
         deferred_content = (dist / manifest["common-deferred.js"]).read_text(
             encoding="utf-8"
         )
-        for expected_file in ["form_validator.js", "response_modal.js", "form_state.js"]:
+        for expected_file in [
+            "form_validator.js",
+            "response_modal.js",
+            "form_state.js",
+        ]:
             assert (
                 expected_file in deferred_content
             ), f"Expected '{expected_file}' marker in deferred JS bundle"

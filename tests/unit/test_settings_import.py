@@ -72,9 +72,7 @@ class TestImportSettings:
         }
         resp = client.post("/settings/import", json=payload)
         assert resp.status_code == 200
-        assert (
-            device_config_dev.load_env_key("CALENDAR_AUTH_PASSWORD_WORK") == "s3cret"
-        )
+        assert device_config_dev.load_env_key("CALENDAR_AUTH_PASSWORD_WORK") == "s3cret"
 
     def test_import_invalid_payload(self, client):
         resp = client.post(

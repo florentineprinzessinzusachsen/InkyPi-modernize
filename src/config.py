@@ -216,7 +216,8 @@ class Config:
         3. INKYPI_ENV=dev implies device_dev.json if present
         4. device.json if present
         5. device_dev.json if present
-        6. Bootstrap device.json from install/config_base/device.json
+        6. Bootstrap from install/config_base/ — device_dev.json (mock display)
+           when INKYPI_ENV=dev, otherwise device.json
         """
         base_dir = self.BASE_DIR
         config_dir = os.path.join(base_dir, "config")
@@ -278,22 +279,36 @@ class Config:
             )
             return dev_path
 
-        # 6) Bootstrap from template if neither exists
-        template_path = os.path.abspath(
-            os.path.join(base_dir, "..", "install", "config_base", _DEVICE_JSON)
-        )
+        # 6) Bootstrap from template if neither exists. In dev mode this must
+        # bootstrap from device_dev.json (display_type "mock") rather than the
+        # prod template (no display_type key, DisplayManager defaults that to
+        # "inky") — otherwise a fresh checkout with INKYPI_ENV=dev and no
+        # config files yet on disk silently ends up probing for real EPD/Inky
+        # hardware instead of using the mock display.
+        if env_mode in ("dev", "development"):
+            template_path = os.path.abspath(
+                os.path.join(
+                    base_dir, "..", "install", "config_base", "device_dev.json"
+                )
+            )
+            bootstrap_path = dev_path
+        else:
+            template_path = os.path.abspath(
+                os.path.join(base_dir, "..", "install", "config_base", _DEVICE_JSON)
+            )
+            bootstrap_path = prod_path
         try:
             os.makedirs(config_dir, exist_ok=True)
-            shutil.copyfile(template_path, prod_path)
+            shutil.copyfile(template_path, bootstrap_path)
             logger.warning(
-                "config_loaded: Bootstrapped new device.json from template",
+                "config_loaded: Bootstrapped new config from template",
                 extra={
                     "source": "bootstrap",
-                    "path": prod_path,
+                    "path": bootstrap_path,
                     "template": template_path,
                 },
             )
-            return prod_path
+            return bootstrap_path
         except Exception as ex:
             raise RuntimeError(
                 f"Unable to locate or create a device configuration file. Checked: "

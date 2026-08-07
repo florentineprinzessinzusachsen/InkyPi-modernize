@@ -2,7 +2,7 @@
 
 Two install paths. Pick based on hardware and patience.
 
-## Option 1 — Pre-built image (Pi Zero 2 W only)
+## Option 1 — Pre-built image (Pi Zero 2 W only) (JTN-533)
 
 Every tagged GitHub release ships a pre-installed `.img.xz` (`.github/workflows/build-pi-image.yml`): Pi OS Lite arm64 with InkyPi already installed and enabled as a systemd service. Nothing personal (hostname, Wi-Fi, SSH credentials) is baked in — Pi Imager's advanced options handle that at flash time. The qemu boot-verification proves the kernel reaches userspace but can't simulate real GPIO/SPI — treat it like any OS image and verify the display lights up on real hardware.
 
@@ -47,7 +47,7 @@ Use this for the latest `main`, contributing, a non-Zero-2-W board, or full visi
 - Watching an unattended cloud-init install: redirect output in your `runcmd:` block (`... > /var/log/inkypi-install.log 2>&1 && touch /var/log/inkypi-install.done || touch /var/log/inkypi-install.failed`), then `tail -f /var/log/inkypi-install.log` after boot.
 - The "[Known Issues during Pi Zero W Installation](./troubleshooting.md#known-issues-during-pi-zero-w-installation)" section covers the **original** 32-bit Pi Zero W, not the Zero 2 W — the Zero 2 W (4× Cortex-A53, ARMv8) doesn't hit those issues as long as zramswap is active (automatic).
 
-### cloud-init `runcmd` one-shot trap
+### Re-editing user-data after first boot: the cloud-init `runcmd` one-shot trap (JTN-591)
 
 If you flash a card, boot the Pi once (even a failed Wi-Fi boot counts), then re-mount the card and add/change a `runcmd:` block in `/boot/firmware/user-data` before booting again — **`runcmd` silently never runs**. No error, no log line.
 

@@ -72,8 +72,8 @@ LAYOUT_METRICS = {
     "board": {
         # Calendar pane: chrome is the title rule + its margin.
         "cal_chrome": 24,
-        "cal_day": 5,       # per-day padding + separator
-        "cal_row": 17,      # per-event line
+        "cal_day": 5,  # per-day padding + separator
+        "cal_row": 17,  # per-event line
         # Departure pane: chrome is the title rule plus the column header.
         "dep_chrome": 43,
         # 20, not the 17px line-height: baseline-aligning the larger

@@ -64,8 +64,10 @@ import logging
 import math
 import os
 import re
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
+from typing import Any
 from urllib.parse import quote
 
 import icalendar
@@ -96,7 +98,9 @@ logger = logging.getLogger(__name__)
 VALID_LABEL = re.compile(r"^[A-Za-z0-9_]+$")
 
 DEPARTURES_DURATION_MIN = 60
-DEPARTURES_RESULTS = 15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
+DEPARTURES_RESULTS = (
+    15  # starting pre-filter cap; a busy multi-line stop learns a bigger one, see below
+)
 # Sanity ceiling on how many departures a single stop ever keeps, regardless
 # of the current layout's computed capacity (_board_departure_capacity /
 # _grid_departure_capacity) - guards a pathological _content_box() result,
@@ -121,7 +125,9 @@ DEPARTURES_RESULTS_CEILING = 80
 # indefinitely, with nothing ever pulling it back down.
 DEPARTURES_HEADROOM = 1.3
 DEPARTURES_SMOOTHING = 0.5
-DEPARTURES_TIMEOUT = 6  # short so a hung provider fails fast inside the executor's budget
+DEPARTURES_TIMEOUT = (
+    6  # short so a hung provider fails fast inside the executor's budget
+)
 CALENDAR_TIMEOUT = 20
 
 # Query flags that strip parts of the departures response this panel never
@@ -148,12 +154,14 @@ _ICS_CACHE_PREFIX = "_cal_abfahrt_ics_cache_"
 _DEPARTURES_CACHE_PREFIX = "_cal_abfahrt_departures_cache_"
 
 
-def _calendar_cache_path(device_config, url):
+def _calendar_cache_path(device_config: Any, url: str) -> str:
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:32]
-    return os.path.join(device_config.plugin_image_dir, f"{_ICS_CACHE_PREFIX}{digest}.json")
+    return os.path.join(
+        device_config.plugin_image_dir, f"{_ICS_CACHE_PREFIX}{digest}.json"
+    )
 
 
-def _load_calendar_cache(device_config, url):
+def _load_calendar_cache(device_config: Any, url: str) -> dict[str, Any] | None:
     """Returns the cached {etag, last_modified, body, expanded} dict for
     `url`, or None.
 
@@ -171,7 +179,14 @@ def _load_calendar_cache(device_config, url):
     return data
 
 
-def _store_calendar_cache(device_config, url, etag, last_modified, body, expanded=None):
+def _store_calendar_cache(
+    device_config: Any,
+    url: str,
+    etag: str | None,
+    last_modified: str | None,
+    body: str,
+    expanded: dict[str, Any] | None = None,
+) -> None:
     """Writes the cache file via a temp-file-plus-rename so a concurrent
     reader (another refresh, or this same file mid-read) never sees a
     partially-written file.
@@ -183,7 +198,11 @@ def _store_calendar_cache(device_config, url, etag, last_modified, body, expande
     try:
         path = _calendar_cache_path(device_config, url)
         tmp_path = f"{path}.tmp"
-        payload = {"etag": etag, "last_modified": last_modified, "body": body}
+        payload: dict[str, Any] = {
+            "etag": etag,
+            "last_modified": last_modified,
+            "body": body,
+        }
         if expanded is not None:
             payload["expanded"] = expanded
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -193,14 +212,14 @@ def _store_calendar_cache(device_config, url, etag, last_modified, body, expande
         logger.debug("Could not write calendar cache for %s: %s", url, e)
 
 
-def _departures_cache_path(device_config, provider, stop_id):
+def _departures_cache_path(device_config: Any, provider: str, stop_id: str) -> str:
     digest = hashlib.sha256(f"{provider}:{stop_id}".encode()).hexdigest()[:32]
     return os.path.join(
         device_config.plugin_image_dir, f"{_DEPARTURES_CACHE_PREFIX}{digest}.json"
     )
 
 
-def _load_learned_results(device_config, provider, stop_id):
+def _load_learned_results(device_config: Any, provider: str, stop_id: str) -> int:
     """Returns the learned `results` page size for one stop, or the default.
 
     A stop shared by several frequent lines (trams, buses) can crowd a
@@ -214,7 +233,9 @@ def _load_learned_results(device_config, provider, stop_id):
     missing/corrupt file just means "start from the default again".
     """
     try:
-        with open(_departures_cache_path(device_config, provider, stop_id), encoding="utf-8") as f:
+        with open(
+            _departures_cache_path(device_config, provider, stop_id), encoding="utf-8"
+        ) as f:
             data = json.load(f)
     except (OSError, ValueError, AttributeError):
         return DEPARTURES_RESULTS
@@ -224,7 +245,9 @@ def _load_learned_results(device_config, provider, stop_id):
     return min(value, DEPARTURES_RESULTS_CEILING)
 
 
-def _store_learned_results(device_config, provider, stop_id, results):
+def _store_learned_results(
+    device_config: Any, provider: str, stop_id: str, results: int
+) -> None:
     try:
         path = _departures_cache_path(device_config, provider, stop_id)
         tmp_path = f"{path}.tmp"
@@ -232,15 +255,19 @@ def _store_learned_results(device_config, provider, stop_id, results):
             json.dump({"results": results}, f)
         os.replace(tmp_path, path)
     except (OSError, AttributeError) as e:
-        logger.debug("Could not write departures cache for %s/%s: %s", provider, stop_id, e)
+        logger.debug(
+            "Could not write departures cache for %s/%s: %s", provider, stop_id, e
+        )
 
 
-def _grow_results_cap(current):
+def _grow_results_cap(current: int) -> int:
     """Returns a bigger page size to try next time, capped at the ceiling."""
     return min(DEPARTURES_RESULTS_CEILING, max(current + 5, round(current * 1.5)))
 
 
-def _serialize_expanded_events(window_date, events):
+def _serialize_expanded_events(
+    window_date: date, events: list[dict[str, Any]]
+) -> dict[str, Any]:
     """Packs a calendar's already-parsed-and-expanded event list for the
     disk cache. `window_date` is range_start.date() - the expansion window
     only changes once a day (see generate_image), so a cache entry is only
@@ -259,21 +286,34 @@ def _serialize_expanded_events(window_date, events):
     }
 
 
-def _deserialize_expanded_events(expanded, window_date, color, text_color):
+def _deserialize_expanded_events(
+    expanded: Any, window_date: date, color: str, text_color: str
+) -> list[dict[str, Any]] | None:
     """Inverse of _serialize_expanded_events, reattaching this render's
     color/text_color (per-instance display settings, not calendar data, so
     never part of the cached payload). Returns None if `expanded` is missing,
     malformed, or was computed for a different day's window."""
-    if not isinstance(expanded, dict) or expanded.get("date") != window_date.isoformat():
+    if (
+        not isinstance(expanded, dict)
+        or expanded.get("date") != window_date.isoformat()
+    ):
         return None
     try:
-        events = []
+        events: list[dict[str, Any]] = []
         for e in expanded["events"]:
             all_day = e["all_day"]
-            start = date.fromisoformat(e["start"]) if all_day else datetime.fromisoformat(e["start"])
-            end = None
+            start = (
+                date.fromisoformat(e["start"])
+                if all_day
+                else datetime.fromisoformat(e["start"])
+            )
+            end: date | None = None
             if e["end"]:
-                end = date.fromisoformat(e["end"]) if all_day else datetime.fromisoformat(e["end"])
+                end = (
+                    date.fromisoformat(e["end"])
+                    if all_day
+                    else datetime.fromisoformat(e["end"])
+                )
             events.append(
                 {
                     "title": e["title"],
@@ -295,7 +335,7 @@ _PARENTHETICAL_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
 _VIA_SUFFIX = re.compile(r"\s+via\s+.*$", re.IGNORECASE)
 
 
-def _shorten_place(text):
+def _shorten_place(text: str | None) -> str:
     """Trims the parts of a stop/direction string that carry no information on
     a panel where every entry is in the same city anyway."""
     if not text:
@@ -305,10 +345,10 @@ def _shorten_place(text):
     return text.replace("S+U ", "").strip() or text.strip()
 
 
-def _parse_stop_entries(raw_entries):
+def _parse_stop_entries(raw_entries: Any) -> list[dict[str, Any]]:
     """Parses the settings' `entries[]` list of JSON blobs into dicts, skipping
     any that fail to parse (e.g. a hand-edited config)."""
-    entries = []
+    entries: list[dict[str, Any]] = []
     for raw in raw_entries or []:
         try:
             entry = json.loads(raw)
@@ -325,11 +365,11 @@ def _parse_stop_entries(raw_entries):
     return entries
 
 
-def _group_by_stop(entries):
+def _group_by_stop(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Groups entries by (provider, stopId), preserving first-seen order, so
     a stop with five configured lines still costs exactly one HTTP request."""
-    groups = {}
-    order = []
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
     for entry in entries:
         key = (entry["provider"], entry["stopId"])
         if key not in groups:
@@ -344,7 +384,7 @@ def _group_by_stop(entries):
     return [groups[key] for key in order]
 
 
-def _parse_when(value):
+def _parse_when(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
@@ -353,7 +393,7 @@ def _parse_when(value):
         return None
 
 
-def _is_cancelled(departure):
+def _is_cancelled(departure: Mapping[str, Any]) -> bool:
     if departure.get("cancelled"):
         return True
     for remark in departure.get("remarks") or []:
@@ -362,14 +402,20 @@ def _is_cancelled(departure):
     return False
 
 
-def _fit_days(days, available_px, row_px, day_px, min_body_px=0):
+def _fit_days(
+    days: list[dict[str, Any]],
+    available_px: int,
+    row_px: int,
+    day_px: int,
+    min_body_px: int = 0,
+) -> list[dict[str, Any]]:
     """Trims the agenda to the days that actually fit in `available_px`.
 
     A day is kept whole or dropped entirely - never sliced - because every
     pane clips with overflow:hidden and a row cut through its middle reads as
     a rendering bug rather than a deliberate cut-off.
     """
-    kept = []
+    kept: list[dict[str, Any]] = []
     used = 0
     for day in days:
         body = max(min_body_px, row_px * len(day["events"]))
@@ -381,7 +427,7 @@ def _fit_days(days, available_px, row_px, day_px, min_body_px=0):
     return kept
 
 
-def _board_departure_capacity(content_h):
+def _board_departure_capacity(content_h: int) -> int:
     """Row budget for the merged board layout's departure column.
 
     A pure function of the panel's available height alone - the calendar and
@@ -395,7 +441,7 @@ def _board_departure_capacity(content_h):
     return max(1, (content_h - metrics["dep_chrome"]) // metrics["dep_row"])
 
 
-def _grid_departure_capacity(stop_count, content_h):
+def _grid_departure_capacity(stop_count: int, content_h: int) -> int:
     """Per-card row budget for the grid layout - see CalAbfahrt._layout_grid.
 
     Depends on how many stops are configured (more stops -> more grid rows ->
@@ -416,7 +462,7 @@ class CalAbfahrt(BasePlugin):
     # Settings page
     # ------------------------------------------------------------------
 
-    def build_settings_schema(self):
+    def build_settings_schema(self) -> Any:
         return schema(
             section(
                 "Layout",
@@ -497,7 +543,7 @@ class CalAbfahrt(BasePlugin):
             ),
         )
 
-    def generate_settings_template(self):
+    def generate_settings_template(self) -> Any:
         template_params = super().generate_settings_template()
         template_params["style_settings"] = True
         return template_params
@@ -506,7 +552,7 @@ class CalAbfahrt(BasePlugin):
     # Render
     # ------------------------------------------------------------------
 
-    def generate_image(self, settings, device_config):
+    def generate_image(self, settings: Mapping[str, Any], device_config: Any) -> Any:
         calendars = self._parse_calendar_entries(settings)
         stop_groups = _group_by_stop(_parse_stop_entries(settings.get("entries[]")))
 
@@ -523,7 +569,9 @@ class CalAbfahrt(BasePlugin):
         tz = get_timezone(timezone)
         now = datetime.now(tz)
 
-        days_ahead = self._int_setting(settings, "daysAhead", default=21, low=1, high=90)
+        days_ahead = self._int_setting(
+            settings, "daysAhead", default=21, low=1, high=90
+        )
         # Naive on purpose: recurring_ical_events compares this against each
         # event's own DTSTART, which for an all-day event is a plain date.
         range_start = datetime(now.year, now.month, now.day)  # noqa: DTZ001
@@ -565,7 +613,7 @@ class CalAbfahrt(BasePlugin):
             )
 
         days = self._group_events_into_days(events, now, strings, time_format)
-        template_params = {
+        template_params: dict[str, Any] = {
             "layout": layout,
             "strings": strings,
             "plugin_settings": settings,
@@ -603,7 +651,9 @@ class CalAbfahrt(BasePlugin):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _content_box(dimensions, settings):
+    def _content_box(
+        dimensions: tuple[int, int], settings: Mapping[str, Any]
+    ) -> tuple[int, int]:
         """Returns the (width, height) actually available to the layout, which
         is the panel minus base_plugin/render/plugin.html's own body chrome:
         the per-side margins from the shared style settings, and its 1.5vw
@@ -611,7 +661,7 @@ class CalAbfahrt(BasePlugin):
         lets the budgets below be stated in real pixels."""
         width, height = dimensions
 
-        def margin(key):
+        def margin(key: str) -> int:
             raw = settings.get(key) or settings.get("margin") or 5
             try:
                 return int(raw)
@@ -620,10 +670,19 @@ class CalAbfahrt(BasePlugin):
 
         padding = round(width * 0.015)
         available_w = width - margin("leftMargin") - margin("rightMargin") - 2 * padding
-        available_h = height - margin("topMargin") - margin("bottomMargin") - 2 * padding
+        available_h = (
+            height - margin("topMargin") - margin("bottomMargin") - 2 * padding
+        )
         return max(available_w, 1), max(available_h, 1)
 
-    def _layout_board(self, days, stops, content_h, now, time_format):
+    def _layout_board(
+        self,
+        days: list[dict[str, Any]],
+        stops: list[dict[str, Any]],
+        content_h: int,
+        now: datetime,
+        time_format: str,
+    ) -> dict[str, Any]:
         metrics = LAYOUT_METRICS["board"]
         rows = [
             dict(departure, stop=_shorten_place(stop["name"]))
@@ -646,11 +705,18 @@ class CalAbfahrt(BasePlugin):
             "stop_errors": [s["name"] for s in stops if s["error"]],
         }
 
-    def _layout_grid(self, days, stops, content_w, content_h, now, time_format):
+    def _layout_grid(
+        self,
+        days: list[dict[str, Any]],
+        stops: list[dict[str, Any]],
+        content_w: int,
+        content_h: int,
+        now: datetime,
+        time_format: str,
+    ) -> dict[str, Any]:
         metrics = LAYOUT_METRICS["grid"]
         count = len(stops)
         columns = 1 if count <= 1 else (2 if count <= 6 else 3)
-        grid_rows = max(1, math.ceil(count / columns)) if count else 1
 
         capacity = _grid_departure_capacity(count, content_h)
 
@@ -682,7 +748,9 @@ class CalAbfahrt(BasePlugin):
             "grid_span_last": count > columns and count % columns == 1,
         }
 
-    def _render_departure(self, departure, now, time_format):
+    def _render_departure(
+        self, departure: Mapping[str, Any], now: datetime, time_format: str
+    ) -> dict[str, Any]:
         minutes = max(0, round((departure["sort_time"] - now).total_seconds() / 60))
         return {
             "line": departure["line"],
@@ -701,15 +769,15 @@ class CalAbfahrt(BasePlugin):
 
     def _fetch_all(
         self,
-        calendars,
-        auths,
-        stop_groups,
-        tz,
-        range_start,
-        range_end,
-        device_config,
-        target_capacity,
-    ):
+        calendars: list[dict[str, Any]],
+        auths: list[tuple[str, str] | None],
+        stop_groups: list[dict[str, Any]],
+        tz: tzinfo,
+        range_start: datetime,
+        range_end: datetime,
+        device_config: Any,
+        target_capacity: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
         """Runs every calendar and every stop request through ONE pool.
 
         Splitting them (as the two source plugins necessarily do) makes total
@@ -723,9 +791,9 @@ class CalAbfahrt(BasePlugin):
         if not total:
             return [], [], []
 
-        events = []
-        stops = []
-        failures = []
+        events: list[dict[str, Any]] = []
+        stops: list[dict[str, Any]] = []
+        failures: list[str] = []
 
         with ThreadPoolExecutor(max_workers=min(total, MAX_WORKERS)) as executor:
             calendar_futures = [
@@ -760,6 +828,8 @@ class CalAbfahrt(BasePlugin):
                     failures.append(str(e))
 
             for group, future in zip(stop_groups, stop_futures, strict=True):
+                departures: list[dict[str, Any]]
+                error: str | None
                 try:
                     departures = future.result()
                     error = None
@@ -787,8 +857,15 @@ class CalAbfahrt(BasePlugin):
         return events, stops, failures
 
     def _fetch_calendar_events(
-        self, entry, auth, session, tz, range_start, range_end, device_config
-    ):
+        self,
+        entry: dict[str, Any],
+        auth: tuple[str, str] | None,
+        session: Any,
+        tz: tzinfo,
+        range_start: datetime,
+        range_end: datetime,
+        device_config: Any,
+    ) -> list[dict[str, Any]]:
         """Fetch, parse AND expand one calendar, all inside the worker thread.
 
         The two source plugins fetch concurrently but parse and expand back on
@@ -816,7 +893,7 @@ class CalAbfahrt(BasePlugin):
         # first run raced, etc.) is treated as the genuine error it would
         # be, not a mystery empty calendar.
         cached = _load_calendar_cache(device_config, url)
-        headers = {}
+        headers: dict[str, str] = {}
         if cached:
             if cached.get("etag"):
                 headers["If-None-Match"] = cached["etag"]
@@ -854,7 +931,7 @@ class CalAbfahrt(BasePlugin):
 
         calendar = icalendar.Calendar.from_ical(raw)
 
-        parsed = []
+        parsed: list[dict[str, Any]] = []
         for event in recurring_ical_events.of(calendar).between(range_start, range_end):
             start, end, all_day = self._parse_event_times(event, tz)
             parsed.append(
@@ -870,11 +947,19 @@ class CalAbfahrt(BasePlugin):
 
         if etag or last_modified:
             expanded = _serialize_expanded_events(window_date, parsed)
-            _store_calendar_cache(device_config, url, etag, last_modified, raw, expanded)
+            _store_calendar_cache(
+                device_config, url, etag, last_modified, raw, expanded
+            )
 
         return parsed
 
-    def _fetch_stop_departures(self, group, session, device_config, target_capacity):
+    def _fetch_stop_departures(
+        self,
+        group: dict[str, Any],
+        session: Any,
+        device_config: Any,
+        target_capacity: int,
+    ) -> list[dict[str, Any]]:
         """Fetches, filters, and adaptively re-pages one stop's departures.
 
         `target_capacity` is how many departures the CURRENT render's layout
@@ -907,12 +992,12 @@ class CalAbfahrt(BasePlugin):
         data = response.json()
         raw_departures = data.get("departures", [])
 
-        rows = []
+        rows: list[dict[str, Any]] = []
         # Tracks how many raw (pre-filter) entries it took, in the order the
         # API returned them, to accumulate `effective_target` matches - used
         # below to decide whether results_cap has more headroom than this
         # stop actually needs.
-        raw_scanned_for_target = None
+        raw_scanned_for_target: int | None = None
         for i, departure in enumerate(raw_departures, start=1):
             line = (departure.get("line") or {}).get("name")
             direction = departure.get("direction")
@@ -926,9 +1011,7 @@ class CalAbfahrt(BasePlugin):
 
             delay_seconds = departure.get("delay") or 0
             # Negative delay = running early; not worth a "late" badge.
-            delay_minutes = (
-                max(0, round(delay_seconds / 60)) if delay_seconds else 0
-            )
+            delay_minutes = max(0, round(delay_seconds / 60)) if delay_seconds else 0
             rows.append(
                 {
                     "line": line,
@@ -957,14 +1040,21 @@ class CalAbfahrt(BasePlugin):
                 logger.info(
                     "cal_abfahrt: departures cap for %s/%s grown %d -> %d "
                     "(only %d/%d matches within the page)",
-                    provider, stop_id, results_cap, grown, len(matched), effective_target,
+                    provider,
+                    stop_id,
+                    results_cap,
+                    grown,
+                    len(matched),
+                    effective_target,
                 )
                 _store_learned_results(device_config, provider, stop_id, grown)
         elif raw_scanned_for_target is not None:
             # Target was reached - nudge the cap toward what this cycle
             # actually needed (with headroom), rather than only correcting
             # once grossly oversized. See DEPARTURES_HEADROOM/_SMOOTHING.
-            ideal = max(DEPARTURES_RESULTS, round(raw_scanned_for_target * DEPARTURES_HEADROOM))
+            ideal = max(
+                DEPARTURES_RESULTS, round(raw_scanned_for_target * DEPARTURES_HEADROOM)
+            )
             nudged = round(
                 DEPARTURES_SMOOTHING * results_cap + (1 - DEPARTURES_SMOOTHING) * ideal
             )
@@ -973,7 +1063,12 @@ class CalAbfahrt(BasePlugin):
                 logger.info(
                     "cal_abfahrt: departures cap for %s/%s adjusted %d -> %d "
                     "(needed %d raw entries for %d matches this cycle)",
-                    provider, stop_id, results_cap, nudged, raw_scanned_for_target, effective_target,
+                    provider,
+                    stop_id,
+                    results_cap,
+                    nudged,
+                    raw_scanned_for_target,
+                    effective_target,
                 )
                 _store_learned_results(device_config, provider, stop_id, nudged)
 
@@ -983,17 +1078,19 @@ class CalAbfahrt(BasePlugin):
     # Calendar plumbing
     # ------------------------------------------------------------------
 
-    def _parse_calendar_entries(self, settings):
+    def _parse_calendar_entries(
+        self, settings: Mapping[str, Any]
+    ) -> list[dict[str, str]]:
         urls = settings.get("calendarAuthURLs[]") or []
         colors = settings.get("calendarAuthColors[]") or []
         usernames = settings.get("calendarAuthUsernames[]") or []
         labels = settings.get("calendarAuthLabels[]") or []
 
-        def at(values, index, fallback):
+        def at(values: Any, index: int, fallback: str) -> str:
             value = values[index] if index < len(values) else None
             return (value or fallback).strip() if isinstance(value, str) else fallback
 
-        entries = []
+        entries: list[dict[str, str]] = []
         for index, raw_url in enumerate(urls):
             url = (raw_url or "").strip()
             if not url:
@@ -1008,7 +1105,9 @@ class CalAbfahrt(BasePlugin):
             )
         return entries
 
-    def _auth_for_entry(self, entry, device_config):
+    def _auth_for_entry(
+        self, entry: dict[str, Any], device_config: Any
+    ) -> tuple[str, str] | None:
         """Resolves one calendar's HTTP Basic Auth pair, or None.
 
         The password never lives in plugin settings - only a credential label,
@@ -1038,7 +1137,7 @@ class CalAbfahrt(BasePlugin):
         return (entry["username"], password)
 
     @staticmethod
-    def _parse_event_times(event, tz):
+    def _parse_event_times(event: Any, tz: tzinfo) -> tuple[Any, Any, bool]:
         all_day = False
         dtstart = event.decoded("dtstart")
         if isinstance(dtstart, datetime):
@@ -1055,7 +1154,13 @@ class CalAbfahrt(BasePlugin):
             end = dtstart + event.decoded("duration")
         return start, end, all_day
 
-    def _group_events_into_days(self, events, now, strings, time_format):
+    def _group_events_into_days(
+        self,
+        events: list[dict[str, Any]],
+        now: datetime,
+        strings: Any,
+        time_format: str,
+    ) -> list[dict[str, Any]]:
         """Turns the flat event list into the agenda's day buckets.
 
         Anything already finished is dropped, and an event still running is
@@ -1063,7 +1168,7 @@ class CalAbfahrt(BasePlugin):
         for its whole duration instead of scrolling off on day two.
         """
         today = now.date()
-        items = []
+        items: list[dict[str, Any]] = []
         for event in events:
             start = event["start"]
             end = event["end"]
@@ -1107,7 +1212,7 @@ class CalAbfahrt(BasePlugin):
 
         items.sort(key=lambda i: i["sort_key"])
 
-        days = []
+        days: list[dict[str, Any]] = []
         for item in items:
             if not days or days[-1]["date"] != item["bucket"]:
                 bucket = item["bucket"]
@@ -1121,9 +1226,11 @@ class CalAbfahrt(BasePlugin):
                         "label": (
                             strings["today"]
                             if delta == 0
-                            else strings["tomorrow"]
-                            if delta == 1
-                            else f"{weekday} {bucket.day:02d}.{bucket.month:02d}."
+                            else (
+                                strings["tomorrow"]
+                                if delta == 1
+                                else f"{weekday} {bucket.day:02d}.{bucket.month:02d}."
+                            )
                         ),
                         "is_today": delta == 0,
                         "is_weekend": bucket.weekday() >= 5,
@@ -1138,7 +1245,9 @@ class CalAbfahrt(BasePlugin):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _int_setting(settings, key, default, low, high):
+    def _int_setting(
+        settings: Mapping[str, Any], key: str, default: int, low: int, high: int
+    ) -> int:
         try:
             value = int(str(settings.get(key) or default).strip())
         except (TypeError, ValueError):
@@ -1146,13 +1255,13 @@ class CalAbfahrt(BasePlugin):
         return max(low, min(high, value))
 
     @staticmethod
-    def _format_time(value, time_format):
+    def _format_time(value: datetime, time_format: str) -> str:
         if time_format == "12h":
             return value.strftime("%I:%M %p").lstrip("0")
         return value.strftime("%H:%M")
 
     @staticmethod
-    def _contrast_color(color):
+    def _contrast_color(color: str) -> str:
         """Black or white, whichever reads better on `color` (YIQ brightness)."""
         try:
             r, g, b = ImageColor.getrgb(color)[:3]
@@ -1161,5 +1270,5 @@ class CalAbfahrt(BasePlugin):
         return "#000000" if (r * 299 + g * 587 + b * 114) / 1000 >= 150 else "#ffffff"
 
 
-def stops_have_departures(stops):
+def stops_have_departures(stops: list[dict[str, Any]]) -> bool:
     return any(stop["departures"] for stop in stops)

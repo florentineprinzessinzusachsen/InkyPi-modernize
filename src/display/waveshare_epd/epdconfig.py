@@ -32,11 +32,32 @@ import logging
 import sys
 import time
 import subprocess
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ctypes import *
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    # Not real assignments — RST_PIN/digital_write/etc. only exist on this
+    # module at runtime via the setattr() loop at the bottom of this file,
+    # which copies every public attribute off whichever backend
+    # (RaspberryPi/SunriseX3/JetsonNano) was selected for the detected
+    # hardware. mypy can't see through that, so this block exists purely to
+    # give it the same interface the three backend classes already share —
+    # it has zero effect on the actual runtime module.
+    RST_PIN: int
+    DC_PIN: int
+    CS_PIN: int
+    BUSY_PIN: int
+
+    def digital_write(pin: int, value: int | bool) -> None: ...
+    def digital_read(pin: int) -> bool: ...
+    def delay_ms(delaytime: int | float) -> None: ...
+    def spi_writebyte(data: bytes | bytearray | list[int]) -> None: ...
+    def spi_writebyte2(data: bytes | bytearray | list[int]) -> None: ...
+    def module_init() -> int: ...
+    def module_exit() -> None: ...
 
 
 class RaspberryPi:
@@ -100,10 +121,10 @@ class RaspberryPi:
     def delay_ms(self, delaytime: int | float) -> None:
         time.sleep(delaytime / 1000.0)
 
-    def spi_writebyte(self, data: bytes | bytearray) -> None:
+    def spi_writebyte(self, data: bytes | bytearray | list[int]) -> None:
         self.SPI.writebytes(data)
 
-    def spi_writebyte2(self, data: bytes | bytearray) -> None:
+    def spi_writebyte2(self, data: bytes | bytearray | list[int]) -> None:
         self.SPI.writebytes2(data)
 
     def DEV_SPI_write(self, data: bytes | bytearray) -> None:
@@ -213,10 +234,10 @@ class JetsonNano:
     def delay_ms(self, delaytime: int | float) -> None:
         time.sleep(delaytime / 1000.0)
 
-    def spi_writebyte(self, data: bytes | bytearray) -> None:
+    def spi_writebyte(self, data: bytes | bytearray | list[int]) -> None:
         self.SPI.SYSFS_software_spi_transfer(data[0])
 
-    def spi_writebyte2(self, data: bytes | bytearray) -> None:
+    def spi_writebyte2(self, data: bytes | bytearray | list[int]) -> None:
         for i in range(len(data)):
             self.SPI.SYSFS_software_spi_transfer(data[i])
 
@@ -273,10 +294,10 @@ class SunriseX3:
     def delay_ms(self, delaytime: int | float) -> None:
         time.sleep(delaytime / 1000.0)
 
-    def spi_writebyte(self, data: bytes | bytearray) -> None:
+    def spi_writebyte(self, data: bytes | bytearray | list[int]) -> None:
         self.SPI.writebytes(data)
 
-    def spi_writebyte2(self, data: bytes | bytearray) -> None:
+    def spi_writebyte2(self, data: bytes | bytearray | list[int]) -> None:
         # for i in range(len(data)):
         #     self.SPI.writebytes([data[i]])
         self.SPI.xfer3(data)

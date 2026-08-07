@@ -2,6 +2,7 @@
 
 import os
 import time
+from typing import Any
 
 from flask import Response, current_app, jsonify, request
 from werkzeug.exceptions import BadRequest
@@ -119,7 +120,10 @@ def start_update() -> tuple[object, int] | Response:
         device_config = current_app.config["DEVICE_CONFIG"]
         if "channel" in body:
             raw_channel = body.get("channel")
-            if not isinstance(raw_channel, str) or raw_channel not in _mod._UPDATE_CHANNELS:
+            if (
+                not isinstance(raw_channel, str)
+                or raw_channel not in _mod._UPDATE_CHANNELS
+            ):
                 raise ClientInputError(
                     "channel must be one of: stable, edge",
                     status=400,
@@ -500,14 +504,16 @@ def start_rollback() -> tuple[object, int] | Response:
         raise
 
 
-def _resolve_channel(device_config) -> str:
+def _resolve_channel(device_config: Any) -> str:
     """Resolve the effective channel: explicit ``?channel=`` wins, else the
     persisted device setting, else "stable"."""
     requested = request.args.get("channel")
     if isinstance(requested, str) and requested in _mod._UPDATE_CHANNELS:
         return requested
     saved = device_config.get_config("update_channel", _mod._DEFAULT_UPDATE_CHANNEL)
-    return saved if saved in _mod._UPDATE_CHANNELS else _mod._DEFAULT_UPDATE_CHANNEL
+    if saved in _mod._UPDATE_CHANNELS:
+        return str(saved)
+    return str(_mod._DEFAULT_UPDATE_CHANNEL)
 
 
 @_mod.settings_bp.route("/api/version", methods=["GET"])  # type: ignore
