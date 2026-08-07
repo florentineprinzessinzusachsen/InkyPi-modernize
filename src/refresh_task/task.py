@@ -207,6 +207,10 @@ class RefreshTask:
         """Starts the background thread for refreshing the display."""
         if not self.thread or not self.thread.is_alive():
             logger.info("Starting refresh task")
+            # Fresh fixed-rate grid for this run - a target computed before a
+            # prior stop() would otherwise be stale monotonic time and could
+            # make the first wait_for_trigger() return immediately.
+            self.scheduler.reset()
             # Clean up any render tempfiles left behind by a prior crash.
             # Harmless on tmpfs-backed /tmp (reboot already cleared them)
             # but keeps disk-backed /tmp installs from accumulating orphans

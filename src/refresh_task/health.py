@@ -55,6 +55,14 @@ class SupportsPluginHealth(Protocol):
 class PluginHealthTracker:
     """Tracks per-plugin health and owns circuit-breaker transitions."""
 
+    # Weight given to the newest sample in the exponential moving average of
+    # per-plugin timing metrics - low enough that one slow/fast outlier
+    # (a cold cache, a transient network hiccup) doesn't swing the average,
+    # high enough that a genuine, sustained change in a plugin's typical
+    # duration (e.g. a provider getting slower) is reflected within a
+    # handful of refresh cycles rather than dozens.
+    _AVG_ALPHA = 0.3
+
     def __init__(
         self,
         device_config: SupportsPluginHealth,
@@ -130,6 +138,8 @@ class PluginHealthTracker:
             entry["retained_display"] = False
             if metrics:
                 entry["last_metrics"] = metrics
+                self._update_average_metrics(entry, metrics)
+                self._warn_if_interval_too_tight(plugin_id, entry)
             self.plugin_health[plugin_id] = entry
             record_refresh_success()
             on_success(plugin_instance, plugin_id, instance)
@@ -347,6 +357,71 @@ class PluginHealthTracker:
         device_config = cast("Config", self.device_config)
         current_dt = now_device_tz(device_config)
         return str(current_dt.astimezone(UTC).isoformat())
+
+    @classmethod
+    def _update_average_metrics(cls, entry: HealthEntry, metrics: Metrics) -> None:
+        """Maintain an exponential moving average of a plugin's timing metrics.
+
+        Tracks ``generate_ms`` (fetch/render), ``display_ms`` (hardware push)
+        and ``request_ms`` (end-to-end) as ``avg_*`` fields alongside the
+        existing ``last_metrics`` snapshot, so a plugin's *typical* cost is
+        visible (via the diagnostics API's plugin_health snapshot) rather
+        than just its most recent one. A cached-image cycle omits
+        ``display_ms`` (no hardware push happened); that sample is simply
+        skipped for that one field rather than counted as zero.
+        """
+        entry["avg_sample_count"] = cls._entry_int(entry, "avg_sample_count") + 1
+        for key in ("generate_ms", "display_ms", "request_ms"):
+            value = metrics.get(key)
+            if not isinstance(value, (int, float)):
+                continue
+            avg_key = f"avg_{key}"
+            previous = entry.get(avg_key)
+            if isinstance(previous, (int, float)):
+                entry[avg_key] = round(previous + cls._AVG_ALPHA * (value - previous), 1)
+            else:
+                entry[avg_key] = float(value)
+
+    def _warn_if_interval_too_tight(self, plugin_id: str, entry: HealthEntry) -> None:
+        """Log once when a plugin's average duration eats most of the cycle interval.
+
+        A plugin that typically takes close to (or longer than) the
+        configured ``plugin_cycle_interval_seconds`` never actually rests
+        between refreshes - the scheduler's fixed-rate grid (see
+        ``RefreshScheduler.wait_for_trigger``) keeps ticks evenly spaced, but
+        it can't make a slow plugin's own fetch/render/display work finish
+        any faster, so refreshes for it run back-to-back rather than at the
+        configured cadence. Warns once per crossing (tracked via
+        ``interval_tight_warned``) rather than every single refresh.
+        """
+        avg_request_ms = entry.get("avg_request_ms")
+        if not isinstance(avg_request_ms, (int, float)):
+            return
+        try:
+            interval_s = float(
+                self.device_config.get_config(
+                    "plugin_cycle_interval_seconds", default=3600
+                )
+            )
+        except Exception:
+            return
+        if interval_s <= 0:
+            return
+        interval_ms = interval_s * 1000
+        is_tight = avg_request_ms >= interval_ms * 0.8
+        if is_tight and not entry.get("interval_tight_warned"):
+            entry["interval_tight_warned"] = True
+            logger.warning(
+                "plugin timing: '%s' averages %.0fms per refresh, close to or "
+                "over the configured %.0fs cycle interval - it will refresh "
+                "back-to-back instead of resting between cycles. Consider "
+                "raising plugin_cycle_interval_seconds.",
+                plugin_id,
+                avg_request_ms,
+                interval_s,
+            )
+        elif not is_tight:
+            entry["interval_tight_warned"] = False
 
     @staticmethod
     def _entry_int(entry: HealthEntry, key: str) -> int:
