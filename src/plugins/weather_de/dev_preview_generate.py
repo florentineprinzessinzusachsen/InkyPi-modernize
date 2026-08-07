@@ -43,9 +43,10 @@ underlying numbers are fake. Regenalarm rain/map data is fetched for real
 (public, keyless API), since it's what the graph's x-axis-bucketing fix is
 actually exercising.
 
-Neither this script nor its output is meant to be committed - both are
-gitignored-in-spirit dev scratch, kept in the plugin dir only so they're
-easy to find and re-run.
+This script and its two output files (dev_preview.html, dev_preview_inner.html)
+are committed - the path-rewriting above keeps them machine-independent, so
+the preview is viewable straight from a checkout without re-running anything.
+Re-run only when you want the weather numbers refreshed.
 """
 import sys
 import os
