@@ -1,4 +1,17 @@
 #!/bin/bash
+# update.sh — install/refresh InkyPi's dependencies, CSS/JS bundle, and
+# systemd service for the code currently checked out at the repo root.
+#
+# Contract (matches do_update.sh / rollback.sh):
+#   * set -euo pipefail is mandatory; any failure propagates and is recorded
+#     by the EXIT trap below (JTN-704). Steps that are best-effort
+#     optimizations rather than core functionality (zram, earlyoom,
+#     persistent journal, Wi-Fi powersave, the memory-cap drop-in) are
+#     explicitly wrapped with `|| echo_warn ...` so a failure there degrades
+#     gracefully instead of aborting the whole update — see the call sites
+#     below for why each one is treated as optional.
+
+set -euo pipefail
 
 SOURCE=${BASH_SOURCE[0]}
 while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
@@ -69,8 +82,10 @@ update_app_service() {
     # running on a 512 MB Pi Zero 2 W that previously had the tight base-unit
     # caps applied and was being OOM-killed mid-refresh. Writing on every
     # update is idempotent and future-proofs against in-place RAM upgrades
-    # (swapping an SD card between Pi models).
-    install_memory_dropin
+    # (swapping an SD card between Pi models). Best-effort: a failure here
+    # (e.g. an unwritable drop-in dir) shouldn't abort the whole update — the
+    # service still runs, just without the tuned memory cap.
+    install_memory_dropin || echo_warn "WARNING: memory-cap drop-in refresh failed — continuing without it."
     sudo systemctl daemon-reload
     sudo systemctl enable "$SERVICE_FILE"
     echo "Starting $APPNAME service."
@@ -169,57 +184,18 @@ _inkypi_update_exit_trap() {
   local rc=$?
   # Remove lockfile first — this is the load-bearing invariant (JTN-704).
   rm -f "$LOCKFILE" 2>/dev/null || true
+  # PIP_BUILD_TMPDIR (/var/tmp/pip-build) is otherwise only cleaned up on the
+  # success path (below) — every pip/uv failure branch exits before reaching
+  # it. On a Pi Zero 2 W repeatedly OOM-killed mid-pip-install (the exact
+  # scenario this dir exists for), that leaks build artifacts on a
+  # disk-constrained SD card across retries. Guarded with ${:-} since the
+  # trap can fire before PIP_BUILD_TMPDIR is set (e.g. an early failure).
+  rm -rf "${PIP_BUILD_TMPDIR:-}" 2>/dev/null || true
   if [ "$rc" -ne 0 ]; then
-    # Non-zero exit: persist failure metadata for UI / diagnostics.
-    local ts
-    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "unknown")
-    local journal_tail=""
-    if command -v journalctl >/dev/null 2>&1; then
-      # Capture last 20 lines of inkypi-update journal if available; never fail
-      # the trap because of this best-effort read.
-      journal_tail=$(journalctl -u inkypi-update -n 20 --no-pager 2>/dev/null \
-        | tail -n 20 || true)
-    fi
-    # Escape for embedding in a JSON string (backslash, dquote, control chars).
-    # Use python3 when available for correctness; fall back to a conservative
-    # sed transform when python3 is absent (target: minimal Pi OS environments).
-    local journal_json
-    if command -v python3 >/dev/null 2>&1; then
-      journal_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' \
-        <<<"$journal_tail" 2>/dev/null || echo '""')
-    else
-      # Strip CR, escape backslash + dquote, drop non-printables. Wrap in quotes.
-      journal_json='"'$(printf '%s' "$journal_tail" \
-        | tr -d '\r' \
-        | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g' \
-        | tr -d '\000-\010\013\014\016-\037')'"'
-    fi
-    # Escape _current_step the same way (may contain spaces / quotes).
-    local step_json
-    if command -v python3 >/dev/null 2>&1; then
-      step_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))' \
-        <<<"$_current_step" 2>/dev/null || echo '""')
-    else
-      step_json='"'$(printf '%s' "$_current_step" \
-        | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')'"'
-    fi
-    mkdir -p "$LOCKFILE_DIR" 2>/dev/null || true
-    # Write atomically via tmpfile + mv so a partial write never leaves the
-    # consumer parsing half a JSON object.
-    local tmp="${FAILURE_FILE}.tmp"
-    {
-      printf '{'
-      printf '"timestamp":"%s",' "$ts"
-      printf '"exit_code":%d,' "$rc"
-      printf '"last_command":%s,' "$step_json"
-      printf '"recent_journal_lines":%s' "$journal_json"
-      printf '}\n'
-    } > "$tmp" 2>/dev/null || true
-    if [ -s "$tmp" ]; then
-      mv -f "$tmp" "$FAILURE_FILE" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
-    else
-      rm -f "$tmp" 2>/dev/null || true
-    fi
+    # Non-zero exit: persist failure metadata for UI / diagnostics. The
+    # JSON-writing logic lives in _common.sh's _inkypi_write_failure_record
+    # (shared with do_update.sh's trap) so the two copies can't drift apart.
+    _inkypi_write_failure_record "$rc" "$_current_step" "$FAILURE_FILE" "$LOCKFILE_DIR"
   else
     # Success: remove any stale failure record from a previous aborted run.
     rm -f "$FAILURE_FILE" 2>/dev/null || true
@@ -313,16 +289,19 @@ _inkypi_maybe_inject_failure "apt_install"
 # actually required, the subsequent install succeeds against the cached
 # index; if they are, the existing abort path below still fires.
 echo "Refreshing apt package index..."
-sudo apt-get update -qq
-apt_update_rc=$?
+# Under set -e, `cmd; rc=$?` would abort on cmd's own failure before rc=$?
+# ever runs — capture via `|| rc=$?` instead so the soft-warning path below
+# (not a hard abort) is actually reachable.
+apt_update_rc=0
+DEBIAN_FRONTEND=noninteractive sudo -E apt-get update -qq || apt_update_rc=$?
 if [ "$apt_update_rc" -ne 0 ]; then
-  echo_error "WARNING: apt-get update exited $apt_update_rc — continuing with cached index."
+  echo_warn "WARNING: apt-get update exited $apt_update_rc — continuing with cached index."
 else
   echo_success "apt-get update succeeded (rc=0)."
 fi
 if [ -f "$APT_REQUIREMENTS_FILE" ]; then
   echo "Installing system dependencies... "
-  if ! xargs -a "$APT_REQUIREMENTS_FILE" sudo apt-get install -y > /dev/null; then
+  if ! DEBIAN_FRONTEND=noninteractive xargs -a "$APT_REQUIREMENTS_FILE" sudo -E apt-get install -y > /dev/null; then
     echo_error "ERROR: apt-get install failed — aborting update."
     exit 1
   fi
@@ -335,16 +314,29 @@ fi
 # Setup zramswap on any modern Pi OS that ships zram-tools (Bullseye/Bookworm/Trixie).
 # This is critical on low-RAM boards like the Pi Zero 2 W (512 MB) — without
 # zramswap, pip install of numpy/Pillow/playwright will OOM during the update step.
-os_version=$(get_os_version)
+#
+# get_os_version just runs `lsb_release -sr` with no fallback — under set -e,
+# a missing lsb_release (unusual but possible on a minimal image) would abort
+# the whole update here rather than gracefully falling through to the
+# "unsupported/unknown" branch below. Preserve the previous graceful
+# degradation explicitly.
+os_version=$(get_os_version 2>/dev/null) || os_version=""
 if [[ "$os_version" =~ ^(11|12|13)$ ]] ; then
   echo "OS version is $os_version (Bullseye/Bookworm/Trixie) - setting up zramswap"
-  setup_zramswap_service
+  setup_zramswap_service || echo_warn "WARNING: zramswap setup failed — continuing without it."
 else
   echo "OS version is $os_version - skipping zramswap setup (zram-tools not available on this release)."
 fi
-setup_earlyoom_service
-configure_persistent_journal
-disable_wifi_powersave
+# These four are best-effort hardening/optimizations, not core functionality
+# — a failure in any of them (e.g. a transient apt failure, an unwritable
+# config path) must not abort the whole update. Previously they ran
+# completely unchecked (silently continuing on failure); now that set -e is
+# in effect, wrap each explicitly so that intended soft-fail behavior is
+# preserved instead of turning into a hard abort, while still surfacing a
+# visible warning instead of silent failure.
+setup_earlyoom_service || echo_warn "WARNING: earlyoom setup failed — continuing without it."
+configure_persistent_journal || echo_warn "WARNING: persistent journal setup failed — continuing without it."
+disable_wifi_powersave || echo_warn "WARNING: Wi-Fi powersave hardening failed — continuing without it."
 
 _current_step="venv_check"
 # Check if virtual environment exists
@@ -460,8 +452,8 @@ else
   exit 1
 fi
 
-# Clean up the pip build temp dir — it can be several hundred MB.
-rm -rf "$PIP_BUILD_TMPDIR"
+# PIP_BUILD_TMPDIR itself is removed by the EXIT trap on every exit path
+# (success or failure) — just stop pointing TMPDIR at it here.
 unset TMPDIR
 
 echo "Updating executable in ${BINPATH}/$APPNAME"

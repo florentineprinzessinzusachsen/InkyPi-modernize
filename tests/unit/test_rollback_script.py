@@ -68,14 +68,50 @@ def test_rollback_script_refuses_malformed_breadcrumb(rollback_content):
 def test_rollback_script_checks_out_tag(rollback_content):
     """Must check out refs/tags/<tag> with trailing '--' for safety."""
     assert (
-        'git -C "$REPO_DIR" checkout "refs/tags/$PREV_TAG" --' in rollback_content
+        'git_repo checkout "refs/tags/$PREV_TAG" --' in rollback_content
     ), "rollback.sh must checkout via refs/tags/ to avoid branch-name collisions"
 
 
 def test_rollback_script_fetches_missing_tag(rollback_content):
     """If the tag isn't present locally, fetch from origin before checkout."""
-    assert 'git -C "$REPO_DIR" fetch origin' in rollback_content
+    assert "git_repo fetch origin" in rollback_content
     assert "rev-parse --verify" in rollback_content
+
+
+def test_rollback_script_uses_safe_directory_wrapper(rollback_content):
+    """All git calls must go through a safe.directory-scoped wrapper.
+
+    Without this, a root-run rollback against a non-root-owned dev checkout
+    fails with "dubious ownership" (CVE-2022-24765), which rev-parse then
+    renders as a misleading "not a git repository" error. Mirrors
+    do_update.sh's git_repo() helper (JTN-K2).
+    """
+    assert "safe.directory=" in rollback_content, (
+        "rollback.sh must set safe.directory on every git invocation, "
+        "matching do_update.sh's git_repo() wrapper"
+    )
+    assert "git_repo()" in rollback_content
+    # No call site should bypass the wrapper with a raw `git -C`.
+    assert 'git -C "$REPO_DIR"' not in rollback_content, (
+        "rollback.sh must not call git directly — every invocation should "
+        "go through the safe.directory-scoped git_repo() wrapper"
+    )
+
+
+def test_rollback_script_handles_dirty_tree_before_checkout(rollback_content):
+    """Must reset the generated main.css and stash local mods before checkout.
+
+    Every completed update leaves main.css modified in place (rebuilt by
+    build_css_bundle), so without this handling `git checkout` reliably fails
+    with "local changes would be overwritten" right when rollback is needed
+    most. Mirrors do_update.sh's JTN-787/JTN-K2 handling.
+    """
+    assert (
+        "checkout -- src/static/styles/main.css" in rollback_content
+    ), "rollback.sh must reset the generated main.css before checking out"
+    assert (
+        "stash push" in rollback_content
+    ), "rollback.sh must stash local modifications before checkout"
 
 
 def test_rollback_script_invokes_update_sh(rollback_content):
@@ -94,8 +130,8 @@ def test_rollback_script_does_not_fabricate_random_checkout(rollback_content):
     # `git tag --sort=-v:refname | head -1`, etc. — if prev_version is absent,
     # we exit hard.
     forbidden_patterns = [
-        'git -C "$REPO_DIR" checkout main',
-        'git -C "$REPO_DIR" checkout master',
+        "git_repo checkout main",
+        "git_repo checkout master",
         "tag --sort=-v:refname",
     ]
     for pat in forbidden_patterns:

@@ -77,6 +77,15 @@ class TestFailureTrapWritesRecord:
         copied_script = install_dir / "do_update.sh"
         copied_script.write_bytes(DO_UPDATE_SH.read_bytes())
         copied_script.chmod(0o755)
+        # do_update.sh sources _common.sh (shared failure-record writer) —
+        # in real deployments they always ship together in the same
+        # git-tracked install/ dir, so copy it alongside here too. Without
+        # this the `source` fails before the EXIT trap is even installed,
+        # which would defeat the point of this test (verifying the trap
+        # fires), not exercise the git-repo isolation it's actually testing.
+        (install_dir / "_common.sh").write_bytes(
+            (DO_UPDATE_SH.parent / "_common.sh").read_bytes()
+        )
 
         empty_proj = tmp_path / "empty_proj"
         empty_proj.mkdir()

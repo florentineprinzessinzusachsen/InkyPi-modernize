@@ -1,15 +1,18 @@
 #!/bin/bash
 
-# Formatting stuff
-bold=$(tput bold)
-normal=$(tput sgr0)
-red=$(tput setaf 1)
+# Formatting stuff (guarded: safe to call in non-interactive/no-TTY shells,
+# matching _common.sh's pattern)
+bold=$(tput bold 2>/dev/null || true)
+normal=$(tput sgr0 2>/dev/null || true)
+red=$(tput setaf 1 2>/dev/null || true)
 
 APPNAME="inkypi"
 INSTALL_PATH="/usr/local/$APPNAME"
 BINPATH="/usr/local/bin"
 SERVICE_FILE="/etc/systemd/system/$APPNAME.service"
-CONFIG_DIR="$INSTALL_PATH/src/config"
+FAILURE_SERVICE_FILE="/etc/systemd/system/inkypi-failure.service"
+DROPIN_DIR="/etc/systemd/system/inkypi.service.d"
+STATE_DIR="/var/lib/inkypi"
 
 echo_success() {
   echo -e "$1 [\e[32m\xE2\x9C\x94\e[0m]"
@@ -51,30 +54,40 @@ disable_service() {
   if [ -f "$SERVICE_FILE" ]; then
     /usr/bin/systemctl disable "$APPNAME.service"
     rm -f "$SERVICE_FILE"
-    /usr/bin/systemctl daemon-reload
     echo_success "\tService disabled and removed."
   else
     echo_success "\tService file does not exist. Nothing to remove."
   fi
+
+  # inkypi-failure.service is an OnFailure= sentinel unit, never enabled
+  # itself (see install_failure_service_unit in _common.sh) — just remove
+  # the unit file.
+  if [ -f "$FAILURE_SERVICE_FILE" ]; then
+    rm -f "$FAILURE_SERVICE_FILE"
+    echo_success "\tFailure sentinel service removed."
+  else
+    echo_success "\tFailure sentinel service does not exist. Nothing to remove."
+  fi
+
+  # Memory-cap drop-in directory (install_memory_dropin in _common.sh).
+  if [ -d "$DROPIN_DIR" ]; then
+    rm -rf "$DROPIN_DIR"
+    echo_success "\tMemory-cap drop-in removed."
+  fi
+
+  /usr/bin/systemctl daemon-reload
 }
 
 remove_files() {
   echo "Removing application files"
-  # Remove device.json if it exists
-  if [ -f "$CONFIG_DIR/device.json" ]; then
-    rm "$CONFIG_DIR/device.json"
-    echo_success "\tRemoved device.json."
-  else
-    echo_success "\tdevice.json does not exist in $CONFIG_DIR"
-  fi
 
-  # Remove plugins.json if it exists
-  if [ -f "$CONFIG_DIR/plugins.json" ]; then
-    rm "$CONFIG_DIR/plugins.json"
-    echo_success "\tRemoved plugins.json."
-  else
-    echo_success "\tplugins.json does not exist in $CONFIG_DIR"
-  fi
+  # NOTE: $INSTALL_PATH/src is a symlink to the actual source checkout (see
+  # install_src() in install.sh) — it is NOT a copy. `rm -rf "$INSTALL_PATH"`
+  # below removes that symlink itself (it does not follow it into the real
+  # checkout), so the git clone this was installed from — and device.json/
+  # plugins.json inside it — is left untouched. Do not add per-file removal
+  # of files under "$INSTALL_PATH/src" here; that would resolve through the
+  # symlink and delete the user's real config.
 
   # Remove the installation directory
   if [ -d "$INSTALL_PATH" ]; then
@@ -91,10 +104,18 @@ remove_files() {
   else
     echo_success "\tExecutable $BINPATH/$APPNAME does not exist."
   fi
+
+  # Runtime state (install-lock/failure breadcrumbs, prev_version, etc.)
+  if [ -d "$STATE_DIR" ]; then
+    rm -rf "$STATE_DIR"
+    echo_success "\tRuntime state directory $STATE_DIR removed."
+  fi
 }
 
 confirm_uninstall() {
   echo -e "${bold}Are you sure you want to uninstall $APPNAME? (y/N): ${normal}"
+  echo "This removes the installed app, its systemd services, and its runtime state."
+  echo "Your git checkout (including device.json/plugins.json inside it) is NOT touched."
   read -r confirmation
   if [[ "$confirmation" != "y" && "$confirmation" != "Y" ]]; then
     echo_error "Uninstallation cancelled."
@@ -110,3 +131,8 @@ remove_files
 
 echo_success "Uninstallation complete."
 echo_header "All components of $APPNAME have been removed."
+echo "Note: system-wide tuning made at install time (zram/earlyoom packages,"
+echo "journald persistent-storage config, NetworkManager Wi-Fi powersave"
+echo "override, and the SPI/I2C lines in config.txt) is intentionally left in"
+echo "place, since it may be relied on by other software. Remove manually if"
+echo "you no longer want it."

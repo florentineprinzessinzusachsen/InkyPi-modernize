@@ -52,7 +52,18 @@ else
   exit 1
 fi
 
-if ! git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# JTN-K2 parity: All git invocations below go through this wrapper so
+# ``safe.directory`` is set for the resolved checkout on every call. This
+# script runs as root, but on dev installs the repo at /home/$user/InkyPi is
+# owned by a non-root user — without ``safe.directory``, git refuses with
+# "dubious ownership" (CVE-2022-24765), which the rev-parse below would
+# otherwise silently render as a misleading "not a git repository" error.
+# Mirrors do_update.sh's git_repo() helper exactly.
+git_repo() {
+  git -c safe.directory="$REPO_DIR" -C "$REPO_DIR" "$@"
+}
+
+if ! git_repo rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "ERROR: $REPO_DIR is not a git repository." >&2
   exit 1
 fi
@@ -111,37 +122,56 @@ if [ "$IS_SHA" -eq 1 ]; then
   # rewritten/GC'd since then, this can fail — an accepted limitation of an
   # opt-in bleeding-edge channel.
   # -----------------------------------------------------------------------
-  if ! git -C "$REPO_DIR" rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
+  if ! git_repo rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
     echo "Commit $PREV_TAG not present locally — fetching origin/main..."
-    git -C "$REPO_DIR" fetch origin main || true
-    if ! git -C "$REPO_DIR" rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
+    git_repo fetch origin main || true
+    if ! git_repo rev-parse --verify --quiet "$PREV_TAG^{commit}" >/dev/null; then
       echo "ERROR: Commit $PREV_TAG is not available locally and could not be fetched." >&2
       exit 12
     fi
   fi
 
+  # JTN-787/JTN-K2 parity: every completed update leaves the working tree
+  # dirty (main.css is rebuilt/minified in place by build_css_bundle), and a
+  # dev checkout may carry additional tracked-file modifications. Without
+  # resetting/stashing these first, the checkout below reliably fails with
+  # "Your local changes would be overwritten by checkout" — precisely when
+  # rollback is needed most. Mirrors do_update.sh exactly.
+  git_repo checkout -- src/static/styles/main.css 2>/dev/null || true
+  if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then
+    echo "Stashing local modifications before checkout (recover with 'git stash pop')..."
+    git_repo stash push --message "auto-stash by rollback.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)" --quiet || true
+  fi
+
   echo "Rolling back to $PREV_TAG..."
-  git -C "$REPO_DIR" checkout "$PREV_TAG" --
+  git_repo checkout "$PREV_TAG" --
 else
   # -----------------------------------------------------------------------
   # Ensure the tag is available locally; fetch it if needed.
   # -----------------------------------------------------------------------
-  if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
+  if ! git_repo rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
     echo "Tag $PREV_TAG not present locally — fetching from origin..."
-    if ! git -C "$REPO_DIR" fetch origin "refs/tags/$PREV_TAG:refs/tags/$PREV_TAG" --no-tags 2>/dev/null; then
+    if ! git_repo fetch origin "refs/tags/$PREV_TAG:refs/tags/$PREV_TAG" --no-tags 2>/dev/null; then
       # Fall back to a full tag fetch.
-      git -C "$REPO_DIR" fetch origin --tags --prune || true
+      git_repo fetch origin --tags --prune || true
     fi
-    if ! git -C "$REPO_DIR" rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
+    if ! git_repo rev-parse --verify --quiet "refs/tags/$PREV_TAG" >/dev/null; then
       echo "ERROR: Tag $PREV_TAG is not available locally and could not be fetched." >&2
       exit 12
     fi
   fi
 
+  # Same dirty-tree handling as the SHA-rollback branch above.
+  git_repo checkout -- src/static/styles/main.css 2>/dev/null || true
+  if ! git_repo diff --quiet || ! git_repo diff --cached --quiet; then
+    echo "Stashing local modifications before checkout (recover with 'git stash pop')..."
+    git_repo stash push --message "auto-stash by rollback.sh $(date -u +%Y-%m-%dT%H:%M:%SZ)" --quiet || true
+  fi
+
   echo "Rolling back to $PREV_TAG..."
   # Trailing `--` makes it unambiguous that $PREV_TAG is a revision, not a
   # pathspec.  Mirrors the pattern used in do_update.sh.
-  git -C "$REPO_DIR" checkout "refs/tags/$PREV_TAG" --
+  git_repo checkout "refs/tags/$PREV_TAG" --
 fi
 
 # ---------------------------------------------------------------------------

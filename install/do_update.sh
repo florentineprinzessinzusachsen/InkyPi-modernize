@@ -18,6 +18,9 @@ while [ -h "$SOURCE" ]; do
 done
 SCRIPT_DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
 
+# shellcheck source=install/_common.sh
+source "$SCRIPT_DIR/_common.sh"
+
 # ---------------------------------------------------------------------------
 # JTN-787: EXIT trap to record failures that happen *before* delegation to
 # install/update.sh. Without this, errors in the git fetch/checkout phase
@@ -25,10 +28,11 @@ SCRIPT_DIR=$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )
 # before it exec's update.sh, so update.sh's JTN-704 trap never runs and
 # the UI has zero signal about why the update failed.
 #
-# The JSON shape MUST match update.sh's trap exactly so downstream readers
-# (src/blueprints/settings/_update_status.py::read_last_update_failure)
-# don't need to branch on origin. Required keys: timestamp, exit_code,
-# last_command, recent_journal_lines.
+# The JSON-writing logic itself lives in _common.sh's
+# _inkypi_write_failure_record (shared with update.sh's trap) so the two
+# copies can't silently drift apart — this script only needs the rc==0
+# early-return, since a successful do_update.sh exec's update.sh, whose own
+# trap takes over from there.
 #
 # LOCKFILE_DIR is overridable via INKYPI_LOCKFILE_DIR for tests — same
 # contract as install/update.sh (JTN-704).
@@ -52,51 +56,7 @@ _inkypi_do_update_exit_trap() {
   if [ "$rc" -eq 0 ]; then
     return 0
   fi
-  local ts
-  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "unknown")
-  # Best-effort journal tail — same pattern as update.sh so the UI sees
-  # identical fields on either code path.
-  local journal_tail=""
-  if command -v journalctl >/dev/null 2>&1; then
-    # Prefer the transient unit name exported by systemd-run, if present.
-    local unit_for_journal="${INVOCATION_ID:+inkypi-update}"
-    [ -z "$unit_for_journal" ] && unit_for_journal="inkypi-update"
-    journal_tail=$(journalctl -u "$unit_for_journal" -n 20 --no-pager 2>/dev/null \
-      | tail -n 20 || true)
-  fi
-  local journal_json
-  if command -v python3 >/dev/null 2>&1; then
-    journal_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' \
-      <<<"$journal_tail" 2>/dev/null || echo '""')
-  else
-    journal_json='"'$(printf '%s' "$journal_tail" \
-      | tr -d '\r' \
-      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g' \
-      | tr -d '\000-\010\013\014\016-\037')'"'
-  fi
-  local step_json
-  if command -v python3 >/dev/null 2>&1; then
-    step_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))' \
-      <<<"$_current_step" 2>/dev/null || echo '""')
-  else
-    step_json='"'$(printf '%s' "$_current_step" \
-      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')'"'
-  fi
-  mkdir -p "$LOCKFILE_DIR" 2>/dev/null || true
-  local tmp="${FAILURE_FILE}.tmp"
-  {
-    printf '{'
-    printf '"timestamp":"%s",' "$ts"
-    printf '"exit_code":%d,' "$rc"
-    printf '"last_command":%s,' "$step_json"
-    printf '"recent_journal_lines":%s' "$journal_json"
-    printf '}\n'
-  } > "$tmp" 2>/dev/null || true
-  if [ -s "$tmp" ]; then
-    mv -f "$tmp" "$FAILURE_FILE" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
-  else
-    rm -f "$tmp" 2>/dev/null || true
-  fi
+  _inkypi_write_failure_record "$rc" "$_current_step" "$FAILURE_FILE" "$LOCKFILE_DIR"
 }
 trap _inkypi_do_update_exit_trap EXIT
 trap 'exit 130' INT

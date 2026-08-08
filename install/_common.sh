@@ -39,6 +39,7 @@ export TMPDIR="${TMPDIR:-/var/tmp}"
 bold=$(tput bold 2>/dev/null || true)
 normal=$(tput sgr0 2>/dev/null || true)
 red=$(tput setaf 1 2>/dev/null || true)
+yellow=$(tput setaf 3 2>/dev/null || true)
 
 echo_success() {
   echo -e "$1 [\e[32m\xE2\x9C\x94\e[0m]"
@@ -54,6 +55,14 @@ echo_header() {
 
 echo_error() {
   echo -e "${red}$1${normal} [\e[31m\xE2\x9C\x98\e[0m]\n"
+}
+
+# A genuine warning (e.g. "continuing with cached apt index") is not the same
+# as a hard failure — rendering both with echo_error's red ✗ can make a
+# benign, recovered-from condition look like the operation failed. Yellow ⚠
+# distinguishes "noted, continuing" from "aborted".
+echo_warn() {
+  echo -e "${yellow}$1${normal} [\e[33m\xE2\x9A\xA0\e[0m]"
 }
 
 echo_blue() {
@@ -136,14 +145,14 @@ setup_zramswap_service() {
     return 0
   fi
   echo "Enabling and starting zramswap service."
-  sudo apt-get install -y zram-tools > /dev/null
+  DEBIAN_FRONTEND=noninteractive sudo -E apt-get install -y zram-tools > /dev/null
   echo -e "ALGO=zstd\nPERCENT=60" | sudo tee /etc/default/zramswap > /dev/null
   sudo systemctl enable --now zramswap
 }
 
 setup_earlyoom_service() {
   echo "Enabling and starting earlyoom service."
-  sudo apt-get install -y earlyoom > /dev/null
+  DEBIAN_FRONTEND=noninteractive sudo -E apt-get install -y earlyoom > /dev/null
   sudo systemctl enable --now earlyoom
 }
 
@@ -563,5 +572,74 @@ cleanup_wheelhouse() {
     # Remove the parent mktemp dir (contains wheelhouse + tarball + sha).
     rm -rf "$(dirname "$WHEELHOUSE_DIR")"
     WHEELHOUSE_DIR=""
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# _inkypi_write_failure_record — shared body of the do_update.sh / update.sh
+# EXIT traps (JTN-704 / JTN-787). Writes a structured JSON failure record so
+# the Settings -> Updates UI can surface *why* an update/rollback/git-sync
+# failed instead of relying on the system journal.
+#
+# The JSON shape MUST match exactly between both callers — downstream reader
+# src/blueprints/settings/_update_status.py::read_last_update_failure doesn't
+# branch on which script produced the file. This used to be ~45 lines
+# copy-pasted verbatim into each script's own trap function (do_update.sh
+# needs its own trap because it can fail *before* ever exec'ing update.sh,
+# so it can't just rely on update.sh's trap); extracted here so the two
+# copies can't silently drift apart.
+#
+# Args: $1 = exit code (non-zero; callers only invoke this on failure)
+#       $2 = current step description (may contain spaces/quotes)
+#       $3 = failure file path to write
+#       $4 = lockfile dir (created if missing; holds the atomic tmp+mv write)
+# ---------------------------------------------------------------------------
+_inkypi_write_failure_record() {
+  local rc="$1" current_step="$2" failure_file="$3" lockfile_dir="$4"
+  local ts
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "unknown")
+  # Best-effort journal tail; never fail the trap because of this read.
+  local journal_tail=""
+  if command -v journalctl >/dev/null 2>&1; then
+    journal_tail=$(journalctl -u inkypi-update -n 20 --no-pager 2>/dev/null \
+      | tail -n 20 || true)
+  fi
+  # Escape for embedding in a JSON string (backslash, dquote, control chars).
+  # Use python3 when available for correctness; fall back to a conservative
+  # sed transform when python3 is absent (target: minimal Pi OS environments).
+  local journal_json
+  if command -v python3 >/dev/null 2>&1; then
+    journal_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' \
+      <<<"$journal_tail" 2>/dev/null || echo '""')
+  else
+    journal_json='"'$(printf '%s' "$journal_tail" \
+      | tr -d '\r' \
+      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a;N;$!ba;s/\n/\\n/g' \
+      | tr -d '\000-\010\013\014\016-\037')'"'
+  fi
+  local step_json
+  if command -v python3 >/dev/null 2>&1; then
+    step_json=$(python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))' \
+      <<<"$current_step" 2>/dev/null || echo '""')
+  else
+    step_json='"'$(printf '%s' "$current_step" \
+      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')'"'
+  fi
+  mkdir -p "$lockfile_dir" 2>/dev/null || true
+  # Write atomically via tmpfile + mv so a partial write never leaves the
+  # consumer parsing half a JSON object.
+  local tmp="${failure_file}.tmp"
+  {
+    printf '{'
+    printf '"timestamp":"%s",' "$ts"
+    printf '"exit_code":%d,' "$rc"
+    printf '"last_command":%s,' "$step_json"
+    printf '"recent_journal_lines":%s' "$journal_json"
+    printf '}\n'
+  } > "$tmp" 2>/dev/null || true
+  if [ -s "$tmp" ]; then
+    mv -f "$tmp" "$failure_file" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+  else
+    rm -f "$tmp" 2>/dev/null || true
   fi
 }

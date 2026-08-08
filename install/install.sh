@@ -396,15 +396,25 @@ enable_interfaces(){
     echo_error "ERROR: config.txt not found at /boot/firmware/config.txt or /boot/config.txt"
     exit 1
   fi
+  if ! command -v raspi-config >/dev/null 2>&1; then
+    echo_error "ERROR: raspi-config not found — cannot enable SPI/I2C. Are you running this on Raspberry Pi OS?"
+    exit 1
+  fi
   #enable spi
   sudo sed -i 's/^dtparam=spi=.*/dtparam=spi=on/' "$config_txt"
   sudo sed -i 's/^#dtparam=spi=.*/dtparam=spi=on/' "$config_txt"
-  sudo raspi-config nonint do_spi 0
+  if ! sudo raspi-config nonint do_spi 0; then
+    echo_error "ERROR: Failed to enable SPI via raspi-config. The display will not work without it."
+    exit 1
+  fi
   echo_success "\tSPI Interface has been enabled."
   #enable i2c
   sudo sed -i 's/^dtparam=i2c_arm=.*/dtparam=i2c_arm=on/' "$config_txt"
   sudo sed -i 's/^#dtparam=i2c_arm=.*/dtparam=i2c_arm=on/' "$config_txt"
-  sudo raspi-config nonint do_i2c 0
+  if ! sudo raspi-config nonint do_i2c 0; then
+    echo_error "ERROR: Failed to enable I2C via raspi-config."
+    exit 1
+  fi
   echo_success "\tI2C Interface has been enabled."
 
   # Is a Waveshare device specified as an install parameter?
@@ -432,16 +442,36 @@ enable_interfaces(){
 
 install_debian_dependencies() {
   if [ -f "$APT_REQUIREMENTS_FILE" ]; then
-    sudo apt-get update > /dev/null &
-    show_loader "Fetch available system dependencies updates. "
+    # JTN-788 parity: refresh the apt index *synchronously* before
+    # installing. A backgrounded `apt-get update &` (the previous
+    # implementation here) races with the apt-get install that follows —
+    # in practice this means install can run against a stale
+    # /var/lib/apt/lists/ cache and abort with "Can't find a source to
+    # download version ..." when the Raspberry Pi archive has published a
+    # package point-release since the index was last refreshed. update.sh
+    # already fixed this identical bug; mirror it here.
+    #
+    # A failing apt-get update is a soft warning, not a hard abort: a
+    # transient index-refresh failure (offline, DNS, mirror hiccup)
+    # shouldn't block an install that may not even need fresh packages —
+    # the subsequent apt-get install decides whether the stale index is
+    # actually fatal.
+    echo "Refreshing apt package index..."
+    DEBIAN_FRONTEND=noninteractive sudo -E apt-get update -qq
+    apt_update_rc=$?
+    if [ "$apt_update_rc" -ne 0 ]; then
+      echo_warn "WARNING: apt-get update exited $apt_update_rc — continuing with cached index."
+    else
+      echo_success "\tapt package index refreshed."
+    fi
 
-    xargs -a "$APT_REQUIREMENTS_FILE" sudo apt-get install -y > /dev/null &
+    DEBIAN_FRONTEND=noninteractive xargs -a "$APT_REQUIREMENTS_FILE" sudo -E apt-get install -y > /dev/null &
     if ! show_loader "Installing system dependencies. "; then
       echo_error "ERROR: Failed to install system dependencies (apt-get install). Check network connectivity and re-run install.sh."
       exit 1
     fi
   else
-    echo "ERROR: System dependencies file $APT_REQUIREMENTS_FILE not found!"
+    echo_error "ERROR: System dependencies file $APT_REQUIREMENTS_FILE not found!"
     exit 1
   fi
 }
@@ -558,24 +588,29 @@ create_venv(){
   # do additional dependencies for Waveshare support.
   if [[ -n "$WS_TYPE" ]]; then
     echo "Adding additional dependencies for waveshare to the python virtual environment. "
+    # Absolute path: a relative "ws_pip_install.log" landed wherever the user
+    # happened to `cd` before running `sudo bash install.sh`, so the error
+    # message below pointed at an unpredictable location.
+    local ws_pip_log
+    ws_pip_log=$(mktemp /tmp/inkypi-ws-pip-install.XXXXXX.log)
     if [[ "$use_uv" -eq 1 ]]; then
       UV_HTTP_TIMEOUT=60 "$VENV_PATH/bin/python" -m uv pip install \
         --python "$VENV_PATH/bin/python" \
         --no-cache \
         "${uv_extra_args[@]}" \
-        -r "$WS_REQUIREMENTS_FILE" > ws_pip_install.log &
+        -r "$WS_REQUIREMENTS_FILE" > "$ws_pip_log" &
       if ! show_loader "\tInstalling additional Waveshare python dependencies (uv). "; then
         cleanup_wheelhouse
-        echo_error "ERROR: Failed to install Waveshare Python dependencies via uv. See ws_pip_install.log for details."
+        echo_error "ERROR: Failed to install Waveshare Python dependencies via uv. See $ws_pip_log for details."
         exit 1
       fi
     else
       "$VENV_PATH/bin/python" -m pip install --retries 5 --timeout 60 --no-cache-dir \
         "${pip_extra_args[@]}" \
-        -r "$WS_REQUIREMENTS_FILE" > ws_pip_install.log &
+        -r "$WS_REQUIREMENTS_FILE" > "$ws_pip_log" &
       if ! show_loader "\tInstalling additional Waveshare python dependencies (pip fallback). "; then
         cleanup_wheelhouse
-        echo_error "ERROR: Failed to install Waveshare Python dependencies via pip. See ws_pip_install.log for details."
+        echo_error "ERROR: Failed to install Waveshare Python dependencies via pip. See $ws_pip_log for details."
         exit 1
       fi
     fi
@@ -642,11 +677,6 @@ update_config() {
   else
       echo "Config not updated as WS_TYPE flag is not set"
   fi
-}
-
-start_service() {
-  echo "Starting $APPNAME service."
-  sudo systemctl start $SERVICE_FILE
 }
 
 install_src() {
@@ -731,13 +761,12 @@ ask_for_reboot() {
   echo_header "[•] If you encounter any issues or have suggestions, please submit them here: https://github.com/florentineprinzessinzusachsen/InkyPi-modernize/issues"
 
   read -r -p "Would you like to restart your Raspberry Pi now? [Y/N] " userInput
-  userInput="${userInput^^}"
 
-  if [[ "${userInput,,}" == "y" ]]; then
-    echo_success "You entered 'Y', rebooting now..."
+  if [[ "${userInput,,}" == "y" || "${userInput,,}" == "yes" ]]; then
+    echo_success "Rebooting now..."
     sleep 2
     sudo reboot now
-  elif [[ "${userInput,,}" == "n" ]]; then
+  elif [[ "${userInput,,}" == "n" || "${userInput,,}" == "no" ]]; then
     echo "Please restart your Raspberry Pi later to apply changes by running 'sudo reboot now'."
     exit
   else
@@ -804,8 +833,7 @@ if command -v flock >/dev/null 2>&1; then
   if ! flock -n -E 42 9; then
     rc=$?
     if [ "$rc" -eq 42 ]; then
-      echo "ERROR: Another install/update is already running — see $LOCKFILE" >&2
-      echo "       (concurrent-install lock $FLOCK_PATH is held)" >&2
+      echo_error "ERROR: Another install/update is already running — see $LOCKFILE\n       (concurrent-install lock $FLOCK_PATH is held)" >&2
     fi
     exit 1
   fi

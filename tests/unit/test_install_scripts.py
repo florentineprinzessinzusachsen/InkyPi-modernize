@@ -1675,16 +1675,20 @@ class TestUpdateVendorsScript:
         )
 
     def test_vendor_destinations_are_repo_root_relative(self):
-        # Every VENDORS entry has the form "name|url|output_path" on its own
-        # line inside the `declare -a VENDORS=( ... )` block. The output paths
-        # must still start with `src/static/` (not `../src/static/` or an
-        # absolute path) — the fix is to cd *into* the repo root, not to
-        # rewrite every destination.
+        # Every VENDORS entry has the form
+        # "name|url|output_path|expected_sha256" on its own line inside the
+        # `declare -a VENDORS=( ... )` block. The output paths must still
+        # start with `src/static/` (not `../src/static/` or an absolute
+        # path) — the fix is to cd *into* the repo root, not to rewrite
+        # every destination.
         import re
 
-        # Match lines like: `  "Select2 CSS|https://.../x.css|src/static/..."`
+        # Match lines like:
+        # `  "Select2 CSS|https://.../x.css|src/static/...|<sha256>"`
         vendor_lines = re.findall(
-            r'^\s*"[^"|]+\|https?://[^"|]+\|([^"|]+)"', self.content, re.MULTILINE
+            r'^\s*"[^"|]+\|https?://[^"|]+\|([^"|]+)\|[0-9a-f]{64}"',
+            self.content,
+            re.MULTILINE,
         )
         assert vendor_lines, "No vendor entries found in update_vendors.sh"
         for path in vendor_lines:
@@ -1693,6 +1697,24 @@ class TestUpdateVendorsScript:
                 f"root (start with 'src/static/'); update_vendors.sh now "
                 f"anchors cwd to the repo root so this works."
             )
+
+    def test_vendor_downloads_are_checksum_verified(self):
+        # Every network fetch elsewhere in this codebase (Waveshare driver
+        # manifest, wheelhouse tarball/wheels) pins and verifies a sha256 —
+        # these CDN vendor fetches must too, since TLS-only transport
+        # security does nothing to detect tampered/compromised content
+        # served by the CDN itself.
+        assert "expected_sha256" in self.content, (
+            "update_vendors.sh must verify a pinned sha256 for each "
+            "downloaded vendor file"
+        )
+        assert (
+            "sha256_of" in self.content or "sha256sum" in self.content
+        ), "update_vendors.sh must compute a sha256 of each download to verify it"
+        assert "mismatch" in self.content.lower(), (
+            "update_vendors.sh must fail loudly with a clear message on "
+            "checksum mismatch, not silently accept tampered content"
+        )
 
     def test_install_sh_invokes_update_vendors(self):
         # Sanity check that install.sh still actually calls update_vendors.sh
@@ -1809,11 +1831,21 @@ class TestUpdateScript:
             "so the EXIT trap can persist the reason for a failed update "
             "(JTN-704)"
         )
-        # Required JSON keys in the failure record for downstream parsers.
+        # The JSON-writing logic itself was extracted to _common.sh's
+        # _inkypi_write_failure_record (shared with do_update.sh's trap) so
+        # the two copies can't silently drift apart — update.sh's trap must
+        # call it rather than embed the JSON keys inline.
+        assert "_inkypi_write_failure_record" in self.content, (
+            "update.sh's EXIT trap must call the shared "
+            "_inkypi_write_failure_record helper from _common.sh (JTN-704)"
+        )
+        # Required JSON keys in the failure record for downstream parsers —
+        # check the combined content since the JSON-writing body now lives
+        # in _common.sh.
         for key in ("timestamp", "exit_code", "last_command", "recent_journal_lines"):
             assert (
-                f'"{key}"' in self.content
-            ), f"update.sh failure JSON must include {key!r} key (JTN-704)"
+                f'"{key}"' in self.combined
+            ), f"failure JSON must include {key!r} key (JTN-704)"
         # Trap must also fire on SIGINT / SIGTERM / SIGHUP.
         assert (
             "trap 'exit 130' INT" in self.content
@@ -1827,6 +1859,28 @@ class TestUpdateScript:
         assert (
             trap_pos > lockfile_pos
         ), "EXIT trap must be registered after the lockfile is created"
+
+    def test_update_exit_trap_cleans_pip_build_tmpdir(self):
+        # PIP_BUILD_TMPDIR (/var/tmp/pip-build, can be several hundred MB) was
+        # previously only cleaned up on the success path — every pip/uv
+        # failure branch exited before reaching that cleanup line. On a Pi
+        # Zero 2 W repeatedly OOM-killed mid-pip-install (the scenario this
+        # dir exists for), failed attempts leaked build artifacts across
+        # retries on a disk-constrained SD card. The EXIT trap must remove it
+        # unconditionally, like it already does for $LOCKFILE.
+        trap_start = self.content.index("_inkypi_update_exit_trap() {")
+        trap_body_end = self.content.index("\n}\n", trap_start)
+        trap_body = self.content[trap_start:trap_body_end]
+        assert "PIP_BUILD_TMPDIR" in trap_body, (
+            "update.sh's EXIT trap must rm -rf PIP_BUILD_TMPDIR on every "
+            "exit path so failed pip/uv installs don't leak build artifacts"
+        )
+        # Must be guarded for the case where the trap fires before
+        # PIP_BUILD_TMPDIR is set (e.g. an early failure).
+        assert '"${PIP_BUILD_TMPDIR:-}"' in trap_body, (
+            "PIP_BUILD_TMPDIR cleanup in the EXIT trap must guard against "
+            "being unset (trap can fire before it's assigned)"
+        )
 
     def test_update_exposes_test_failure_injection_env_var(self):
         # JTN-704: The integration test needs a guarded env-var hook to
@@ -1845,7 +1899,11 @@ class TestUpdateScript:
         # JTN-667: update.sh must use the same multi-release zramswap guard as
         # install.sh — previously it only matched Bookworm (12) so Trixie (13)
         # and Bullseye (11) users would OOM during pip install on update.
-        assert "os_version=$(get_os_version)" in self.content
+        assert "os_version=$(get_os_version" in self.content, (
+            "update.sh must call get_os_version() to determine the zramswap "
+            "guard (allowed to include a fallback for set -e safety, e.g. "
+            '`|| os_version=""`)'
+        )
         assert '[[ "$os_version" =~ ^(11|12|13)$ ]]' in self.content
         assert "setup_zramswap_service" in self.content
         # The skip branch should still exist for unknown future releases.

@@ -36,6 +36,24 @@ Use this for the latest `main`, contributing, a non-Zero-2-W board, or full visi
   <img src="./images/raspberry_pi_imager_services.png" width="250" />
 </p>
 
+### Run the installer
+
+SSH into the Pi (`ssh <username>@<hostname>.local`), then:
+
+```bash
+git clone https://github.com/florentineprinzessinzusachsen/InkyPi-modernize.git
+cd InkyPi-modernize
+sudo bash install/install.sh
+```
+
+If you're using a Waveshare display instead of the default Pimoroni Inky, pass its model name (without `.py`) with `-W`:
+
+```bash
+sudo bash install/install.sh -W epd7in3f
+```
+
+The script prompts for a reboot once it finishes — accept it, since the SPI/I2C interface changes it makes only take effect on boot. Afterwards the web UI is available at `http://<hostname>.local/`.
+
 ### Pi Zero 2 W notes
 
 - **OS**: current default Pi OS is Trixie (Debian 13); InkyPi supports it natively. For an older Bookworm image, use "Raspberry Pi OS (Legacy, 64-bit) Lite" in Imager.

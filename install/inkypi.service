@@ -27,6 +27,25 @@ KillSignal=SIGINT
 StandardOutput=journal
 StandardError=journal
 CPUQuota=40%
+# Sandboxing. The app still runs as root (SPI/GPIO access via /dev/spidev*
+# and /dev/gpiochip* needs it — see epdconfig.py), so this is defense in
+# depth against the Chromium/plugin subprocess surface, not a full
+# containment boundary. Every writable path below was confirmed by tracing
+# every write in src/ (config.py, plugin_history.py, display_manager.py,
+# refresh_task/*, benchmark_storage.py) — do not add ProtectSystem=strict or
+# narrow ReadWritePaths further without re-checking those call sites.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# read-only (not true): the image_folder plugin reads user-configured
+# folders that are commonly under /home (e.g. /home/pi/Pictures) — ProtectHome=true
+# would hide /home entirely and break it.
+ProtectHome=read-only
+ReadWritePaths=/opt/InkyPi/src/config
+ReadWritePaths=/opt/InkyPi/src/static/images
+ReadWritePaths=/opt/InkyPi/runtime
+ReadWritePaths=/var/lib/inkypi
+ReadWritePaths=/usr/local/inkypi/.env
 # JTN-785: MemoryHigh / MemoryMax are intentionally NOT set in this base unit.
 # install.sh and update.sh detect the device's total RAM at install time and
 # write the appropriate caps to a drop-in at
