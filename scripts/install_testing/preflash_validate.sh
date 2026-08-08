@@ -118,11 +118,18 @@ coverage_suite() {
     rm -f coverage.xml
     export INKYPI_PLUGIN_ISOLATION=none
     export INKYPI_NO_HOT_RELOAD=1
+    # This suite runs a narrow, critical-path-only test subset measured
+    # against the whole src/ tree, so aggregate coverage is expected to sit
+    # well below repo-wide norms — the actual gate is coverage_gate.py below,
+    # which checks specific critical files. --cov-fail-under=0 overrides
+    # .coveragerc's repo-wide `fail_under = 70`, which would otherwise fail
+    # pytest itself before coverage_gate.py's per-file check ever runs.
     python -m pytest \
         -q \
         --cov=src \
         --cov-branch \
         --cov-report=xml:coverage.xml \
+        --cov-fail-under=0 \
         tests/unit/test_display_manager.py \
         tests/unit/test_display_manager_coverage.py \
         tests/unit/test_config_resolution.py \
@@ -136,7 +143,9 @@ coverage_suite() {
         tests/unit/test_plugin_isolation.py \
         tests/unit/test_upgrade_compatibility.py \
         tests/unit/test_install_scripts.py \
-        tests/unit/test_config_mtime_cache.py
+        tests/unit/test_config_mtime_cache.py \
+        tests/unit/test_config_update_atomic.py \
+        tests/unit/test_env_management.py
     python scripts/checks/coverage_gate.py coverage.xml
 }
 
