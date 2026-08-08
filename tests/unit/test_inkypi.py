@@ -27,6 +27,10 @@ def _reload_inkypi(monkeypatch, argv=None, env=None):
     import inkypi  # noqa: F401
 
     mod = importlib.reload(sys.modules["inkypi"])
+    # These tests don't care about display hardware; avoid touching real
+    # EPD/Inky auto-detection when Config() bootstraps a prod device.json
+    # (default display_type "inky") in production-mode tests.
+    monkeypatch.setattr(mod, "DisplayManager", MagicMock())
     mod.main(argv[1:])
     return mod
 
