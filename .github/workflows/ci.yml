@@ -236,36 +236,6 @@ jobs:
           # Chromium which isn't installed in this job). The browser-smoke
           # job runs them with a real browser.
           pytest --cov --cov-report=xml -q
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.python-version }}
-          path: coverage.xml
-          if-no-files-found: error
-
-  sonarcloud:
-    name: SonarCloud Scan
-    needs: [tests]
-    runs-on: ubuntu-latest
-    # Dependabot PRs cannot read repo secrets, so SONAR_TOKEN is empty and the
-    # scan always fails. Skip it rather than report a misleading red check.
-    if: always() && github.event.pull_request.user.login != 'dependabot[bot]'
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Download coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-3.12
-        continue-on-error: true
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
   smoke:
     name: Install smoke (container)
     needs: tests
@@ -813,15 +783,13 @@ jobs:
 
   ci-gate:
     name: CI gate (all checks pass)
-    needs: [lint, shellcheck, lockfile-drift, tests, sonarcloud, smoke, smoke-matrix, coverage-gate, security, browser-smoke, install-smoke-memcap, install-matrix, install-crash-loop-gate]
+    needs: [lint, shellcheck, lockfile-drift, tests, smoke, smoke-matrix, coverage-gate, security, browser-smoke, install-smoke-memcap, install-matrix, install-crash-loop-gate]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all required jobs passed
         run: |
           # Fail this job (and therefore the gate) if any required job did not succeed.
-          # 'sonarcloud' is advisory (secrets may be absent on forks), so we only
-          # require it to not be in an explicit failure state — cancelled/skipped is OK.
           results='${{ toJSON(needs) }}'
           echo "$results"
 
@@ -833,11 +801,5 @@ jobs:
               exit 1
             fi
           done
-
-          # sonarcloud: advisory — warn on failure but do not block
-          sonar_result=$(echo "$results" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sonarcloud',{}).get('result','missing'))")
-          if [ "$sonar_result" = "failure" ]; then
-            echo "WARNING: sonarcloud reported failure — investigate but not blocking gate"
-          fi
 
           echo "All required CI checks passed."
