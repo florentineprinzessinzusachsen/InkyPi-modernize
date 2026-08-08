@@ -334,7 +334,7 @@ jobs:
         # Always uploaded (even on workflow_dispatch) so maintainers can
         # inspect it before the boot-verification job decides whether to
         # attach it to the release.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: inkypi-pi-image-${{ steps.tag.outputs.version }}
           path: |
