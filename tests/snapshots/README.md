@@ -1,5 +1,15 @@
 # Snapshot (Golden-File) Tests
 
+> **Disabled in CI (2026-08-08).** Neither family below runs in the
+> `browser-smoke` job anymore. Baselines had drifted after ~38 commits of
+> legitimate UI/CSS changes went unaccompanied by a re-baseline pass, and
+> regenerating them requires Docker running `ubuntu:24.04` specifically
+> (font-fallback-sensitive — see "Updating baselines" below), which isn't
+> available in every environment. Re-enable by restoring
+> `tests/integration/test_visual_regression.py` and `tests/snapshots/` to
+> the `pytest` invocation in `.github/workflows/ci.yml`'s `browser-smoke`
+> job — after regenerating baselines fresh first.
+
 Two families of pixel-diff snapshots live under this directory:
 
 1. **Plugin image snapshots** — baselines for plugin `generate_image()`
