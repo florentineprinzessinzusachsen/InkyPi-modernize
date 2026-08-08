@@ -76,18 +76,23 @@ jobs:
           python -m pytest tests/benchmarks/ --benchmark-only \
             --benchmark-columns=min,mean,median,stddev,ops \
             --benchmark-json=/tmp/bench-current.json -q
-          # Compare against the CI-cached baseline (a recent same-runner
-          # measurement) when available — blocking, since it's a reliable
-          # signal. On a cache miss, fall back to the repo-committed baseline
-          # but treat it as advisory-only: that file is a point-in-time
-          # snapshot that isn't refreshed automatically, so drift from
-          # runner/environment changes alone can exceed the threshold with no
-          # code regression involved (see perf_budget_gate.py below for the
-          # blocking check that doesn't depend on any baseline).
+          # Compare against a baseline when available, purely for visibility —
+          # always advisory, never blocking. Each run lands on a fresh,
+          # independent GitHub-hosted VM (the cache only carries over the
+          # *numbers* from a previous run, not the machine), and shared-runner
+          # CPU noise alone routinely swings microsecond-scale benchmarks by
+          # tens to hundreds of percent — confirmed in practice (run
+          # 31211192843: 8/9 benchmarks "failed" the +15% threshold against a
+          # freshly-cached baseline purely from runner-to-runner variance, no
+          # code change involved). Blocking on that comparison produces
+          # false-positive CI failures, not signal. Real regressions are
+          # caught by perf_budget_gate.py below instead, which checks against
+          # fixed absolute budgets that don't depend on any other run.
           if [ -f /tmp/bench-baseline.json ]; then
             echo "Using CI cached benchmark baseline." | tee /tmp/benchmark-compare.txt
             cp /tmp/bench-baseline.json /tmp/bench-effective-baseline.json
             python scripts/perf/benchmark_compare.py \
+              --advisory \
               --baseline /tmp/bench-effective-baseline.json \
               --current /tmp/bench-current.json \
               | tee -a /tmp/benchmark-compare.txt
