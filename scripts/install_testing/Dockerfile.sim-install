@@ -34,6 +34,37 @@ RUN printf '#!/bin/sh\n# sim-only no-op raspi-config shim\nexit 0\n' \
     > /usr/sbin/raspi-config \
     && chmod +x /usr/sbin/raspi-config
 
+# install.sh's enable_interfaces() reads /boot/firmware/config.txt (or
+# /boot/config.txt) and will exit 1 if neither exists. Create a minimal stub
+# that looks like a Pi boot config so the sed/grep lines operate on real data
+# — same workaround Dockerfile.install-matrix uses.
+RUN mkdir -p /boot/firmware \
+    && printf '%s\n' \
+        '# sim-only /boot/firmware/config.txt stub' \
+        'dtparam=audio=on' \
+        'dtparam=spi=off' \
+        'dtparam=i2c_arm=off' \
+    > /boot/firmware/config.txt
+
+# Install a no-op systemctl shim that swallows the handful of calls
+# install.sh makes (daemon-reload, enable, is-active, disable, start, stop)
+# — same workaround Dockerfile.install-matrix uses. A container has no
+# running systemd, so the real systemctl binary (were it installed) would
+# error on every call anyway. The shim always exits 0 except for
+# `is-active` (exits 3 = "not active") so install.sh's `stop_service` takes
+# the "not running" branch. On bullseye/bookworm/trixie `/bin` is a
+# usrmerge symlink to `/usr/bin`, so overwriting `/usr/bin/systemctl` also
+# covers `/bin/systemctl` (same inode) — no extra `ln` needed.
+RUN printf '%s\n' \
+        '#!/bin/sh' \
+        '# sim-only no-op systemctl shim' \
+        'case "$1" in' \
+        '  is-active) exit 3 ;;' \
+        '  *) exit 0 ;;' \
+        'esac' \
+    > /usr/bin/systemctl \
+    && chmod +x /usr/bin/systemctl
+
 RUN useradd --create-home --shell /bin/bash inkypi-ci \
     && printf 'inkypi-ci ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/inkypi-ci \
     && chmod 0440 /etc/sudoers.d/inkypi-ci
