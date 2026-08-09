@@ -636,7 +636,26 @@ jobs:
           INKYPI_NO_REFRESH: '1'
           PYTHONPATH: src
         run: |
-          mutmut run --CI --paths-to-mutate "${{ matrix.path }}"
+          # mutmut 3.x dropped the `--CI`/`--paths-to-mutate` CLI flags —
+          # source_paths is now pyproject.toml-only (see [tool.mutmut]'s
+          # comment) and it lists all four shard directories together for
+          # local `mutmut run` use. Narrow it to just this shard's path so
+          # the four matrix legs stay independently scoped (and fit the
+          # 120-minute budget) like they did under mutmut 2.x's CLI flag.
+          python3 -c "
+          import re
+          path = 'pyproject.toml'
+          with open(path) as f:
+              content = f.read()
+          content = re.sub(
+              r'source_paths = \[[^\]]*\]',
+              'source_paths = [\"${{ matrix.path }}\"]',
+              content,
+          )
+          with open(path, 'w') as f:
+              f.write(content)
+          "
+          mutmut run
       - name: Show mutation results
         if: always()
         run: |
