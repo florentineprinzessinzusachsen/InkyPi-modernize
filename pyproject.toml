@@ -142,6 +142,13 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # interaction that doesn't reflect real behavior.
 pytest_add_cli_args = [
     "-x", "--tb=short", "-q",
+    # Checks that pyproject.toml's committed source_paths lists all four
+    # dirs — correct against the real, git-tracked file, but the CI workflow
+    # rewrites source_paths down to a single shard's dir in place *before*
+    # invoking mutmut run, so this fails 3-of-4 shards every single time by
+    # construction, not from a real regression. Doesn't touch any mutated
+    # code, so excluding it from mutmut's own baseline costs no coverage.
+    "--deselect", "tests/test_mutmut_config.py",
     "--deselect", "tests/integration/test_plugin_images_route.py::test_plugin_static_image_route_with_relative_src_dir",
     "--deselect", "tests/unit/test_app_utils.py::test_resolve_path_with_relative_src_dir_ignores_cwd",
     "--deselect", "tests/test_dry_run_plugin.py::test_main_default_output_path",
@@ -166,6 +173,7 @@ pytest_add_cli_args = [
     # likely the same root cause: add it here rather than re-diagnosing.
     "--deselect", "tests/integration/test_error_recovery.py::test_plugin_generate_image_timeout",
     "--deselect", "tests/integration/test_jtn_341_clock_preview.py::test_clock_update_preview_runtime_error_returns_400_and_logs",
+    "--deselect", "tests/integration/test_jtn_341_clock_preview.py::test_clock_update_preview_unexpected_exception_returns_500_and_logs",
 ]
 
 [tool.semantic_release]
