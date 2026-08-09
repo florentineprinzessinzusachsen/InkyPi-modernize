@@ -52,7 +52,12 @@ pi-heif==1.4.0
 tzdata>=2026.3
 openai>=2.50.0,<3
 google-genai>=1.14,<2
-numpy>=2.5.1,<3
+# numpy 2.5.1 dropped support for Python <3.12 (requires_python >=3.12) — split
+# like install/requirements.txt does, or `pip install -r requirements-dev.txt`
+# under 3.11/3.12 hits "ResolutionImpossible" against requirements.txt's own
+# numpy==2.4.6 pin for that range.
+numpy>=2.4.6,<2.5 ; python_full_version < '3.12'
+numpy>=2.5.1,<3 ; python_full_version >= '3.12'
 icalendar>=7.2.2,<8
 recurring-ical-events>=3.8.2,<4
 psutil>=7.0,<8
