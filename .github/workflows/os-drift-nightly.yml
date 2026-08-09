@@ -55,6 +55,15 @@ jobs:
     container:
       image: debian:${{ matrix.codename }}
       options: --user root
+    # The container job's implicit default shell is `sh` (dash). Trixie's
+    # dash (>=0.5.12) supports `set -o pipefail`, but bookworm's and
+    # bullseye's older dash do not — they abort every step with "Illegal
+    # option -o pipefail" before Bootstrap even runs. Force bash, which is
+    # Essential:yes and present in all three base images with no install
+    # step required.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Skip leg if not selected (workflow_dispatch)
         id: skip
@@ -121,6 +130,18 @@ jobs:
           mkdir -p artifacts
           FAILED_LOG=artifacts/apt-missing-${{ matrix.codename }}.txt
           : > "$FAILED_LOG"
+
+          # A handful of debian-requirements.txt entries (liblgpio-dev,
+          # chromium-headless-shell on older releases, ...) only exist in the
+          # Raspberry Pi OS apt repo, not plain Debian — a real Pi ships with
+          # this repo already configured, but this bare debian:${{ matrix.codename }}
+          # container does not. Add it so the check matches what install.sh
+          # actually sees on hardware, same as Dockerfile.install-matrix /
+          # Dockerfile.sim-install. [trusted=yes] is a CI-only workaround for
+          # Debian Trixie's sqv rejecting the repo's SHA1 signature — do not
+          # copy this to a production config.
+          echo "deb [trusted=yes] http://archive.raspberrypi.com/debian/ ${{ matrix.codename }} main" \
+            > /etc/apt/sources.list.d/raspi.list
 
           # Refresh the apt index from the unpinned debian mirror.
           apt-get update
