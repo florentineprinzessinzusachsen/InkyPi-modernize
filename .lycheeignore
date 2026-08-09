@@ -6,3 +6,12 @@ https://www.flaticon.com/
 https://platform.openai.com/
 https://www.raspberrypi.com/software/
 https://www.patreon.com/
+https://makerworld.com/
+https://make.com/
+https://www.waveshare.com/
+
+# Requires an authenticated session to view; a bare GET always 401s
+https://unsplash.com/oauth/applications
+
+# Rate-limits aggressively; nightly lychee runs trip 429 every time
+https://frontpages.freedomforum.org/

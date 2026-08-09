@@ -125,7 +125,7 @@ pip install -r install/requirements-dev.txt
 .venv/bin/python src/inkypi.py --dev --web-only
 ```
 
-Dev server runs on port 8080. See [CONTRIBUTING.md](./CONTRIBUTING.md) and [development.md](./docs/development.md) for full details.
+Dev server runs on port 8080. See [development.md](./docs/development.md) for full details.
 
 ### Testing
 
