@@ -48,4 +48,11 @@ USER inkypi-ci
 # HEALTHCHECK NONE suppresses the DS-0026 "missing healthcheck" alert.
 HEALTHCHECK NONE
 
-CMD ["sudo", "bash", "-c", "cd /InkyPi/install && bash ./install.sh"]
+# JTN-699: `.dockerignore` excludes `.git`, so the COPY above leaves this
+# tree with no git metadata. install.sh's preflight requires the source tree
+# to be a real git clone (needed at runtime by `git describe` and
+# update.sh). Initialise a throwaway repo here — same workaround as
+# ci_install_matrix_verify.sh uses for Dockerfile.install-matrix — so the
+# preflight check reflects the real invariant (ran `git clone …`) without
+# bloating the image with the full .git directory.
+CMD ["bash", "-c", "if ! git -C /InkyPi rev-parse --git-dir >/dev/null 2>&1; then git -C /InkyPi init --quiet --initial-branch=ci-sim-install && git -C /InkyPi -c user.email=ci@inkypi.local -c user.name=CI -c commit.gpgsign=false -c advice.addIgnoredFile=false commit --allow-empty --quiet -m 'ci-sim-install bootstrap'; fi && cd /InkyPi/install && sudo bash ./install.sh"]
