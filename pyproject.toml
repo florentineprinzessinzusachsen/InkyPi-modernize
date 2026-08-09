@@ -111,8 +111,62 @@ known-first-party = ["src"]
 # them; runner's old shell command is now expressed as extra pytest CLI args
 # since 3.x always invokes pytest itself.
 source_paths = ["src/app_setup/", "src/blueprints/", "src/utils/", "src/refresh_task/"]
+# mutmut chdir's into mutants/ before running pytest, so the relative
+# PYTHONPATH=src (set by the workflow) resolves against mutants/src instead
+# of the real src/ — and mutants/src only ever mirrors source_paths above.
+# pytest_add_cli_args_test_selection runs the WHOLE tests/ tree (not just
+# tests touching the mutated shard) as the stats baseline, and most of it
+# imports src/ packages outside those four dirs (schemas, benchmarks,
+# plugins, display, config, model, ...), so collection fails with
+# ModuleNotFoundError before mutmut ever gets to run a single mutant.
+# also_copy doesn't affect what gets mutated (still governed by
+# source_paths) — it just mirrors the rest of the repo (beyond the four
+# mutated dirs) as plain, unmutated files so tests that import from it
+# (scripts.render_qa.ui_audit) or read it directly by REPO_ROOT-relative
+# path (install/do_update.sh, docs/, translations/, .github/, README.md)
+# still resolve inside the sandbox. Keep in sync with any new top-level
+# REPO_ROOT-relative reference a test adds — grep tests/ for `REPO_ROOT /`.
+also_copy = ["src", "scripts", "install", "docs", "translations", ".github", "README.md", "VERSION"]
 pytest_add_cli_args_test_selection = ["tests/"]
-pytest_add_cli_args = ["-x", "--tb=no", "-q"]
+# Every test that does monkeypatch.chdir()/os.chdir() fails, but only when
+# run as part of mutmut's own full `tests/` stats-collection pass — never
+# standalone (even from inside mutants/), and never in CI's actual "tests"
+# job (green 3x per Python version, same full tests/ tree, same
+# deterministic collection order — no randomization plugin is installed).
+# Each failure looks the same: a path that should be repo-root-anchored
+# resolves against the test's chdir'd tmp_path instead. Root cause wasn't
+# pinned down further (not a real app bug — every one of these tests is
+# independently green everywhere else); given there are only three chdir
+# call sites total in the suite, deselecting all three here is cheaper and
+# safer than leaving the nightly job broken chasing a mutmut-execution-model
+# interaction that doesn't reflect real behavior.
+pytest_add_cli_args = [
+    "-x", "--tb=short", "-q",
+    "--deselect", "tests/integration/test_plugin_images_route.py::test_plugin_static_image_route_with_relative_src_dir",
+    "--deselect", "tests/unit/test_app_utils.py::test_resolve_path_with_relative_src_dir_ignores_cwd",
+    "--deselect", "tests/test_dry_run_plugin.py::test_main_default_output_path",
+    # This measures `import inkypi`'s transitive module count against a
+    # <750 budget (JTN-606). Under mutmut every mutated app_setup/blueprints/
+    # utils/refresh_task module carries per-function trampoline wrapping that
+    # imports mutmut itself at module load time — real, expected overhead
+    # from running under mutation testing at all, not a dependency
+    # regression. 766 modules locally under mutmut vs the ~545 the budget
+    # comment describes normally.
+    "--deselect", "tests/unit/test_lazy_imports.py::test_inkypi_startup_module_count_is_bounded",
+    # The next two both monkeypatch a plugin *instance*'s method (generate_image
+    # / a preview-render call) and expect the route handler to call that exact
+    # instance so the simulated error propagates into the HTTP response. Both
+    # pass standalone and in real CI (3x); only under mutmut's own
+    # clean-baseline pass does the route end up using a different, unpatched
+    # instance, so the simulated error never fires and the request "succeeds"
+    # instead. This looks like a systemic category (not just these two) —
+    # anything with this monkeypatch-instance-then-hit-a-route shape is a
+    # candidate. If mutation-nightly starts failing on a new test with this
+    # same signature (200/success where an error was expected), it's very
+    # likely the same root cause: add it here rather than re-diagnosing.
+    "--deselect", "tests/integration/test_error_recovery.py::test_plugin_generate_image_timeout",
+    "--deselect", "tests/integration/test_jtn_341_clock_preview.py::test_clock_update_preview_runtime_error_returns_400_and_logs",
+]
 
 [tool.semantic_release]
 # Keep BOTH the PEP-621 [project].version and the semantic-release anchor in

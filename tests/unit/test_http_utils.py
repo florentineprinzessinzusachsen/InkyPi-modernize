@@ -114,7 +114,7 @@ from unittest.mock import Mock, patch  # noqa: E402
 import pytest  # noqa: E402
 from flask import Flask  # noqa: E402
 
-from src.utils.http_utils import (  # noqa: E402
+from utils.http_utils import (  # noqa: E402
     APIError,
     json_error,
     json_internal_error,
@@ -204,7 +204,7 @@ class TestJsonError:
 def test_http_get_timeout_tuple_from_env(monkeypatch):
     import requests
 
-    import src.utils.http_utils as http_utils
+    import utils.http_utils as http_utils
 
     # Force split timeout tuple via module-level variables (evaluated at import)
     monkeypatch.setattr(http_utils, "CONNECT_TIMEOUT_SECONDS", 1.5, raising=True)
@@ -246,7 +246,7 @@ def test_http_get_latency_logging_success_and_failure(monkeypatch, caplog):
 
     import requests
 
-    import src.utils.http_utils as http_utils
+    import utils.http_utils as http_utils
 
     http_utils._reset_shared_session_for_tests()
 
@@ -290,7 +290,7 @@ def test_http_get_latency_logging_success_and_failure(monkeypatch, caplog):
 
 
 def test_retry_backoff_env_configuration(monkeypatch):
-    import src.utils.http_utils as http_utils
+    import utils.http_utils as http_utils
 
     # Override env-based values by monkeypatching the helper accessors indirectly
     monkeypatch.setenv("INKYPI_HTTP_RETRIES", "7")
@@ -430,7 +430,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is True
 
     def test_wants_json_accept_header(self):
@@ -442,7 +442,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is True
 
     def test_wants_json_content_type(self):
@@ -454,7 +454,7 @@ class TestWantsJson:
         mock_request.is_json = True
         mock_request.get_json.return_value = {"test": "data"}
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is True
 
     def test_wants_json_false_for_html(self):
@@ -466,7 +466,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False
 
     def test_wants_json_false_for_unknown_path(self):
@@ -478,7 +478,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False
 
     def test_wants_json_exception_handling(self):
@@ -490,7 +490,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False
 
     def test_wants_json_with_provided_request(self):
@@ -513,7 +513,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.return_value = None
 
-        with patch("src.utils.http_utils.request", None):
+        with patch("utils.http_utils.request", None):
             assert wants_json(mock_request) is True
 
     def test_wants_json_get_json_exception_handling(self):
@@ -525,7 +525,7 @@ class TestWantsJson:
         mock_request.is_json = False
         mock_request.get_json.side_effect = Exception("Test exception")
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False
 
     def test_wants_json_general_exception_handling(self):
@@ -546,7 +546,7 @@ class TestWantsJson:
             }
         )
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False
 
     def test_wants_json_outer_exception_handling(self):
@@ -559,5 +559,5 @@ class TestWantsJson:
 
         mock_request = ExceptionRequest()
 
-        with patch("src.utils.http_utils.request", mock_request):
+        with patch("utils.http_utils.request", mock_request):
             assert wants_json() is False

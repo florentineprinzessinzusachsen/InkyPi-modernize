@@ -2,7 +2,7 @@ import requests
 
 
 def test_http_client_headers_and_ssl_verify(monkeypatch):
-    import src.utils.http_utils as http_utils
+    import utils.http_utils as http_utils
 
     http_utils._reset_shared_session_for_tests()
 

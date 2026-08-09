@@ -474,10 +474,15 @@ class TestHelpers:
         assert abs(result - (time.time() - 24 * 3600)) < 2
 
     def test_window_since_seconds_invalid_does_not_log_raw_input(self):
+        import blueprints.settings as settings_module
         from blueprints.settings import _window_since_seconds
 
         raw_window = "not-a-number\nforged-log-lineh"
-        logger = _window_since_seconds.__globals__["logger"]
+        # Module attribute, not _window_since_seconds.__globals__["logger"] —
+        # under mutation testing, mutated functions are wrapped in a
+        # trampoline defined in a different module, whose __globals__ has no
+        # "logger" key.
+        logger = settings_module.logger
         with patch.object(logger, "warning") as warning_mock:
             _window_since_seconds(raw_window)
 
