@@ -56,6 +56,10 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# mutmut build artifacts (local `mutmut run`)
+mutants/
+.mutmut-cache
+
 # Translations
 *.mo
 *.pot

@@ -594,7 +594,15 @@ jobs:
   #
   mutation-nightly:
     name: Mutation nightly (${{ matrix.label }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Disabled (2026-08-09) — see docs/testing.md's "Mutation testing" section
+    # for why and how to re-enable. Short version: mutmut's own sandboxed
+    # execution model (chdir into an isolated mutants/ copy + per-function
+    # trampoline instrumentation) breaks several unrelated tests in ways that
+    # don't reflect real bugs, and kept surfacing new ones across CI runs
+    # faster than they could be triaged, for a job that's advisory-only and
+    # never gated merges. Was: github.event_name == 'schedule' ||
+    # github.event_name == 'workflow_dispatch'.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:

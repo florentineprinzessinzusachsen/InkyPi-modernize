@@ -72,6 +72,29 @@ These cover fault injection, property/invariant regression, upgrade compatibilit
 
 ## Mutation testing
 
+> **`mutation-nightly` disabled in CI (2026-08-09).** The job in
+> `.github/workflows/ci.yml` is gated `if: false` and no longer runs on
+> schedule or `workflow_dispatch`. mutmut's own execution model — it copies
+> `source_paths` into an isolated `mutants/` sandbox, `chdir`s into it, and
+> wraps every mutated function in a trampoline — broke several unrelated
+> tests in ways that don't reflect real bugs (a relative `PYTHONPATH=src`
+> silently repointing at the incomplete sandbox copy, functions read via
+> `__globals__` landing on the trampoline's globals instead of the real
+> module's, plugin-instance identity not surviving the wrapping, ...). Each
+> was independently confirmed green standalone and in the real `tests` CI
+> job. Fixing the structural issues (see `[tool.mutmut].also_copy` and its
+> comment in `pyproject.toml`) took real, deliberate effort and was worth
+> it; the tail of one-off test-specific breakage kept surfacing new cases
+> faster than they could be triaged, for a job that was always advisory —
+> never a merge gate — so it wasn't a good use of further effort. The
+> `[tool.mutmut]` config and the deselected-test list in `pyproject.toml`
+> are left in place; re-enabling is a one-line `if:` flip in `ci.yml` if
+> someone wants to pick the remaining tail back up (search `pyproject.toml`
+> for `--deselect` to see what's already been excluded and why).
+>
+> `scripts/checks/mutation_check.py` (below) is unaffected — it's a
+> separate, self-contained harness that doesn't use mutmut's sandbox at all.
+
 Mutation testing introduces small code changes ("mutants") and reruns the test suite. A mutant that gets caught by a failing test is **killed**; one that survives signals a coverage gap that line-coverage percentages alone wouldn't show. This matters here because InkyPi ships to devices that can't be easily reflashed in the field.
 
 In scope (`pyproject.toml` → `[tool.mutmut]` → `source_paths`): `src/app_setup/`, `src/blueprints/`, `src/utils/`, `src/refresh_task/`.
@@ -80,8 +103,9 @@ In scope (`pyproject.toml` → `[tool.mutmut]` → `source_paths`): `src/app_set
 # Full run against configured paths
 INKYPI_ENV=dev INKYPI_NO_REFRESH=1 PYTHONPATH=src mutmut run
 
-# Narrower shard
-INKYPI_ENV=dev INKYPI_NO_REFRESH=1 PYTHONPATH=src mutmut run --paths-to-mutate src/utils/
+# Narrower shard — mutmut 3.x dropped --paths-to-mutate; edit source_paths in
+# pyproject.toml directly instead (see the [tool.mutmut] comment for why).
+INKYPI_ENV=dev INKYPI_NO_REFRESH=1 PYTHONPATH=src mutmut run
 
 mutmut results                # summary
 mutmut show <id>              # inspect a specific surviving mutant
@@ -91,7 +115,7 @@ mutmut unapply
 
 To expand scope: add the path to `source_paths` in `pyproject.toml`, add it to `EXPECTED_FILES` in `tests/test_mutmut_config.py`, open a PR.
 
-The `mutation-nightly` job in `.github/workflows/ci.yml` runs on a schedule (and via `workflow_dispatch`), never on push/PR — it's sharded by package (`app-setup`, `blueprints`, `utils`, `refresh-task`), each uploading a `mutmut-cache-<shard>` artifact. It's advisory: a survived mutant doesn't block CI. Review results, add targeted tests, shrink the surviving count over time.
+The `mutation-nightly` job in `.github/workflows/ci.yml` is sharded by package (`app-setup`, `blueprints`, `utils`, `refresh-task`), each uploading a `mutmut-cache-<shard>` artifact, and was advisory even when enabled: a survived mutant never blocked CI. See the disabled-in-CI note above.
 
 For PR-time confidence there's also a fast, deterministic harness — a small set of known high-value mutants applied to a temp copy of the repo with targeted tests:
 
