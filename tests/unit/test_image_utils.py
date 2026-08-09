@@ -229,7 +229,7 @@ def test_get_image_error_500(monkeypatch):
         content = b""
 
     monkeypatch.setattr("utils.image_utils.http_get", lambda url, **kwargs: Resp())
-    img = image_utils.get_image("http://example/img.png")
+    img = image_utils.get_image("http://example.com/img.png")
     assert img is None
 
 
@@ -241,7 +241,7 @@ def test_get_image_304_not_modified(monkeypatch):
         content = b"\x89PNG\r\n\x1a\n"  # minimal header; not a valid full image
 
     monkeypatch.setattr("utils.image_utils.http_get", lambda url, **kwargs: Resp())
-    assert image_utils.get_image("http://example/img.png") is None
+    assert image_utils.get_image("http://example.com/img.png") is None
 
 
 # ---------------------------------------------------------------------------

@@ -306,11 +306,15 @@ def test_manual_update_returns_after_image_saved_not_display(
     task = RefreshTask(device_config_dev, dm)
 
     def slow_display(image_arg, **kwargs):
-        # Simulate: image gets saved quickly, display push drags on for 90s.
+        # Simulate: image gets saved quickly, display push drags on.
+        # Only needs to outlast manual_update's ~0.25s grace period to prove
+        # the early-return behavior — a real 90s wait here would also make
+        # task.stop()'s thread.join(timeout=5) below block for its full 5s
+        # every run, since the background thread can't be interrupted mid-sleep.
         on_image_saved = kwargs.get("on_image_saved")
         if on_image_saved is not None:
             on_image_saved({"preprocess_ms": 100})
-        time.sleep(90)
+        time.sleep(2)
         return {"preprocess_ms": 100, "display_ms": 90000, "display_driver": "Fake"}
 
     monkeypatch.setattr(dm, "display_image", slow_display, raising=True)

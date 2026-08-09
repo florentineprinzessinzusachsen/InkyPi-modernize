@@ -62,12 +62,21 @@ def test_load_image_from_path_error_handling():
 
 def test_get_image_with_bad_url():
     """Test get_image handles network errors gracefully."""
+    import socket
+
     from utils.image_utils import get_image
 
-    # Test with invalid URL
-    result = get_image(
-        "http://this-domain-does-not-exist-12345.com/image.png", timeout_seconds=1.0
-    )
+    # Mock DNS resolution to fail immediately instead of relying on a real,
+    # possibly-slow (multi-second) negative lookup for a domain that doesn't
+    # exist — get_image() does a real socket.getaddrinfo() call for SSRF
+    # hostname validation before ever reaching the (irrelevant here) HTTP layer.
+    with patch(
+        "socket.getaddrinfo", side_effect=socket.gaierror("Name or service not known")
+    ):
+        result = get_image(
+            "http://this-domain-does-not-exist-12345.com/image.png",
+            timeout_seconds=1.0,
+        )
     assert result is None
 
 

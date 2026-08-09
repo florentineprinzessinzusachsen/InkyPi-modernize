@@ -1,5 +1,11 @@
 # pyright: reportMissingImports=false
-"""Error scenario tests for the Calendar plugin."""
+"""Error scenario tests for the Calendar plugin.
+
+Use plain http://example.com/... URLs, not made-up subdomains — fetch_calendar()
+does a real DNS lookup (SSRF hostname validation) before the mocked HTTP session
+is ever reached, and an unresolvable subdomain adds a real DNS-timeout (~5s) to
+every test even though get_http_session() is fully mocked.
+"""
 
 import pytest
 import requests
@@ -24,7 +30,7 @@ def test_calendar_network_error(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="Failed to fetch iCalendar url"):
-        p.fetch_calendar("http://unreachable.example.com/cal.ics")
+        p.fetch_calendar("http://example.com/cal.ics")
 
 
 def test_calendar_malformed_ics(monkeypatch):
@@ -74,7 +80,7 @@ def test_calendar_timeout(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="Failed to fetch iCalendar url"):
-        p.fetch_calendar("http://slow.example.com/cal.ics")
+        p.fetch_calendar("http://example.com/cal.ics")
 
 
 def test_calendar_http_403(monkeypatch):
@@ -95,4 +101,4 @@ def test_calendar_http_403(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="Failed to fetch iCalendar url"):
-        p.fetch_calendar("http://private.example.com/cal.ics")
+        p.fetch_calendar("http://example.com/cal.ics")

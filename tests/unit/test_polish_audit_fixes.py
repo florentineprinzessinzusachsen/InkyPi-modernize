@@ -90,10 +90,14 @@ def test_manual_update_succeeds_when_queue_has_space():
     import threading
 
     def set_done_after_enqueue():
-        # Wait until an item appears in the queue
+        # Wait until an item appears in the queue. manual_update() blocks on
+        # image_saved first (JTN-786) and only checks done afterwards as a
+        # short grace period — setting only done here left image_saved.wait()
+        # to run out its full ~60s default timeout every time this test ran.
         for _ in range(100):
             if task.manual_update_requests:
                 req = task.manual_update_requests[-1]
+                req.image_saved.set()
                 req.done.set()
                 return
             time.sleep(0.01)

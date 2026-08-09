@@ -55,7 +55,7 @@ def test_get_image_timeout_fallback_failure(monkeypatch):
         raise RuntimeError("network broke")
 
     monkeypatch.setattr("utils.image_utils.http_get", fake_get)
-    img = image_utils.get_image("http://example/img.png")
+    img = image_utils.get_image("http://example.com/img.png")
     assert img is None
 
 
@@ -67,7 +67,7 @@ def test_get_image_decode_error(monkeypatch):
         content = b"not an image"
 
     monkeypatch.setattr("utils.image_utils.http_get", lambda url, **kwargs: Resp())
-    img = image_utils.get_image("http://example/img.png")
+    img = image_utils.get_image("http://example.com/img.png")
     assert img is None
 
 
