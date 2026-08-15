@@ -2734,9 +2734,16 @@ class TestOsDriftNightlyWorkflow:
     def test_is_not_a_pr_gate(self):
         assert "pull_request:" not in self.content
 
-    def test_matrix_covers_all_three_codenames(self):
-        for codename in ("trixie", "bookworm", "bullseye"):
+    def test_matrix_covers_supported_codenames(self):
+        # JTN-615: bullseye is deliberately excluded from the matrix — see
+        # the workflow's header comment for why (same rationale as
+        # install-matrix.yml). The header comment itself still mentions
+        # "bullseye" by name to explain the omission, so assert on the
+        # matrix arrays specifically rather than the whole file.
+        for codename in ("trixie", "bookworm"):
             assert codename in self.content
+        assert re.search(r"codename:\s*\[trixie,\s*bookworm\]", self.content)
+        assert "bullseye]" not in self.content
 
     def test_uses_unpinned_debian_images(self):
         assert re.search(

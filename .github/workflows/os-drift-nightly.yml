@@ -1,14 +1,23 @@
 name: OS drift nightly
 
 # Drift detector for the install path (JTN-535). Re-runs the install
-# simulator against the LATEST unpinned debian:trixie, debian:bookworm, and
-# debian:bullseye images so any upstream package rename, GPG-signature
-# tightening, or repo change breaks a nightly job instead of a user's Pi.
+# simulator against the LATEST unpinned debian:trixie and debian:bookworm
+# images so any upstream package rename, GPG-signature tightening, or repo
+# change breaks a nightly job instead of a user's Pi.
 #
 # This is the UNPINNED complement to the PR-gating install matrix (JTN-530).
 # On the day job, pinned images catch regressions introduced by our code.
 # On the nightly, unpinned images catch regressions introduced by Debian
 # or Pi OS shipping a new upstream package set under us.
+#
+# bullseye is intentionally NOT in this matrix (dropped 2026-08-15). Debian 11
+# ships Python 3.9.2 (InkyPi's requirements.txt needs >=3.10 — see JTN-615,
+# which already dropped bullseye from install-matrix.yml for the same
+# reason), and its Raspberry Pi OS apt repo has never carried
+# chromium-headless-shell or liblgpio-dev. That's not drift — every nightly
+# run failed identically on both legs from the workflow's first run, because
+# bullseye was never a real install target. Re-adding it would just refile
+# the same bogus os-drift issue every night.
 #
 # IMPORTANT: this workflow intentionally has NO PR trigger. It is a drift
 # detector, not a PR gate — a broken nightly must not block merges. See
@@ -30,7 +39,6 @@ on:
           - ''
           - trixie
           - bookworm
-          - bullseye
 
 permissions:
   contents: read
@@ -47,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        codename: [trixie, bookworm, bullseye]
+        codename: [trixie, bookworm]
     # Run all steps directly inside the unpinned debian:${codename} image so
     # the apt-cache and pip resolution checks exercise the same package set
     # install.sh would see on that OS base. The :latest tag is intentional —
@@ -56,11 +64,10 @@ jobs:
       image: debian:${{ matrix.codename }}
       options: --user root
     # The container job's implicit default shell is `sh` (dash). Trixie's
-    # dash (>=0.5.12) supports `set -o pipefail`, but bookworm's and
-    # bullseye's older dash do not — they abort every step with "Illegal
-    # option -o pipefail" before Bootstrap even runs. Force bash, which is
-    # Essential:yes and present in all three base images with no install
-    # step required.
+    # dash (>=0.5.12) supports `set -o pipefail`, but bookworm's older dash
+    # does not — it aborts every step with "Illegal option -o pipefail"
+    # before Bootstrap even runs. Force bash, which is Essential:yes and
+    # present in both base images with no install step required.
     defaults:
       run:
         shell: bash
@@ -234,7 +241,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        codename: [trixie, bookworm, bullseye]
+        codename: [trixie, bookworm]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -339,13 +346,13 @@ jobs:
             const body = [
               `The nightly OS drift detector failed. See [run log](${runUrl}) for full details.`,
               ``,
-              `This workflow re-runs the install sim against **unpinned** \`debian:trixie\`, \`debian:bookworm\`, and \`debian:bullseye\` images. A failure means either:`,
+              `This workflow re-runs the install sim against **unpinned** \`debian:trixie\` and \`debian:bookworm\` images. A failure means either:`,
               ``,
               `- An apt package in \`install/debian-requirements.txt\` was renamed/removed in Debian`,
               `- A pinned pip dependency in \`install/requirements.txt\` no longer resolves`,
               `- \`install/install.sh\` broke end-to-end under the latest OS base`,
               ``,
-              `**Triage:** compare which matrix legs failed (trixie / bookworm / bullseye) — a single-leg failure usually means an upstream package change specific to that release; a multi-leg failure usually means our repo changed.`,
+              `**Triage:** compare which matrix legs failed (trixie / bookworm) — a single-leg failure usually means an upstream package change specific to that release; a multi-leg failure usually means our repo changed.`,
               ``,
               `---`,
               ``,
