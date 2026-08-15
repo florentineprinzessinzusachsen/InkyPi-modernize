@@ -577,10 +577,11 @@ jobs:
           cache-dependency-path: |
             install/requirements.txt
             install/requirements-dev.txt
-      - name: Install dependencies
+      - name: Create venv for preflash script
         run: |
-          python -m pip install -U pip wheel
-          pip install -r install/requirements.txt -r install/requirements-dev.txt
+          python -m venv .venv
+          .venv/bin/pip install -U pip wheel
+          .venv/bin/pip install -r install/requirements.txt -r install/requirements-dev.txt
       - name: Run soak validation
         env:
           INKYPI_VALIDATE_SOAK: '1'
