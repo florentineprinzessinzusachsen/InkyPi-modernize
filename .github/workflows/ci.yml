@@ -123,7 +123,7 @@ jobs:
           key: benchmark-baseline-${{ runner.os }}-py3.12-${{ github.run_id }}
       - name: Upload benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: |
@@ -476,7 +476,7 @@ jobs:
           scripts/install_testing/preflash_validate.sh
       - name: Upload coverage gate artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-gate
           path: coverage.xml
@@ -513,7 +513,7 @@ jobs:
             -o artifacts/security/sbom.json
       - name: Upload security artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-artifacts
           path: artifacts/security
@@ -670,13 +670,13 @@ jobs:
           mutmut results || true
       - name: Upload mutmut cache
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutmut-cache-${{ matrix.label }}
           path: .mutmut-cache
           if-no-files-found: ignore
           # ``.mutmut-cache`` is a hidden directory; without this flag
-          # actions/upload-artifact@v4 silently excludes it and the
+          # actions/upload-artifact@v7 silently excludes it and the
           # artifact is never published, even on successful runs.
           include-hidden-files: true
 
@@ -727,7 +727,7 @@ jobs:
             -q
       - name: Upload browser smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-smoke-failures
           path: runtime/mock_display_output/browser_smoke_failures
@@ -753,7 +753,7 @@ jobs:
 
       - name: Upload container logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: install-smoke-memcap-logs
           path: /tmp/inkypi-smoke-logs
