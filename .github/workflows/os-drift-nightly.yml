@@ -224,7 +224,7 @@ jobs:
 
       - name: Upload drift artifacts
         if: always() && steps.skip.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: os-drift-${{ matrix.codename }}
           path: artifacts/
@@ -285,7 +285,7 @@ jobs:
 
       - name: Upload install sim log
         if: always() && steps.skip.outputs.skip != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: install-sim-${{ matrix.codename }}
           path: artifacts/install-sim-${{ matrix.codename }}.log
