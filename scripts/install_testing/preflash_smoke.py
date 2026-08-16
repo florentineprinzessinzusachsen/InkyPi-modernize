@@ -529,7 +529,14 @@ def run_soak_smoke() -> None:
         refresh_task = RefreshTask(device_config, display_manager)
         _force_inprocess_execution(refresh_task)
 
-        import refresh_task as refresh_task_mod
+        # RefreshTask.__init__ builds its executor with
+        # `get_plugin_instance=lambda cfg: get_plugin_instance(cfg)` — a
+        # closure over refresh_task.task's module-level name (imported via
+        # `from plugins.plugin_registry import get_plugin_instance`), looked
+        # up fresh from that module's namespace on every call. The top-level
+        # `refresh_task` package never re-exports that name, so it must be
+        # patched on refresh_task.task specifically for the closure to see it.
+        import refresh_task.task as refresh_task_mod
 
         plugin = SoakPlugin()
         original_get_plugin_instance = refresh_task_mod.get_plugin_instance
