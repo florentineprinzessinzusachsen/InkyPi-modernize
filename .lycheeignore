@@ -10,6 +10,11 @@ https://makerworld.com/
 https://make.com/
 https://www.waveshare.com/
 
+# Bot-protection intermittently blocks/challenges GitHub-hosted runner IPs
+# outright (200 OK from any normal dev/residential IP, [TIMEOUT] from CI) —
+# lychee's own retries don't help since they hit the same runner IP.
+https://phosphoricons.com/
+
 # Requires an authenticated session to view; a bare GET always 401s
 https://unsplash.com/oauth/applications
 

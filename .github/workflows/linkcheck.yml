@@ -25,7 +25,18 @@ jobs:
       - name: Check links with lychee
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --no-progress --verbose README.md docs/**/*.md
+          # --timeout/--max-retries/--retry-wait-time widened for general
+          # robustness against transient slow responses. Sites that reliably
+          # fail from CI runner IPs specifically (bot-protection, rate
+          # limits, auth-walls) are excluded in .lycheeignore instead of
+          # being deleted from the docs — see that file for the running list
+          # and why each entry is there.
+          args: >-
+            --no-progress --verbose
+            --timeout 30
+            --max-retries 5
+            --retry-wait-time 5
+            README.md docs/**/*.md
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
